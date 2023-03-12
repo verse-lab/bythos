@@ -1,5 +1,6 @@
 From Coq Require Import List.
 From Coq Require ssreflect.
+From Coq Require Import ssrbool.
 Import ssreflect.SsrSyntax.
 From ABCProtocol Require Import Types Address Protocol States.
 
@@ -32,15 +33,21 @@ Record Coh (w : World) : Prop := mkCoh {
 (* unclear about this, ignore it for now *)
 (* Record Qualifier := Q { ts: Timestamp; allowed: Address; }. *)
 
+(* yes, how about extracting this to be ...? *)
+
 Definition seen_in_history (src : Address) (v : Value) (s : Signature) (pkts : PacketSoup) :=
   exists dst consumed, In (mkP src dst (SubmitMsg v s) consumed) pkts.
 
-Definition cert_correct (w : World) (c : Certificate) :=
+Definition cert_correct (psent : PacketSoup) (c : Certificate) :=
   let: (v, nsigs) := c in
   forall n sig, 
+    In (n, sig) nsigs ->
     is_byz n = false ->
     verify v sig n = true -> (* this can be expressed in other way *)
-    seen_in_history n v sig (sentMsgs w).
+    seen_in_history n v sig psent. 
+
+Definition consume (p : Packet) (psent : PacketSoup) :=
+  (receive_pkt p) :: (List.remove Packet_eqdec p psent).
 
 (* TODO use this or indexed inductive relation?
     and put Coh inside the invariant or here?
@@ -51,12 +58,17 @@ Inductive system_step (w w' : World) : Prop :=
 | Deliver (p : Packet) of
       (* Coh w &  *)
       In p (sentMsgs w) &
+      consumed p = false &
+      valid_node (dst p) &
+      is_byz (dst p) = false &
       let: (st', ms) := procMsg (localState w (dst p)) (src p) (msg p) in
       w' = mkW (upd (dst p) st' (localState w))
-               ((receive_pkt p) :: (List.remove Packet_eqdec p (sentMsgs w)) ++ ms)
+               ((consume p (sentMsgs w)) ++ ms)
 
 | Intern (proc : Address) (t : InternalTransition) of
       (* Coh w & *)
+      valid_node proc &
+      is_byz proc = false &
       let: (st', ms) := (procInt (localState w proc) t) in
       w' = mkW (upd proc st' (localState w))
                (ms ++ (sentMsgs w))
@@ -64,14 +76,14 @@ Inductive system_step (w w' : World) : Prop :=
 (* can possibly generate garbage in the following two trans *)
 | ByzSubmit (src dst : Address) (v : Value) (s : Signature) of
       (* Coh w & *)
-      is_byz src = true &
+      is_byz src &
       w' = mkW (localState w)
                ((mkP src dst (SubmitMsg v s) false) :: (sentMsgs w))
 
 | ByzConfirm (src dst : Address) (c : Certificate) of
       (* Coh w & *)
-      is_byz src = true &
-      cert_correct w c &
+      is_byz src &
+      cert_correct (sentMsgs w) c &
       w' = mkW (localState w)
                ((mkP src dst (ConfirmMsg c) false) :: (sentMsgs w))
 .

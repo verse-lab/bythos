@@ -1,4 +1,4 @@
-From Coq Require Import Bool.
+From Coq Require Import Bool List.
 From Coq Require ssreflect.
 Import ssreflect.SsrSyntax.
 From ABCProtocol Require Import Types Address.
@@ -59,6 +59,33 @@ Qed.
 Definition Init (n : Address) : State :=
   Node n false (value_bft n, nil) nil.
 
+Definition broadcast (src : Address) (m : Message) :=
+  (map (fun x => mkP src x m false) valid_nodes).
+
+Definition verify_certificate v nsigs :=
+  List.fold_right (fun nsig b => let: (n, sig) := nsig in b && (verify v sig n))
+    true nsigs.
+
+Definition certificate_valid v nsigs :=
+  Forall (fun nsig => verify v (snd nsig) (fst nsig) = true) nsigs.
+
+Fact In_broadcast src m p :
+  In p (broadcast src m) <-> exists dst, valid_node dst /\ p = mkP src dst m false.
+Proof. unfold broadcast. rewrite -> in_map_iff. firstorder. Qed.
+
+Fact verify_certificateP v nsigs :
+  verify_certificate v nsigs = true <-> certificate_valid v nsigs.
+Proof.
+  unfold verify_certificate.
+  induction nsigs as [ | (n, sig) nsigs IH ].
+  - simpl. 
+    intuition constructor.
+  - simpl.
+    rewrite -> andb_true_iff, IH.
+    unfold certificate_valid.
+    now rewrite -> Forall_cons_iff.
+Qed.
+
 Definition procMsg (st : State) (src : Address) (msg : Message) : State * list Packet :=
   let: Node n conf cert rcerts := st in
   match msg with
@@ -71,7 +98,7 @@ Definition procMsg (st : State) (src : Address) (msg : Message) : State * list P
        (let: nsigs' := (if conf then nsigs else ((src, sig) :: nsigs)) in
         let: conf' := (Nat.leb (N - t0) (length nsigs')) in
         let: ps := (if conf' 
-          then (map (fun x => mkP n x (ConfirmMsg (v, nsigs)) false) valid_nodes)
+          then broadcast n (ConfirmMsg (v, nsigs'))
           else nil) in
         let: st' := Node n conf' (vthis, nsigs') rcerts in
         (st', ps))
@@ -79,8 +106,7 @@ Definition procMsg (st : State) (src : Address) (msg : Message) : State * list P
     else (st, nil)
   | ConfirmMsg c => 
     let: (v, nsigs) := c in
-    if (List.fold_left (fun b nsig => let: (n, sig) := nsig in b && (verify v sig n))
-      nsigs true)
+    if verify_certificate v nsigs
     then 
       let: st' := Node n conf cert (c :: rcerts) in
       (st', nil)
@@ -92,7 +118,7 @@ Definition procInt (st : State) (tr : InternalTransition) :=
   match tr with
   | SubmitIntTrans => 
     let: (vthis, _) := cert in
-    let: ps := (map (fun x => mkP n x (SubmitMsg vthis (sign vthis (key_map n))) false) valid_nodes) in
+    let: ps := broadcast n (SubmitMsg vthis (sign vthis (key_map n))) in
     (st, ps)
   end.
 

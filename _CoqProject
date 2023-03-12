@@ -1,6 +1,6 @@
 -Q Structures ABCProtocol
 -Q Systems ABCProtocol
-# -Q Properties Toychain
+-Q Properties Toychain
 # -Q Extraction Toychain
 
 -arg -w -arg -notation-overridden

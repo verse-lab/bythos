@@ -36,6 +36,10 @@ Parameter sign : Value -> PrivateKey -> Signature.
 Axiom key_correct : forall v n s, 
   s = (sign v (key_map n)) <-> verify v s n = true.
 
+Fact correct_sign_verify_ok v n :
+  verify v (sign v (key_map n)) n = true.
+Proof. now rewrite <- key_correct. Qed.
+
 (* temporarily use list; there should be some notation of finite multisets or ...? *)
 
 Definition Certificate : Type := Value * list (Address * Signature).
@@ -51,11 +55,11 @@ Parameter genproof : list Certificate -> list Address.
 
 Axiom genproof_spec : 
   forall certs n, In n (genproof certs) -> 
-    exists v1 v2 sigs1 sigs2,
+    exists v1 v2 nsigs1 nsigs2,
       v1 <> v2 /\
-      In (v1, sigs1) certs /\
-      In (v2, sigs2) certs /\
-      In (n, sign v1 (key_map n)) sigs1 /\
-      In (n, sign v2 (key_map n)) sigs2.
+      In (v1, nsigs1) certs /\
+      In (v2, nsigs2) certs /\
+      In (n, sign v1 (key_map n)) nsigs1 /\
+      In (n, sign v2 (key_map n)) nsigs2.
 
 End Types.

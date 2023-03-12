@@ -1,6 +1,8 @@
-From Coq Require Export Lia List.
+From Coq Require Import Lia List ssrbool.
 
 Module Type NetAddr.
+
+(* TODO a better approach is to make Address a finite type; lists are awkward here *)
 
 (* how about simply letting addr be a number within some range? any other things to notice here? *)
 (* TODO relate this with Byzantine assumption *)
@@ -13,7 +15,14 @@ Parameter valid_nodes : list Address.
 
 Definition N := length valid_nodes.
 Parameter t0 : nat.
+
+Axiom t0_lt_N : t0 < N.
+
+(* TODO if we want properties about quorum, we need to quantify t0 here *)
+
 Definition valid_node n := In n valid_nodes.
+
+Axiom byz_is_valid : forall n, is_byz n -> valid_node n.
 
 Axiom at_least_two_honest : exists n1 n2, 
   n1 <> n2 /\ 
