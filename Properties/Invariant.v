@@ -13,7 +13,7 @@ Record node_invariant (psent : PacketSoup) (st : State) : Prop := mkNodeInv {
   inv_nsigs_correct: forall n sig, 
     let: (v, nsigs) := (cert st) in 
     In (n, sig) nsigs ->
-      verify v sig n = true /\
+      verify v sig n /\
       In (mkP n (id st) (SubmitMsg v sig) true) psent;
   inv_rcerts_correct: forall v nsigs,
     In (v, nsigs) (received_certs st) ->
@@ -30,13 +30,13 @@ Record node_invariant (psent : PacketSoup) (st : State) : Prop := mkNodeInv {
 
 Definition _inv_submitmsg_correct stmap src v sig : Prop := 
   is_byz src = false ->
-    verify v sig src = true /\
+    verify v sig src /\
     v = fst (cert (stmap src)).
 
 Definition _inv_confirmmsg_correct stmap psent_history src c : Prop := 
   if is_byz src
     then cert_correct psent_history c
-    else conf (stmap src) = true /\ c = cert (stmap src)   (* strictly relies on that nsigs will not be updated after its size == N-t0 *)
+    else conf (stmap src) /\ c = cert (stmap src)   (* strictly relies on that nsigs will not be updated after its size == N-t0 *)
 .
 
 Definition _inv_msg_correct stmap psent_history p : Prop :=
@@ -823,11 +823,11 @@ Definition behave_byz n psent :=
     v1 <> v2 /\
     In (mkP n dst1 (SubmitMsg v1 sig1) true) psent /\
     In (mkP n dst2 (SubmitMsg v2 sig2) true) psent /\
-    verify v1 sig1 n = true /\ verify v2 sig2 n = true.
+    verify v1 sig1 n /\ verify v2 sig2 n.
 
 Lemma behave_byz_is_byz n psent stmap
   (Hpsentinv : psent_invariant stmap psent)
-  (Hbyz : behave_byz n psent) : is_byz n = true.
+  (Hbyz : behave_byz n psent) : is_byz n.
 Proof.
   (* prove by contradiction *)
   destruct (is_byz n) eqn:E.

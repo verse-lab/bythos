@@ -1,5 +1,6 @@
-From Coq Require Import List.
+From Coq Require Import List ssrbool.
 From ABCProtocol Require Export Address.
+
 
 Module Type Types (A : NetAddr).
 
@@ -34,10 +35,10 @@ Parameter verify : Value -> Signature -> Address -> bool.
 Parameter sign : Value -> PrivateKey -> Signature.
 
 Axiom key_correct : forall v n s, 
-  s = (sign v (key_map n)) <-> verify v s n = true.
+  s = (sign v (key_map n)) <-> verify v s n.
 
 Fact correct_sign_verify_ok v n :
-  verify v (sign v (key_map n)) n = true.
+  verify v (sign v (key_map n)) n.
 Proof. now rewrite <- key_correct. Qed.
 
 (* temporarily use list; there should be some notation of finite multisets or ...? *)

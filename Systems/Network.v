@@ -43,7 +43,7 @@ Definition cert_correct (psent : PacketSoup) (c : Certificate) :=
   forall n sig, 
     In (n, sig) nsigs ->
     is_byz n = false ->
-    verify v sig n = true -> (* this can be expressed in other way *)
+    verify v sig n -> (* this can be expressed in other way *)
     seen_in_history n v sig psent. 
 
 Definition consume (p : Packet) (psent : PacketSoup) :=
