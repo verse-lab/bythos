@@ -88,6 +88,7 @@ awk.Makefile
 *.vok
 *.vos
 .Makefile.coq.d
+*.cache
 
 # Toychain-specific
 _build
