@@ -26,7 +26,7 @@ Divided into three parts:
 The proof is relatively straightforward, but some notions must be captured to avoid writing (too many) repeated proof scripts. 
 
 Here, one of the notions can be called *monoticity*. The intuition is
-- In this protocol (and possibly also in some other protocols), information increases monotonically. For example, the size of $P_{sent}$ will never decrease. And the set of received certificates on a node (from $\mathsf{ConfirmMsg}$s) will never be reduced (at least for the current design). 
+- In this protocol (and possibly also in some other protocols), information increases monotonically. For example, the size of $P_{sent}$ will never decrease. And the set of received certificates on a node (from $\mathsf{ConfirmMsg}$ s) will never be reduced (at least for the current design). 
 - Some growing information only affects related components of the invariant. That is, after a system step, some information will change; and in order to re-establish the invariant, we only need to prove those components affected by the changed information. 
 
 ### Monoticity of $P_{sent}$
@@ -47,7 +47,7 @@ For node states $\delta, \delta'$, define $\delta \approx \delta'$ and $\delta \
 
 Use `0` to denote $\approx$ and `1` to denote $\lesssim$. 
 - `inv_preserve_10`: if there is some node whose state is updated from $\delta$ to $\delta'$ and $\delta \lesssim \delta'$, but $P_{sent}$ keeps intact, then we can re-establish the global invariant as long as $\delta'$ satisfies the node invariant with regard to $P_{sent}$. 
-- `inv_preserve_01`: if the state map keeps intact but $P_{sent}$ is updated to $P_{sent}'$ and $P_{sent} \lesssim P_{sent}'$, then we can re-establish the global invariant as long as the newly added packets in $P_{sent}'$ satisfies the $P_{sent}$ invariant *with $P_{sent}$ being the history*. 
+- `inv_preserve_01`: if the state map keeps intact but $P_{sent}$ is updated to $P_{sent}'$ and $P_{sent} \lesssim P_{sent}'$, then we can re-establish the global invariant as long as the newly added packets in $P_{sent}'$ satisfies the $P_{sent}$ invariant *with* $P_{sent}$ *being the history*. 
 - `inv_preserve_00`: if the state map keeps intact and $P_{sent}$ is updated to $P_{sent}'$ where $P_{sent} \approx P_{sent}'$, then we can re-establish the global invariant. 
 
 ### Proof Outline
@@ -56,7 +56,7 @@ Apply `inv_preserve_10`, `inv_preserve_01`, `inv_preserve_00` when needed. The o
 
 ## Proof of Soundness
 
-Reduce the $2\times 2$ case-analysis (i.e., for the two senders of $\mathsf{ConfirmMsg}$s, discuss whether a sender is Byzantine or not) into a remark: 
+Reduce the $2\times 2$ case-analysis (i.e., for the two senders of $\mathsf{ConfirmMsg}$ s, discuss whether a sender is Byzantine or not) into a remark: 
 - If the $\mathsf{ConfirmMsg}(\langle v, nsigs\rangle)$ is correct (i.e., satisfies the corresponding $P_{sent}$ invariant) and there is a valid signature $sig$ of a honest node $n$ such that $(n, sig) \in nsigs$, then the submitted value in $n$'s state is $v$. 
 
   Proof: exactly by discussing whether the sender of $\mathsf{ConfirmMsg}$ is Byzantine or not. In both cases we know that $n$ must have sent $\mathsf{SubmitMsg}(v, sig)$ in the history, and by using the $P_{sent}$ invariant for $\mathsf{SubmitMsg}$ we can conclude that the submitted value in $n$'s state is $v$. 
