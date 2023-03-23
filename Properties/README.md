@@ -15,7 +15,9 @@ Divided into three parts:
 - node invariants (should hold on every *honest* node)
   - relate $(n, sig)$ in $cert = \langle v, nsigs\rangle$ with $\mathsf{SubmitMsg} \in P_{sent}$
   - relate $c \in certs$ with $\mathsf{ConfirmMsg} \in P_{sent}$
-  - relate $conf$ with the size of $cert$
+  - pure properties (i.e., unrelated with $P_{sent}$)
+    - relate $conf$ with the size of $cert$
+    - $nsigs$ in $cert$ has no duplicate $(n, sig)$ pairs (here, equivalent with no duplicate senders)
 - $P_{sent}$ invariants (should hold on every sent messages)
   - relate $\mathsf{SubmitMsg} \in P_{sent}$ with the submitted value in $cert$
   - relate $\mathsf{ConfirmMsg} \in P_{sent}$ with $cert$ and $conf$, and *also the history*

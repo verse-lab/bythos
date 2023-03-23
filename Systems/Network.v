@@ -58,7 +58,8 @@ Inductive system_step (w w' : World) : Prop :=
 | Deliver (p : Packet) of
       (* Coh w &  *)
       In p (sentMsgs w) &
-      consumed p = false &
+      (* try modelling message duplication *)
+      (* consumed p = false & *)
       valid_node (dst p) &
       is_byz (dst p) = false &
       let: (st', ms) := procMsg (localState w (dst p)) (src p) (msg p) in

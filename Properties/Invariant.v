@@ -9,6 +9,15 @@ Module ACInvariant
 
 Import A T AC Ns ACN.
 
+(* this is somewhat "pure" property (not related to psent) *)
+Record node_coh (st : State) : Prop := mkNodeCoh {
+  inv_conf_correct:
+    if conf st 
+    then length (snd (cert st)) = N - t0
+    else length (snd (cert st)) < N - t0;
+  inv_cert_nodup: NoDup (snd (cert st))
+}.
+
 Record node_invariant (psent : PacketSoup) (st : State) : Prop := mkNodeInv {
   inv_nsigs_correct: forall n sig, 
     let: (v, nsigs) := (cert st) in 
@@ -19,12 +28,40 @@ Record node_invariant (psent : PacketSoup) (st : State) : Prop := mkNodeInv {
     In (v, nsigs) (received_certs st) ->
       certificate_valid v nsigs /\
       exists src, In (mkP src (id st) (ConfirmMsg (v, nsigs)) true) psent;
-  (* this is somewhat "pure" property (not related to psent) *)
-  inv_conf_correct:
-    if conf st 
-    then length (snd (cert st)) = N - t0
-    else length (snd (cert st)) < N - t0
+  inv_node_coh: node_coh st
 }.
+
+(* NoDup (snd (cert st)) is enough *)
+
+Fact node_invariant_implies_inv_cert_sender_nodup st psent 
+  (Hnodeinv : node_invariant psent st) : NoDup (map fst (snd (cert st))).
+Proof.
+  destruct Hnodeinv as (Hnodeinv_nsigs, _, (_, Hcert_nodup)).
+  destruct (cert st) as (v, nsigs).
+  simpl in Hcert_nodup |- *.
+  assert (forall n sig, In (n, sig) nsigs -> sig = sign v (key_map n)) as Hin_cert.
+  {
+    intros.
+    now apply key_correct, Hnodeinv_nsigs.
+  }
+  clear -Hcert_nodup Hin_cert.
+  induction nsigs as [ | (n, sig) nsigs IH ].
+  - constructor.
+  - inversion_clear Hcert_nodup as [ | ? ? Hnotin Hcert_nodup' ].
+    simpl in Hin_cert.
+    assert (sig = sign v (key_map n)) as -> 
+      by (apply Hin_cert; intuition).
+    constructor.
+    + intros Hin.
+      apply in_map_iff in Hin.
+      destruct Hin as ((n', s) & Heq & ?).
+      simpl in Heq.
+      subst n'.
+      assert (s = sign v (key_map n)) as -> 
+        by (apply Hin_cert; intuition).
+      contradiction.
+    + apply IH; intuition.
+Qed.
 
 (* make two views of invariants *)
 
@@ -186,6 +223,8 @@ Inductive state_mnt : bool -> State -> State -> Prop :=
 
 Local Hint Constructors state_mnt : ABCinv.
 Local Hint Constructors psent_mnt : ABCinv.
+
+Local Hint Constructors NoDup : ABCinv.
 
 Lemma In_consume psent p (Hin : In p psent)
   src dst msg used (Hin' : In (mkP src dst msg used) psent) :
@@ -507,7 +546,9 @@ Proof with basic_solver.
     unfold initState.
     constructor; simpl...
     pose proof t0_lt_N.
-    lia.
+    constructor.
+    + simpl; lia.
+    + constructor. 
   - constructor; simpl...
 Qed.
 
@@ -515,7 +556,7 @@ Lemma inv_step w w' :
   invariant w -> system_step w w' -> invariant w'.
 Proof with basic_solver.
   intros H Hstep. 
-  inversion Hstep as [ | p Hpin Hpfresh Hnvalid Hnonbyz Heq 
+  inversion Hstep as [ | p Hpin Hnvalid Hnonbyz Heq 
     | n t Hnvalid H_n_nonbyz Heq 
     | n dst v s H_n_byz Heq 
     | n dst c H_n_byz Hcc Heq ].
@@ -523,7 +564,6 @@ Proof with basic_solver.
   - destruct p as (src, dst, msg, used) eqn:Ep.
     simpl_pkt.
     rewrite <- Ep in *.
-    subst used.
     destruct_procMsg as_ st' ms eqn_ Epm.
     destruct_localState w dst as_ conf_dst cert_dst rcerts_dst eqn_ Edst.
     subst w'.
@@ -536,13 +576,20 @@ Proof with basic_solver.
       destruct Hconf as (_, Hconf, _).
       specialize (Hconf dst Hnonbyz).
       unfold holds in Hconf.
-      destruct Hconf as (_, _, Hconf).
-      rewrite -> Edst in Hconf.
-      simpl in Hconf.
+      destruct Hconf as (_, _, (Hconf, Hcert_nodup)).
+      rewrite -> Edst in Hconf, Hcert_nodup.
+      simpl in Hconf, Hcert_nodup.
       destruct (if Value_eqdec v v_dst 
-        then (if verify v s src then (negb conf_dst) else false)
+        then (if verify v s src 
+              then (if (negb conf_dst) 
+                    then (negb (is_left (In_dec AddrSigPair_eqdec (src, s) nsigs_dst))) 
+                    else false) 
+              else false)
         else false) eqn:Edecide.
-      * destruct (Value_eqdec v v_dst) as [ <- | ], (verify v s src) eqn:Everi, conf_dst eqn:Econf...
+      * destruct (Value_eqdec v v_dst) as [ <- | ], 
+          (verify v s src) eqn:Everi, 
+          conf_dst eqn:Econf, 
+          (In_dec AddrSigPair_eqdec (src, s) nsigs_dst) as [ Ensig_in | Ensig_in ]...
         inversion Hconf as [ Hle | thr Hle Ethr ].
         --(* the only 11 case in the proof; first 01 then 10 *)
           simpl in Epm.
@@ -581,7 +628,6 @@ Proof with basic_solver.
             pose proof (psent_mnt_preserve_node_invariant _ _ _ (PsentEq' p (sentMsgs w) Hpin) _ Hnodeinv) as Hnodeinv'.
             destruct Hnodeinv as (Hnodeinv_nsigs, Hnodeinv_rcerts, Hnodeinv_conf).
             constructor; simpl_state.
-            3: simpl; lia.
             **simpl. 
               intros n sig [ Hin_nsigs | Hin_nsigs ].
               2: now apply Hnodeinv'.
@@ -590,6 +636,7 @@ Proof with basic_solver.
               split...
             **destruct Hnodeinv' as (_, ?, _).
               assumption.
+            **constructor; simpl...
           ++eapply inv_preserve_00 with (psent:=(sentMsgs w))...
             now rewrite_w_expand w in_ H.
         --simpl in Epm.
@@ -617,7 +664,6 @@ Proof with basic_solver.
             pose proof (psent_mnt_preserve_node_invariant _ _ _ (PsentEq' p (sentMsgs w) Hpin) _ Hnodeinv) as Hnodeinv'.
             destruct Hnodeinv as (Hnodeinv_nsigs, Hnodeinv_rcerts, Hnodeinv_conf).
             constructor; simpl_state.
-            3: simpl; lia.
             **simpl. 
               intros n sig [ Hin_nsigs | Hin_nsigs ].
               2: now apply Hnodeinv'.
@@ -626,20 +672,27 @@ Proof with basic_solver.
               split...
             **destruct Hnodeinv' as (_, ?, _).
               assumption.
+            **constructor; simpl...
           ++eapply inv_preserve_00 with (psent:=(sentMsgs w))...
             now rewrite_w_expand w in_ H.
       * (* local state: essentially no change, and psent is regularly changed *)
-        assert (st' = localState w dst) as ->.
+        assert (st' = (localState w dst)) as ->.
         { 
           rewrite -> Edst.
-          destruct (Value_eqdec v v_dst), (verify v s src), conf_dst eqn:E...
-          injection_pair Epm.
-          rewrite -> Hconf.
-          f_equal.
-          apply PeanoNat.Nat.leb_refl.
+          destruct (Value_eqdec v v_dst), (verify v s src), conf_dst eqn:E, 
+            (In_dec AddrSigPair_eqdec (src, s) nsigs_dst) as [ Ensig_in | Ensig_in ]...
+          all: injection_pair Epm...
+          all: try rewrite -> Hconf, PeanoNat.Nat.leb_refl...
+          rewrite <- PeanoNat.Nat.leb_gt in Hconf.
+          rewrite -> Hconf...
         }
-        destruct (if Value_eqdec v v_dst then verify v s src else false) eqn:Edecide'.
-        --destruct (Value_eqdec v v_dst) as [ <- | ], (verify v s src) eqn:Everi, conf_dst...
+        destruct (if Value_eqdec v v_dst 
+          then (if verify v s src
+                then conf_dst 
+                else false) 
+          else false) eqn:Edecide'.
+        --destruct (Value_eqdec v v_dst) as [ <- | ], (verify v s src) eqn:Everi...
+          subst conf_dst.
           (* send confirm message (after confirm) *)
           rewrite -> Hconf, PeanoNat.Nat.leb_refl, <- Edst in Epm.
           inversion Epm.
@@ -658,8 +711,14 @@ Proof with basic_solver.
           simpl.
           rewrite -> Hnonbyz.
           now rewrite -> Edst.
-        --assert (ms = nil) as -> 
-            by (destruct (Value_eqdec v v_dst), (verify v s src); eqsolve).
+        --assert (ms = nil) as ->.
+          {
+            destruct (Value_eqdec v v_dst), (verify v s src)...
+            subst conf_dst.
+            destruct (in_dec AddrSigPair_eqdec (src, s) nsigs_dst)...
+            rewrite <- PeanoNat.Nat.leb_gt in Hconf.
+            rewrite -> Hconf in Epm...
+          }
           rewrite -> app_nil_r.
           eapply inv_preserve_00.
           ++apply upd_same_pointwise_eq.
@@ -685,9 +744,8 @@ Proof with basic_solver.
           hnf in Hnodeinv.
           rewrite -> Edst in Hnodeinv.
           pose proof (psent_mnt_preserve_node_invariant _ _ _ (PsentEq' p (sentMsgs w) Hpin) _ Hnodeinv) as Hnodeinv'.
-          destruct Hnodeinv as (Hnodeinv_nsigs, Hnodeinv_rcerts, Hnodeinv_conf).
+          destruct Hnodeinv as (Hnodeinv_nsigs, Hnodeinv_rcerts, (Hnodeinv_conf, Hnodeinv_cert_nodup)).
           constructor; simpl_state.
-          3: assumption.
           ++destruct Hnodeinv' as (?, _, _).
             assumption.
           ++simpl.
@@ -700,6 +758,7 @@ Proof with basic_solver.
             **exists src.
               subst p.
               now left.
+          ++constructor...
         --eapply inv_preserve_00 with (psent:=(sentMsgs w))...
           now rewrite_w_expand w in_ H.
       * (* essentially no change *)

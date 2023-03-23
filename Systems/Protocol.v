@@ -95,7 +95,9 @@ Definition procMsg (st : State) (src : Address) (msg : Message) : State * list P
     then
      (if verify v sig src
       then 
-       (let: nsigs' := (if conf then nsigs else ((src, sig) :: nsigs)) in
+      (* before prepending, add a check to avoid adding a duplicate node-signature pair *)
+       (let: nsigs' := (if conf then nsigs else 
+        (if In_dec AddrSigPair_eqdec (src, sig) nsigs then nsigs else (src, sig) :: nsigs)) in
         let: conf' := (Nat.leb (N - t0) (length nsigs')) in
         let: ps := (if conf' 
           then broadcast n (ConfirmMsg (v, nsigs'))
