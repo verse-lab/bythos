@@ -1,4 +1,4 @@
-From Coq Require Import Bool List.
+From Coq Require Import Bool List ssrbool.
 From Coq Require ssreflect.
 Import ssreflect.SsrSyntax.
 From ABCProtocol Require Import Types Address.
@@ -62,30 +62,47 @@ Definition Init (n : Address) : State :=
 Definition broadcast (src : Address) (m : Message) :=
   (map (fun x => mkP src x m false) valid_nodes).
 
-Definition verify_certificate v nsigs :=
-  List.fold_right (fun nsig b => let: (n, sig) := nsig in b && (verify v sig n))
-    true nsigs.
-
-Definition certificate_valid v nsigs :=
-  Forall (fun nsig => verify v (snd nsig) (fst nsig) = true) nsigs.
-
 Fact In_broadcast src m p :
   In p (broadcast src m) <-> exists dst, valid_node dst /\ p = mkP src dst m false.
 Proof. unfold broadcast. rewrite -> in_map_iff. firstorder. Qed.
 
+Definition valid_addr_sig_pair v nsig : Prop :=
+  let: (n, sig) := nsig in valid_node n /\ verify v sig n.
+
+Definition certificate_valid v nsigs : Prop :=
+  Forall (valid_addr_sig_pair v) nsigs.
+
+Definition verify_certificate v nsigs : {certificate_valid v nsigs} + {~ certificate_valid v nsigs}.
+  unfold certificate_valid.
+  apply Forall_dec.
+  intros (n, sig).
+  simpl.
+  unfold valid_node.
+  destruct (In_dec Address_eqdec n valid_nodes) as [ ? | ? ], (verify v sig n) eqn:?.
+  all: intuition.
+Qed.
+(*
+Definition verify_certificate v nsigs :=
+  (* add an additional check that the nodes in nsigs are valid *)
+  List.fold_right (fun nsig b => let: (n, sig) := nsig in b && (is_valid_node n) && (verify v sig n))
+    true nsigs.
+
+Definition certificate_valid v nsigs :=
+  Forall (fun nsig => valid_node (fst nsig) /\ verify v (snd nsig) (fst nsig)) nsigs.
+
 Fact verify_certificateP v nsigs :
-  verify_certificate v nsigs = true <-> certificate_valid v nsigs.
+  verify_certificate v nsigs <-> certificate_valid v nsigs.
 Proof.
   unfold verify_certificate.
   induction nsigs as [ | (n, sig) nsigs IH ].
   - simpl. 
     intuition constructor.
   - simpl.
-    rewrite -> andb_true_iff, IH.
-    unfold certificate_valid.
-    now rewrite -> Forall_cons_iff.
+    unfold certificate_valid, is_valid_node, is_true.
+    rewrite -> ! andb_true_iff, Forall_cons_iff, IH.
+    now destruct (in_dec Address_eqdec n valid_nodes) as [ Hin | Hnotin ].
 Qed.
-
+*)
 Definition procMsg (st : State) (src : Address) (msg : Message) : State * list Packet :=
   let: Node n conf cert rcerts := st in
   match msg with

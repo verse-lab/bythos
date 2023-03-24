@@ -556,7 +556,7 @@ Lemma inv_step w w' :
   invariant w -> system_step w w' -> invariant w'.
 Proof with basic_solver.
   intros H Hstep. 
-  inversion Hstep as [ | p Hpin Hnvalid Hnonbyz Heq 
+  inversion Hstep as [ | p Hpin Hnvalid Hsrcvalid Hnonbyz Heq 
     | n t Hnvalid H_n_nonbyz Heq 
     | n dst v s H_n_byz Heq 
     | n dst c H_n_byz Hcc Heq ].
@@ -754,7 +754,7 @@ Proof with basic_solver.
             2: now apply Hnodeinv'_rcerts in Hin_rcerts'.
             injection_pair Hin_rcerts'.
             split.
-            **now apply verify_certificateP.
+            **assumption.
             **exists src.
               subst p.
               now left.

@@ -60,6 +60,8 @@ Inductive system_step (w w' : World) : Prop :=
       In p (sentMsgs w) &
       (* try modelling message duplication *)
       (* consumed p = false & *)
+      (* require sender to be valid; although can also be managed in procMsg *)
+      valid_node (src p) &
       valid_node (dst p) &
       is_byz (dst p) = false &
       let: (st', ms) := procMsg (localState w (dst p)) (src p) (msg p) in
