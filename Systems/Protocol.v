@@ -1,7 +1,7 @@
 From Coq Require Import Bool List ssrbool.
 From Coq Require ssreflect.
 Import ssreflect.SsrSyntax.
-From ABCProtocol Require Import Types Address.
+From ABCProtocol Require Import Types Address ListFacts.
 
 Module Type ACProtocol (A : NetAddr) (T : Types A).
 Import T A.
@@ -125,10 +125,19 @@ Definition procMsg (st : State) (src : Address) (msg : Message) : State * list P
     else (st, nil)
   | ConfirmMsg c => 
     let: (v, nsigs) := c in
-    if verify_certificate v nsigs
+    (* check whether this is a valid full certificate or not *)
+    (* in the paper this condition is ">= N-t0 distinct senders", 
+        which is stronger than this *)
+    if NoDup_eqdec AddrSigPair_eqdec nsigs
     then 
-      let: st' := Node n conf cert (c :: rcerts) in
-      (st', nil)
+      (if Nat.leb (N - t0) (length nsigs) 
+      then
+        (if verify_certificate v nsigs
+        then 
+          let: st' := Node n conf cert ((v, nsigs) :: rcerts) in
+          (st', nil)
+        else (st, nil))
+      else (st, nil))
     else (st, nil)
   end.
 

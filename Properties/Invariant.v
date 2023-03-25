@@ -1,7 +1,7 @@
 From Coq Require Import List Bool Lia ssrbool.
 From Coq Require ssreflect.
 Import ssreflect.SsrSyntax.
-From ABCProtocol Require Import Types Address Protocol States Network.
+From ABCProtocol Require Import Types Address Protocol States Network ListFacts.
 
 Module ACInvariant 
   (A : NetAddr) (T : Types A) (AC : ACProtocol A T) (Ns : NetState A T AC)
@@ -15,52 +15,77 @@ Record node_coh (st : State) : Prop := mkNodeCoh {
     if conf st 
     then length (snd (cert st)) = N - t0
     else length (snd (cert st)) < N - t0;
-  inv_cert_nodup: NoDup (snd (cert st))
+  inv_cert_nodup: NoDup (snd (cert st));
+  (* "NoDup nsigs" and "N - t0 <= (length nsigs)" should also hold 
+    even if the certificate is sent by a Byzantine node *)
+  inv_rcerts_mixin: forall v nsigs, In (v, nsigs) (received_certs st) -> 
+    certificate_valid v nsigs /\
+    (NoDup nsigs) /\ 
+    N - t0 <= (length nsigs);
+  (* since there are only full certificates, there is only one certificate_valid *)
+  inv_cert_valid: certificate_valid (fst (cert st)) (snd (cert st))
 }.
 
 Record node_invariant (psent : PacketSoup) (st : State) : Prop := mkNodeInv {
   inv_nsigs_correct: forall n sig, 
     let: (v, nsigs) := (cert st) in 
     In (n, sig) nsigs ->
-      verify v sig n /\
       In (mkP n (id st) (SubmitMsg v sig) true) psent;
   inv_rcerts_correct: forall v nsigs,
     In (v, nsigs) (received_certs st) ->
-      certificate_valid v nsigs /\
       exists src, In (mkP src (id st) (ConfirmMsg (v, nsigs)) true) psent;
   inv_node_coh: node_coh st
 }.
 
-(* NoDup (snd (cert st)) is enough *)
+Fact valid_cert_valid_sig v nsigs
+  (Hcert_valid : certificate_valid v nsigs) 
+  n sig (Hin : In (n, sig) nsigs) : sig = sign v (key_map n).
+Proof.
+  unfold certificate_valid in Hcert_valid.
+  rewrite -> Forall_forall in Hcert_valid.
+  now apply Hcert_valid, proj2, key_correct in Hin.
+Qed. 
+
+Fact valid_cert_sender_in v nsigs
+  (Hcert_valid : certificate_valid v nsigs) 
+  n (Hin : In n (map fst nsigs)) : In (n, sign v (key_map n)) nsigs.
+Proof.
+  apply in_map_iff in Hin.
+  destruct Hin as ((n', s) & Heq & ?).
+  simpl in Heq.
+  subst n'.
+  pose proof H as H'.
+  eapply valid_cert_valid_sig in H; eauto.
+  now subst s.
+Qed.
+
+Fact valid_cert_nodup_implies_sender_nodup v nsigs
+  (Hcert_valid : certificate_valid v nsigs) 
+  (Hcert_nodup : NoDup nsigs) : NoDup (map fst nsigs).
+Proof.
+  clear -Hcert_nodup Hcert_valid.
+  induction nsigs as [ | (n, sig) nsigs IH ].
+  - constructor.
+  - inversion_clear Hcert_nodup as [ | ? ? Hnotin Hcert_nodup' ].
+    apply Forall_cons_iff in Hcert_valid.
+    simpl in Hcert_valid.
+    destruct Hcert_valid as ((Hnvalid & Hveri) & Hcert_valid).
+    rewrite <- key_correct in Hveri.
+    subst sig.
+    constructor.
+    + intros Hin.
+      now eapply valid_cert_sender_in in Hin; eauto.
+    + apply IH; intuition.
+Qed.
+
+(* NoDup (snd (cert st)) is enough to show NoDup senders *)
 
 Fact node_invariant_implies_inv_cert_sender_nodup st psent 
   (Hnodeinv : node_invariant psent st) : NoDup (map fst (snd (cert st))).
 Proof.
-  destruct Hnodeinv as (Hnodeinv_nsigs, _, (_, Hcert_nodup)).
+  destruct Hnodeinv as (Hnodeinv_nsigs, _, (_, Hcert_nodup, _, Hcert_valid)).
   destruct (cert st) as (v, nsigs).
-  simpl in Hcert_nodup |- *.
-  assert (forall n sig, In (n, sig) nsigs -> sig = sign v (key_map n)) as Hin_cert.
-  {
-    intros.
-    now apply key_correct, Hnodeinv_nsigs.
-  }
-  clear -Hcert_nodup Hin_cert.
-  induction nsigs as [ | (n, sig) nsigs IH ].
-  - constructor.
-  - inversion_clear Hcert_nodup as [ | ? ? Hnotin Hcert_nodup' ].
-    simpl in Hin_cert.
-    assert (sig = sign v (key_map n)) as -> 
-      by (apply Hin_cert; intuition).
-    constructor.
-    + intros Hin.
-      apply in_map_iff in Hin.
-      destruct Hin as ((n', s) & Heq & ?).
-      simpl in Heq.
-      subst n'.
-      assert (s = sign v (key_map n)) as -> 
-        by (apply Hin_cert; intuition).
-      contradiction.
-    + apply IH; intuition.
+  eapply valid_cert_nodup_implies_sender_nodup; eauto.
 Qed.
 
 (* make two views of invariants *)
@@ -178,17 +203,14 @@ Create HintDb ABCinv.
 
 Tactic Notation "basic_solver" := auto with ABCinv; try eqsolve; try lia.
 
-Definition list_subset {A} (l1 l2 : list A) :=
-  forall p : A, In p l1 -> In p l2.
+Fact incl_appl_simple [A] (l1 l2 : list A) : incl l1 (l1 ++ l2).
+Proof. now apply incl_appl. Qed.
 
-Fact list_subset_app_r {A} (l1 l2 : list A) : list_subset l1 (l1 ++ l2).
-Proof. hnf. intros. apply in_app_iff. now left. Qed.
+Fact incl_appr_simple [A] (l1 l2 : list A) : incl l1 (l2 ++ l1).
+Proof. now apply incl_appr. Qed.
 
-Fact list_subset_app_l {A} (l1 l2 : list A) : list_subset l1 (l2 ++ l1).
-Proof. hnf. intros. apply in_app_iff. now right. Qed.
-
-Local Hint Resolve list_subset_app_l : ABCinv.
-Local Hint Resolve list_subset_app_r : ABCinv.
+Local Hint Resolve incl_appl_simple : ABCinv.
+Local Hint Resolve incl_appr_simple : ABCinv.
 
 Inductive psent_mnt : bool -> PacketSoup -> PacketSoup -> Prop :=
   | PsentEq (psent : PacketSoup) : psent_mnt false psent psent
@@ -196,7 +218,7 @@ Inductive psent_mnt : bool -> PacketSoup -> PacketSoup -> Prop :=
     (Hin : In p psent) : psent_mnt false psent (consume p psent)
   | PsentLe (psent1 psent2 psent' : PacketSoup) 
     (Hpsenteq : psent_mnt false psent1 psent2)
-    (Hsubset : list_subset psent2 psent') : 
+    (Hsubset : incl psent2 psent') : 
       psent_mnt true psent1 psent'.
 
 Definition node_upd_nsigs (st : State) conf nsigs :=
@@ -214,11 +236,11 @@ Inductive state_mnt : bool -> State -> State -> Prop :=
   | StateEq (st : State) : state_mnt false st st
   | StateCertMnt (st : State) nsigs
     (Hmnt : if conf st then nsigs = snd (cert st)
-      else list_subset (snd (cert st)) nsigs) : 
+      else incl (snd (cert st)) nsigs) : 
     state_mnt true st (node_upd_nsigs st 
       ((conf st) || (Nat.leb (N - t0) (length nsigs))) nsigs)
   | StateRCertsMnt (st : State) rcerts
-    (Hmnt : list_subset (received_certs st) rcerts) : 
+    (Hmnt : incl (received_certs st) rcerts) : 
     state_mnt true st (node_upd_rcerts st rcerts).
 
 Local Hint Constructors state_mnt : ABCinv.
@@ -333,18 +355,14 @@ Proof.
   - constructor.
     3: apply Hnodeinv.
     + intros n0 sig Hin_nsig.
-      split.
-      1: now apply Hnodeinv.
       apply In_consume'.
       1: assumption.
       now apply Hnodeinv.
     + intros v0 nsigs0 Hin_rcerts.
-      split.
-      1: now apply Hnodeinv.
       destruct Hnodeinv as (_, Hnodeinv, _).
       specialize (Hnodeinv v0 nsigs0 Hin_rcerts).
       simpl in Hnodeinv.
-      destruct Hnodeinv as (_ & (src & H)).
+      destruct Hnodeinv as (src & H).
       exists src.
       apply In_consume'.
       1: assumption.
@@ -353,18 +371,14 @@ Proof.
     constructor; simpl.
     3: apply Hnodeinv.
     + intros.
-      split.
-      * now apply Hnodeinv.
-      * now apply Hsubset, Hnodeinv.
+      now apply Hsubset, Hnodeinv.
     + intros v0 nsigs0 Hin_rcerts.
-      split.
-      * now apply Hnodeinv.
-      * destruct Hnodeinv as (_, Hnodeinv, _).
-        specialize (Hnodeinv v0 nsigs0 Hin_rcerts).
-        simpl in Hnodeinv.
-        destruct Hnodeinv as (_ & (src & H)).
-        exists src.
-        now apply Hsubset.
+      destruct Hnodeinv as (_, Hnodeinv, _).
+      specialize (Hnodeinv v0 nsigs0 Hin_rcerts).
+      simpl in Hnodeinv.
+      destruct Hnodeinv as (src & H).
+      exists src.
+      now apply Hsubset.
 Qed.
 
 Lemma state_mnt_preserve_psent_invariant ob stmap n st'
@@ -474,7 +488,7 @@ Qed.
 Corollary inv_preserve_01 stmap stmap' psent psent'
   (Hpeq : forall x, stmap x = stmap' x)
   (Hpsentcond : exists psent_, psent_mnt false psent psent_ /\
-    list_subset psent_ psent' /\
+    incl psent_ psent' /\
     (forall p, In p psent' -> ~ In p psent_ -> _inv_msg_correct stmap psent p))
   (Hinv : invariant (mkW stmap psent)) : 
   invariant (mkW stmap' psent').
@@ -531,7 +545,7 @@ Proof.
   split.
   1: assumption.
   split.
-  1: unfold list_subset; auto.
+  1: unfold incl; auto.
   eqsolve.
 Qed.
 
@@ -549,6 +563,9 @@ Proof with basic_solver.
     constructor.
     + simpl; lia.
     + constructor. 
+    + simpl. 
+      intuition.
+    + constructor.
   - constructor; simpl...
 Qed.
 
@@ -576,9 +593,9 @@ Proof with basic_solver.
       destruct Hconf as (_, Hconf, _).
       specialize (Hconf dst Hnonbyz).
       unfold holds in Hconf.
-      destruct Hconf as (_, _, (Hconf, Hcert_nodup)).
-      rewrite -> Edst in Hconf, Hcert_nodup.
-      simpl in Hconf, Hcert_nodup.
+      destruct Hconf as (_, _, (Hconf, Hcert_nodup, Hrcerts, Hcert_valid)).
+      rewrite -> Edst in Hconf, Hcert_nodup, Hrcerts, Hcert_valid.
+      simpl in Hconf, Hcert_nodup, Hrcerts, Hcert_valid.
       destruct (if Value_eqdec v v_dst 
         then (if verify v s src 
               then (if (negb conf_dst) 
@@ -614,7 +631,7 @@ Proof with basic_solver.
           eapply inv_preserve_10...
           ++pose proof (StateCertMnt (localState w dst) ((src, s) :: nsigs_dst)) as Hsmnt.
             rewrite -> Edst, <- Hle in Hsmnt.
-            unfold list_subset in Hsmnt.
+            unfold incl in Hsmnt.
             simpl in Hsmnt.
             rewrite -> PeanoNat.Nat.leb_refl in Hsmnt.
             rewrite -> Edst.
@@ -632,11 +649,12 @@ Proof with basic_solver.
               intros n sig [ Hin_nsigs | Hin_nsigs ].
               2: now apply Hnodeinv'.
               injection_pair Hin_nsigs.
-              subst p.
-              split...
+              subst p...
             **destruct Hnodeinv' as (_, ?, _).
               assumption.
             **constructor; simpl...
+              constructor...
+              simpl...
           ++eapply inv_preserve_00 with (psent:=(sentMsgs w))...
             now rewrite_w_expand w in_ H.
         --simpl in Epm.
@@ -651,7 +669,7 @@ Proof with basic_solver.
           eapply inv_preserve_10...
           ++pose proof (StateCertMnt (localState w dst) ((src, s) :: nsigs_dst)) as Hsmnt.
             rewrite -> Edst, <- Ethr in Hsmnt.
-            unfold list_subset in Hsmnt.
+            unfold incl in Hsmnt.
             simpl in Hsmnt.
             rewrite -> Hgt in Hsmnt.
             rewrite -> Edst.
@@ -668,11 +686,12 @@ Proof with basic_solver.
               intros n sig [ Hin_nsigs | Hin_nsigs ].
               2: now apply Hnodeinv'.
               injection_pair Hin_nsigs.
-              subst p.
-              split...
+              subst p...
             **destruct Hnodeinv' as (_, ?, _).
               assumption.
             **constructor; simpl...
+              constructor...
+              simpl...
           ++eapply inv_preserve_00 with (psent:=(sentMsgs w))...
             now rewrite_w_expand w in_ H.
       * (* local state: essentially no change, and psent is regularly changed *)
@@ -726,8 +745,15 @@ Proof with basic_solver.
           ++now rewrite_w_expand w in_ H.
     + simpl in Epm.
       destruct c as (v, nsigs).
-      destruct (verify_certificate v nsigs) eqn:Everic.
-      * injection_pair Epm.
+      destruct (if NoDup_eqdec AddrSigPair_eqdec nsigs
+        then (if Nat.leb (N - t0) (length nsigs)
+              then is_left (verify_certificate v nsigs)
+              else false)
+        else false) eqn:Edecide.
+      * destruct (NoDup_eqdec AddrSigPair_eqdec nsigs) as [ Hnodup | ],
+          (Nat.leb (N - t0) (length nsigs)) eqn:Hlnsigs, 
+          (verify_certificate v nsigs) eqn:Everic...
+        injection_pair Epm.
         rewrite -> app_nil_r.
         (* eapply inv_preserve_00 with (psent:=(sentMsgs w))... *)
         eapply inv_preserve_10...
@@ -744,7 +770,8 @@ Proof with basic_solver.
           hnf in Hnodeinv.
           rewrite -> Edst in Hnodeinv.
           pose proof (psent_mnt_preserve_node_invariant _ _ _ (PsentEq' p (sentMsgs w) Hpin) _ Hnodeinv) as Hnodeinv'.
-          destruct Hnodeinv as (Hnodeinv_nsigs, Hnodeinv_rcerts, (Hnodeinv_conf, Hnodeinv_cert_nodup)).
+          (* preserve these ? to make auto work *)
+          destruct Hnodeinv as (?, ?, (?, ?, Hnodeinv_rcerts_mixin, ?)).
           constructor; simpl_state.
           ++destruct Hnodeinv' as (?, _, _).
             assumption.
@@ -753,17 +780,24 @@ Proof with basic_solver.
             intros v0 nsigs0 [ Hin_rcerts' | Hin_rcerts' ].
             2: now apply Hnodeinv'_rcerts in Hin_rcerts'.
             injection_pair Hin_rcerts'.
-            split.
-            **assumption.
-            **exists src.
-              subst p.
-              now left.
+            exists src.
+            subst p.
+            now left.
           ++constructor...
+            simpl.
+            intros v0 nsigs0 [ Hpeq | ].
+            2: now apply Hnodeinv_rcerts_mixin.
+            injection_pair Hpeq.
+            split; [ | split ]...
+            now apply PeanoNat.Nat.leb_le.
         --eapply inv_preserve_00 with (psent:=(sentMsgs w))...
           now rewrite_w_expand w in_ H.
-      * (* essentially no change *)
-        injection_pair Epm.
-        rewrite -> app_nil_r, <- Edst.
+      * assert ((localState w dst, nil) = (st', ms)) as Epm'
+          by (destruct (NoDup_eqdec AddrSigPair_eqdec nsigs),
+            (Nat.leb (N - t0) (length nsigs)), (verify_certificate v nsigs); eqsolve).
+        (* essentially no change *)
+        injection_pair Epm'.
+        rewrite -> app_nil_r.
         eapply inv_preserve_00.
         --apply upd_same_pointwise_eq.
         --now apply PsentEq'.
@@ -799,7 +833,7 @@ Proof with basic_solver.
     exists (sentMsgs w).
     split...
     split.
-    1: unfold list_subset; firstorder.
+    1: unfold incl; firstorder.
     intros p0 Hin_app Hnotin.
     simpl in Hin_app.
     destruct Hin_app as [ <- | ]...
@@ -810,7 +844,7 @@ Proof with basic_solver.
     exists (sentMsgs w).
     split...
     split.
-    1: unfold list_subset; firstorder.
+    1: unfold incl; firstorder.
     intros p0 Hin_app Hnotin.
     simpl in Hin_app.
     destruct Hin_app as [ <- | ]...
@@ -837,7 +871,7 @@ Proof.
   unfold holds in Hnodeinv_n.
   destruct Hnodeinv_n as (Hnodeinv_nsigs_n, Hnodeinv_rcerts_n, _).
   apply Hnodeinv_rcerts_n in Hin1, Hin2.
-  destruct Hin1 as (Hcertvalid1 & (src1 & Hin1)), Hin2 as (Hcertvalid2 & (src2 & Hin2)).
+  destruct Hin1 as (src1 & Hin1), Hin2 as (src2 & Hin2).
   unfold psent_invariant in Hpsentinv.
   rewrite -> psent_invariant_change in Hpsentinv.
   apply Hpsentinv in Hin1, Hin2.
@@ -862,10 +896,9 @@ Proof.
       destruct Hnodeinv as (Hnodeinv_nsigs, _, _).
       rewrite <- Hcert in Hnodeinv_nsigs.
       apply Hnodeinv_nsigs in Hin_nsigs.
-      destruct Hin_nsigs as (_ & Hin).
       (* coming back! *)
-      apply Hpsentinv in Hin.
-      simpl in Hin.
+      apply Hpsentinv in Hin_nsigs.
+      simpl in Hin_nsigs.
       intuition.
   }
   apply Htraceback in Hin1.
@@ -897,6 +930,113 @@ Proof.
   apply Hpsentinv in Hin1, Hin2.
   simpl in Hin1, Hin2.
   eqsolve.
+Qed.
+
+Lemma inv_implies_proof_size w (Hinv : invariant w)
+  n (H_n_nonbyz : is_byz n = false) 
+  (Hproof_nonempty : genproof (received_certs (localState w n)) <> nil) :
+  (N - (t0 + t0)) <= length (genproof (received_certs (localState w n))). 
+Proof.
+  destruct_localState w n as_ conf cert rcerts eqn_ En.
+  simpl_state.
+  remember (genproof rcerts) as pf.
+  destruct pf as [ | nb pf' ] eqn:Epf.
+  1: eqsolve.
+  rewrite <- Epf.
+  assert (In nb (genproof rcerts)) as Hacc by (rewrite <- Heqpf; intuition).
+  apply genproof_spec in Hacc.
+  destruct Hacc as (v1 & v2 & nsigs1 & nsigs2 & Hvneq & Hin1 & Hin2 & _ & _).
+  (* get size of cert *)
+  destruct Hinv as (_, Hnodeinv, _).
+  specialize (Hnodeinv n H_n_nonbyz).
+  unfold holds in Hnodeinv.
+  destruct Hnodeinv as (_, _, (_, _, Hrcerts, Hcert_valid)).
+  rewrite -> En in Hrcerts.
+  simpl in Hrcerts.
+  pose proof Hin1 as Hin1_backup.
+  pose proof Hin2 as Hin2_backup.
+  apply Hrcerts in Hin1, Hin2.
+  destruct Hin1 as (Hcert_valid1 & Hnsigs_nodup1 & Hsize1), 
+    Hin2 as (Hcert_valid2 & Hnsigs_nodup2 & Hsize2).
+  (* now show that: at least (2t0-N) distinct nodes are in culprit proof *)
+  (* should partition only by the address since signs can be different for different values *)
+  destruct (partition (fun nsig : AddrSigPair => In_dec Address_eqdec (fst nsig) (map fst nsigs1)) nsigs2) as (nsigs12, nsigs2') eqn:Epar.
+  epose proof (partition_filter _ nsigs2) as Htmp.
+  rewrite -> Epar in Htmp.
+  match type of Htmp with (?a, ?b) = (?c, ?d) => 
+    assert (a = c) as Ensigs12 by eqsolve; 
+    assert (b = d) as Ensigs2' by eqsolve
+  end.
+  clear Htmp.
+  assert (certificate_valid v2 nsigs2') as Hcert_valid2' by (subst nsigs2'; now apply Forall_filter).
+  (* turn into show nsigs12 is subset of pf *)
+  transitivity (length nsigs12).
+  - (* maybe this part has been well formalized in other Coq libraries ... *)
+    cut (((length nsigs2) - (length nsigs12)) + (length nsigs1) <= N).
+    1: lia.
+    pose proof Epar as Elengthpar.
+    apply partition_length in Elengthpar.
+    replace ((length nsigs2) - (length nsigs12)) with (length nsigs2') by lia.
+    unfold N.
+    rewrite <- app_length.
+    transitivity (length (map fst (nsigs2' ++ nsigs1))).
+    1: now rewrite -> map_length.
+    apply NoDup_incl_length.
+    + rewrite -> map_app.
+      apply NoDup_app.
+      * subst nsigs2'.
+        apply valid_cert_nodup_implies_sender_nodup with (v:=v2).
+        --now apply Forall_filter.
+        --now apply NoDup_filter.
+      * now apply valid_cert_nodup_implies_sender_nodup with (v:=v1).
+      * (* show disjoint of nsigs1 and nsigs2' *)
+        intros nn ? Hin1' Hin2' <-.
+        rewrite -> in_map_iff in Hin1'.
+        destruct Hin1' as ((nn', signn) & Htmp & Hin1').
+        simpl in Htmp.
+        subst nn' nsigs2'.
+        apply filter_In in Hin1'.
+        simpl in Hin1'.
+        now destruct (in_dec Address_eqdec nn (map fst nsigs1)).
+    + hnf.
+      intros nb' Hin'.
+      rewrite -> map_app, in_app_iff in Hin'.
+      unfold certificate_valid in Hcert_valid1, Hcert_valid2.
+      rewrite -> Forall_forall in Hcert_valid1, Hcert_valid2.
+      destruct Hin' as [ Hin' | Hin' ].
+      1: subst nsigs2'.
+      all: apply in_map_iff in Hin'.
+      all: destruct Hin' as ((nb'', sigb') & Htmp & Hin').
+      all: simpl in Htmp.
+      all: subst nb''.
+      * apply filter_In, proj1, Hcert_valid2 in Hin'.
+        now simpl in Hin'.
+      * apply Hcert_valid1 in Hin'.
+        now simpl in Hin'.
+  - transitivity (length (map (fun nn => (nn, sign v2 (key_map nn))) pf)).
+    2: now rewrite -> map_length.
+    apply NoDup_incl_length.
+    all: subst nsigs12.
+    + now apply NoDup_filter.
+    + hnf.
+      intros (nb', sigb') Hin'.
+      rewrite -> Epf, Heqpf.
+      apply filter_In in Hin'.
+      simpl in Hin'.
+      destruct Hin' as (Hin2' & Htmp).
+      destruct (in_dec Address_eqdec nb' (map fst nsigs1)) as [ Hin1' | ].
+      2: eqsolve.
+      clear Htmp.
+      pose proof Hin2' as Hin2''.
+      eapply valid_cert_valid_sig in Hin2'; eauto.
+      subst sigb'.
+      eapply valid_cert_sender_in in Hin1'; eauto.
+      (* now *)
+      match goal with |- In ?tp (map ?f _) => change tp with (f nb') end.
+      apply in_map.
+      apply genproof_spec.
+      exists v1, v2, nsigs1, nsigs2.
+      intuition.
 Qed.
 
 End Main_Proof.

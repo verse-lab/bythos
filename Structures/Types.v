@@ -63,12 +63,14 @@ Qed.
 Parameter genproof : list Certificate -> list Address.
 
 Axiom genproof_spec : 
-  forall certs n, In n (genproof certs) -> 
+  forall certs n, In n (genproof certs) <-> 
     exists v1 v2 nsigs1 nsigs2,
       v1 <> v2 /\
       In (v1, nsigs1) certs /\
       In (v2, nsigs2) certs /\
       In (n, sign v1 (key_map n)) nsigs1 /\
       In (n, sign v2 (key_map n)) nsigs2.
+
+Axiom genproof_nodup : forall certs, NoDup (genproof certs).
 
 End Types.
