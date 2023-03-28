@@ -43,15 +43,13 @@ Proof. now rewrite <- key_correct. Qed.
 
 (* temporarily use list; there should be some notation of finite multisets or ...? *)
 
-Definition AddrSigPair : Type := Address * Signature.
-
-Definition AddrSigPair_eqdec : forall (nsig1 nsig2 : AddrSigPair), {nsig1 = nsig2} + {nsig1 <> nsig2}.
+Definition AddrSigPair_eqdec : forall (nsig1 nsig2 : Address * Signature), {nsig1 = nsig2} + {nsig1 <> nsig2}.
   intros. decide equality.
   - apply Signature_eqdec. 
   - apply Address_eqdec.
 Qed. 
 
-Definition Certificate : Type := Value * list AddrSigPair.
+Definition Certificate : Type := Value * list (Address * Signature).
 
 Definition Certificate_eqdec : forall (c1 c2 : Certificate), {c1 = c2} + {c1 <> c2}.
   intros. decide equality. 1: do 2 (decide equality).
