@@ -1136,13 +1136,21 @@ Proof.
   (* prove by contradiction *)
   destruct (is_byz nb) eqn:E.
   1: auto.
-  apply genproof_spec in Hacc.
-  destruct Hacc as (v1 & v2 & nsigs1 & nsigs2 & Hvneq & Hin1 & Hin2 & Hin_nsigs1 & Hin_nsigs2).
+  destruct genproof_correct as (Hgp, _).
+  apply Hgp in Hacc.
+  destruct Hacc as (v1 & v2 & sig1 & sig2 & nsigs1 & nsigs2 & Hvneq & Hin1 & Hin2 & Hin_nsigs1 & Hin_nsigs2).
   (* cert in rcerts --> Confirm msg *)
   destruct Hinv as (Hcoh, Hnodeinv, Hpsentinv).
   pose proof (Hnodeinv n H_n_nonbyz) as Hnodeinv_n.
   unfold holds in Hnodeinv_n.
-  destruct Hnodeinv_n as (Hnodeinv_nsigs_n, Hnodeinv_rcerts_n, _, _).
+  destruct Hnodeinv_n as (Hnodeinv_nsigs_n, Hnodeinv_rcerts_n, _, (_, _, Hnodeinv_rcerts_mixin, _)).
+  (* sig1, sig2 must be valid *)
+  pose proof (Hnodeinv_rcerts_mixin _ _ Hin1) as (Hnsigs_valid1 & _ & _).
+  pose proof (Hnodeinv_rcerts_mixin _ _ Hin2) as (Hnsigs_valid2 & _ & _).
+  pose proof Hin_nsigs1 as Hin_nsigs1_backup.
+  pose proof Hin_nsigs2 as Hin_nsigs2_backup.
+  eapply valid_cert_valid_sig in Hin_nsigs1, Hin_nsigs2; eauto.
+  subst sig1 sig2.
   apply Hnodeinv_rcerts_n in Hin1, Hin2.
   destruct Hin1 as (src1 & Hin1), Hin2 as (src2 & Hin2).
   unfold psent_invariant in Hpsentinv.
@@ -1294,8 +1302,9 @@ Proof.
       (* now *)
       match goal with |- In ?tp (map ?f _) => change tp with (f nb') end.
       apply in_map.
-      apply genproof_spec.
-      exists v1, v2, nsigs1, nsigs2.
+      destruct genproof_correct as (Hgp, _).
+      apply Hgp.
+      exists v1, v2, (sign v1 (key_map nb')), (sign v2 (key_map nb')), nsigs1, nsigs2.
       intuition.
 Qed.
 
