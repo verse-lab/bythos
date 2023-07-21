@@ -4,29 +4,60 @@ Main efforts are put on organizing the proof.
 
 ## What this proof does not depend on
 
-- the concrete value of $t_0$
+- the concrete value of $t_0$ (the threshold)
   - any $t_0 < N$ shall make sense, but $t_0 \ge \frac{N}{2}$ would make accountability trivial
 - the assumption that at least two honest nodes exist
+
+## Basic Constructs
+
+- Address, value (decided in Byzantine consensus)
+- PKI: private key, signature, verifier
+- `Certificate := Value * list (Address * Signature)`
+
+## Node State
+
+- $id$: node id
+- $conf$: confirming indicator
+- $\langle v, nsigs \rangle$: submitted value, and collected `Submit` messages (Line 23)
+  - Bundled as a `Certificate` term: `Submit` messages are represented succinctly as address-signature pairs
+- $rcerts$: Received full certificates (Line 36)
+
+## Network
+
+Possible transition steps: 
+- Idle
+- Deliver
+- Honest node internal (here only do `Submit`)
+- Byzantine node submit
+- Byzantine node confirm
+  - Constraint: every signature from an honest node contained in a Byzantine confirmation *must be seen in the packet soup* (`cert_correct`)
+
+$P_{sent}$: packet soup
+- Each packet has a field indicating whether it has been received or not
+- No message deletion in transition; represents the whole communication history of the network
 
 ## Invariant statement
 
 ### Part 1
 
-Divided into three parts:
+Divided into three sub-components:
 - coherence (`Coh`)
 - node invariants (should hold on every *honest* node)
-  - relate $(n, sig)$ in $cert = \langle v, nsigs\rangle$ with $\mathsf{SubmitMsg} \in P_{sent}$
-  - relate $c \in certs$ with $\mathsf{ConfirmMsg} \in P_{sent}$
-  - ensure that on confirmation $\mathsf{ConfirmMsg}$ s will be in the packet soup
-    - essentially a special case for stating that the packet soup (representing the history) cannot lose information
-  - pure properties (i.e., unrelated with $P_{sent}$)
-    - relate $conf$ with the size of $cert$
-    - $nsigs$ in $cert$ has no duplicate $(n, sig)$ pairs (here, equivalent with no duplicate senders)
-    - all received certificates are *valid full certificates* (defined in the paper)
-    - $cert$ is a valid certificate
+  1. tracing back from node states to history
+     - relate $(n, sig)$ in $\langle v, nsigs\rangle$ with $\mathsf{SubmitMsg} \in P_{sent}$
+     - relate $c \in rcerts$ with $\mathsf{ConfirmMsg} \in P_{sent}$
+  2. inferring the history from node states
+     - ensure that if $conf$ is true, then a $\mathsf{ConfirmMsg}$ will be in the packet soup
+       - essentially a special case for stating that the packet soup (representing the history) cannot lose information
+  3. node coherence properties (i.e., unrelated with $P_{sent}$)
+     - relate $conf$ with the size of $\langle v, nsigs\rangle$
+     - $nsigs$ have no duplicate $(n, sig)$ pairs (here, equivalent with no duplicate senders)
+     - all received certificates are *valid full certificates* (defined in the paper)
+     - all signatures in $\langle v, nsigs\rangle$ are valid
 - $P_{sent}$ invariants (should hold on every sent messages)
-  - relate $\mathsf{SubmitMsg} \in P_{sent}$ with the submitted value in $cert$
-  - relate $\mathsf{ConfirmMsg} \in P_{sent}$ with $cert$ and $conf$, and *also the history*
+  - relate $\mathsf{SubmitMsg} \in P_{sent}$ from an honest node with its submitted value
+  - relate $\mathsf{ConfirmMsg} \in P_{sent}$ from an honest node with its $\langle v, nsigs\rangle$ and $conf$
+  - relate $\mathsf{ConfirmMsg} \in P_{sent}$ from a Byzantine node with *the history* by `cert_correct`
     - using another argument with type $\mathsf{PacketSoup}$ to represent the history
 
 The components of the invariant above are interrelated, so they are grouped and also proved together. Additionally, they respect *monoticity* (defined below), which simplifies the proof. 
@@ -34,9 +65,11 @@ The components of the invariant above are interrelated, so they are grouped and 
 ### Part 2
 
 However, to establish the eventual accountability, another property should be added as part of the invariant, which states that a valid full certificate cannot be rejected by an honest node for no reason. 
+
 More precisely, if there is a $\mathsf{ConfirmMsg} \in P_{sent}$ that has been delivered to an honest node $h$ and contains a valid full certificate $c$, then $c$ should be in the received certificates field of $h$. 
-This property is necessary in the sense that if there are two honest nodes $h_1, h_2$ confirming different values, then their broadcast $\mathsf{ConfirmMsg}$ s should be received *eventually* (here modelled by marking all packets in $P_{sent}$ as consumed) by all honest nodes, and afterwards every honest node should be able to extract the same proof of size $\ge N-2t_0$ from the certificates sent by $h_1, h_2$. 
-Without this property, we cannot tell that every honest node will eventually receive and then store the certificates sent by $h_1, h_2$. 
+- This property is necessary in the sense that if there are two honest nodes $h_1, h_2$ confirming different values, then their broadcast $\mathsf{ConfirmMsg}$ s should be received *eventually* (here modelled by marking all packets in $P_{sent}$ as consumed) by all honest nodes, and afterwards every honest node should be able to extract the same proof of size $\ge N-2t_0$ from the certificates sent by $h_1, h_2$. 
+
+  Without this property, we cannot tell that every honest node will eventually receive and then store the certificates sent by $h_1, h_2$. 
 
 Although this property can be part of $P_{sent}$ invariant, its joining will break the monoticity, due to which `inv_preserve_00` no longer holds for example. 
 So in this case, this invariant is proved separately. 
