@@ -7,13 +7,17 @@ Module Type ACProtocol (A : NetAddr) (T : Types A).
 Import T A.
 
 Inductive Message := 
-  | SubmitMsg (v : Value) (s : Signature)
+  | SubmitMsg (v : Value) (ls : LightSignature) (s : Signature)
+  | LightConfirmMsg (c : LightCertificate)
+  (* for historical reasons, this remains the name as "ConfirmMsg". *)
   | ConfirmMsg (c : Certificate).
 
 Definition Message_eqdec : forall (m1 m2 : Message), {m1 = m2} + {m1 <> m2}.
   intros. decide equality.
   - apply Signature_eqdec.
+  - apply LightSignature_eqdec.
   - apply Value_eqdec.
+  - apply LightCertificate_eqdec.
   - apply Certificate_eqdec.
 Qed.
 
@@ -22,7 +26,7 @@ Qed.
 (* only submit its own value so remember its node id is sufficient *)
 
 Inductive InternalTransition :=
-  | SubmitIntTrans.
+  | SubmitIntTrans | LightCertCheckIntTrans.
 
 Record Packet := mkP {src: Address; dst: Address; msg: Message; consumed: bool}.
 
@@ -44,20 +48,30 @@ Record State :=
     id : Address;
     (* peers : peers_t; *)
     conf : bool;
-    cert : Certificate; 
+    submitted_value : option Value;
+    (* need to contain all addresses otherwise cannot perform operations like set *)
+    (* since there are two kinds of signatures now, seems cannot avoid using split/combine *)
+    from_set : list Address;
+    collected_lightsigs : list LightSignature;
+    collected_sigs : list Signature;
+    received_lightcerts : list LightCertificate;
     received_certs : list Certificate
   }.
 
 Definition State_eqdec : forall (s1 s2 : State), {s1 = s2} + {s1 <> s2}.
   intros. decide equality.
   - decide equality. apply Certificate_eqdec.
-  - apply Certificate_eqdec.
+  - decide equality. apply LightCertificate_eqdec.
+  - decide equality. apply Signature_eqdec.
+  - decide equality. apply LightSignature_eqdec.
+  - decide equality. apply Address_eqdec.
+  - decide equality. apply Value_eqdec.
   - decide equality.
   - apply Address_eqdec.
 Qed.
 
 Definition Init (n : Address) : State :=
-  Node n false (value_bft n, nil) nil.
+  Node n false None nil nil nil nil nil.
 
 Definition broadcast (src : Address) (m : Message) :=
   (map (fun x => mkP src x m false) valid_nodes).
@@ -74,13 +88,20 @@ Definition certificate_valid v nsigs : Prop :=
 
 Definition verify_certificate v nsigs : {certificate_valid v nsigs} + {~ certificate_valid v nsigs}.
   unfold certificate_valid.
-  apply Forall_dec.
+  apply Forall_dec. (* there is no existing Forall2_dec *)
   intros (n, sig).
   simpl.
   unfold valid_node.
   destruct (In_dec Address_eqdec n valid_nodes) as [ ? | ? ], (verify v sig n) eqn:?.
   all: intuition.
 Qed.
+
+Definition valid_addr_lsig_pair v nlsig : Prop :=
+  let: (n, lsig) := nlsig in valid_node n /\ light_verify v lsig n.
+
+Definition light_signatures_valid v nlsigs : Prop :=
+  Forall (valid_addr_lsig_pair v) nlsigs.
+
 (*
 Definition verify_certificate v nsigs :=
   (* add an additional check that the nodes in nsigs are valid *)
@@ -104,24 +125,41 @@ Proof.
 Qed.
 *)
 Definition procMsg (st : State) (src : Address) (msg : Message) : State * list Packet :=
-  let: Node n conf cert rcerts := st in
+  let: Node n conf ov from lsigs sigs rlcerts rcerts := st in
   match msg with
-  | SubmitMsg v sig => 
-    let: (vthis, nsigs) := cert in
-    if Value_eqdec v vthis 
-    then
-     (if verify v sig src
-      then 
-      (* before prepending, add a check to avoid adding a duplicate node-signature pair *)
-       (let: nsigs' := (if conf then nsigs else 
-        (if In_dec AddrSigPair_eqdec (src, sig) nsigs then nsigs else (src, sig) :: nsigs)) in
-        let: conf' := (Nat.leb (N - t0) (length nsigs')) in
-        let: ps := (if conf' 
-          then broadcast n (ConfirmMsg (v, nsigs'))
-          else nil) in
-        let: st' := Node n conf' (vthis, nsigs') rcerts in
-        (st', ps))
-      else (st, nil))
+  | SubmitMsg v lsig sig =>
+    match ov with 
+    | Some vthis => 
+      if Value_eqdec v vthis 
+      then
+        (if verify v sig src
+        then 
+          (if light_verify v lsig src
+          then 
+            (* before prepending, add a check to avoid adding a duplicate node-signature pair *)
+            (* checking In fst or In pair should be the same, due to the correctness of verify *)
+            (* let: in_from := In_dec Address_eqdec src (map fst nsigs) in *)
+            let: in_from := In_dec Address_eqdec src from in
+            let: from' := if conf || in_from then from else src :: from in
+            let: lsigs' := if conf || in_from then lsigs else lsig :: lsigs in
+            let: sigs' := if conf || in_from then sigs else sig :: sigs in
+            let: conf' := (Nat.leb (N - t0) (length from')) in
+            let: ps := (if conf' 
+              then broadcast n (LightConfirmMsg (v, lightsig_combine lsigs'))
+              else nil) in
+            let: st' := Node n conf' ov from' lsigs' sigs' rlcerts rcerts in
+            (st', ps)
+          else (st, nil))
+        else (st, nil))
+      else (st, nil)
+    | None => (st, nil)
+    end
+  | LightConfirmMsg lc =>
+    let: (v, cs) := lc in
+    if combined_verify v cs
+    then 
+      let: st' := Node n conf ov from lsigs sigs (lc :: rlcerts) rcerts in
+      (st', nil)
     else (st, nil)
   | ConfirmMsg c => 
     let: (v, nsigs) := c in
@@ -134,7 +172,7 @@ Definition procMsg (st : State) (src : Address) (msg : Message) : State * list P
       then
         (if verify_certificate v nsigs
         then 
-          let: st' := Node n conf cert ((v, nsigs) :: rcerts) in
+          let: st' := Node n conf ov from lsigs sigs rlcerts (c :: rcerts) in
           (st', nil)
         else (st, nil))
       else (st, nil))
@@ -142,12 +180,27 @@ Definition procMsg (st : State) (src : Address) (msg : Message) : State * list P
   end.
 
 Definition procInt (st : State) (tr : InternalTransition) :=
-  let: Node n conf cert rcerts := st in
+  let: Node n conf ov from lsigs sigs rlcerts rcerts := st in
   match tr with
   | SubmitIntTrans => 
-    let: (vthis, _) := cert in
-    let: ps := broadcast n (SubmitMsg vthis (sign vthis (key_map n))) in
-    (st, ps)
+    let: vthis := value_bft n in
+    let: ps := broadcast n 
+      (SubmitMsg vthis (light_sign vthis (lightkey_map n)) (sign vthis (key_map n))) in
+    (Node n conf (Some vthis) from lsigs sigs rlcerts rcerts, ps)
+  | LightCertCheckIntTrans =>
+    match ov with 
+    | Some vthis => 
+      if conf
+      then 
+        (if lightcert_conflict_check rlcerts
+        then 
+        (* send out full certificates only in this case *)
+          let: ps := broadcast n (ConfirmMsg (vthis, List.combine from sigs)) in
+          (st, ps)
+        else (st, nil))
+      else (st, nil)
+    | None => (st, nil)
+    end
   end.
 
 End ACProtocol.

@@ -11,19 +11,30 @@ Import A T AC Ns ACN.
 
 (* this is somewhat "pure" property (not related to psent) *)
 Record node_coh (st : State) : Prop := mkNodeCoh {
+  inv_set_size: 
+    length st.(from_set) = length st.(collected_lightsigs) /\
+    length st.(from_set) = length st.(collected_sigs);
   inv_conf_correct:
     if conf st 
-    then length (snd (cert st)) = N - t0
-    else length (snd (cert st)) < N - t0;
-  inv_cert_nodup: NoDup (snd (cert st));
+    then length st.(from_set) = N - t0
+    else length st.(from_set) < N - t0;
+  inv_from_nodup: NoDup st.(from_set);
   (* "NoDup nsigs" and "N - t0 <= (length nsigs)" should also hold 
     even if the certificate is sent by a Byzantine node *)
-  inv_rcerts_mixin: forall v nsigs, In (v, nsigs) (received_certs st) -> 
+  inv_rlcerts_mixin: forall v cs, In (v, cs) st.(received_lightcerts) -> 
+    combined_verify v cs;
+  inv_rcerts_mixin: forall v nsigs, In (v, nsigs) st.(received_certs) -> 
     certificate_valid v nsigs /\
     (NoDup nsigs) /\ 
     N - t0 <= (length nsigs);
-  (* since there are only full certificates, there is only one certificate_valid *)
-  inv_cert_valid: certificate_valid (fst (cert st)) (snd (cert st))
+  (* mixin of before and after submission *)
+  inv_submit_mixin: 
+    match st.(submitted_value) with
+    | Some v => 
+      light_signatures_valid v (List.combine st.(from_set) st.(collected_lightsigs)) /\
+      certificate_valid v (List.combine st.(from_set) st.(collected_sigs))
+    | None => st.(from_set) = nil
+    end
 }.
 
 Record node_invariant (psent : PacketSoup) (st : State) : Prop := mkNodeInv {

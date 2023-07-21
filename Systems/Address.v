@@ -18,6 +18,8 @@ Axiom valid_nodes_NoDup : NoDup valid_nodes.
 Definition N := length valid_nodes.
 Parameter t0 : nat.
 
+Definition num_byz := length (List.filter is_byz valid_nodes).
+
 Axiom t0_lt_N : t0 < N.
 
 (* FIXME: trick *)

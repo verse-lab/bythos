@@ -34,9 +34,8 @@ Record Coh (w : World) : Prop := mkCoh {
 (* Record Qualifier := Q { ts: Timestamp; allowed: Address; }. *)
 
 (* yes, how about extracting this to be ...? *)
-
-Definition seen_in_history (src : Address) (v : Value) (s : Signature) (pkts : PacketSoup) :=
-  exists dst consumed, In (mkP src dst (SubmitMsg v s) consumed) pkts.
+Definition sig_seen_in_history (src : Address) (v : Value) (s : Signature) (pkts : PacketSoup) :=
+  exists dst consumed ls, In (mkP src dst (SubmitMsg v ls s) consumed) pkts.
 
 Definition cert_correct (psent : PacketSoup) (c : Certificate) :=
   let: (v, nsigs) := c in
@@ -44,7 +43,28 @@ Definition cert_correct (psent : PacketSoup) (c : Certificate) :=
     In (n, sig) nsigs ->
     is_byz n = false ->
     verify v sig n -> (* this can be expressed in other way *)
-    seen_in_history n v sig psent. 
+    sig_seen_in_history n v sig psent. 
+
+(* TODO the lightsig can actually be obtained from full certificates?
+  guess this will not affect the following reasoning 
+  (since full certificates are assembled from the sent messages), 
+  so ignore it for now *)
+Definition lightsig_seen_in_history (src : Address) (v : Value) (ls : LightSignature) (pkts : PacketSoup) :=
+  exists dst consumed s, In (mkP src dst (SubmitMsg v ls s) consumed) pkts.
+
+(* safety assumption about light certificates: 
+  if the number of Byzantine nodes is not sufficiently large, 
+  then the light signature is unforgeable *)
+Definition lcert_correct (psent : PacketSoup) (lc : LightCertificate) : Prop :=
+  let: (v, cs) := lc in
+  forall lsigs,
+    cs = lightsig_combine lsigs ->
+    combined_verify v cs ->
+    forall n lsig,
+      In lsig lsigs ->
+      is_byz n = false ->
+      light_verify v lsig n ->
+      lightsig_seen_in_history n v lsig psent. 
 
 Definition consume (p : Packet) (psent : PacketSoup) :=
   (receive_pkt p) :: (List.remove Packet_eqdec p psent).
@@ -77,11 +97,18 @@ Inductive system_step (w w' : World) : Prop :=
                (ms ++ (sentMsgs w))
 
 (* can possibly generate garbage in the following two trans *)
-| ByzSubmit (src dst : Address) (v : Value) (s : Signature) of
+| ByzSubmit (src dst : Address) (v : Value) (ls : LightSignature) (s : Signature) of
       (* Coh w & *)
       is_byz src &
       w' = mkW (localState w)
-               ((mkP src dst (SubmitMsg v s) false) :: (sentMsgs w))
+               ((mkP src dst (SubmitMsg v ls s) false) :: (sentMsgs w))
+
+| ByzLightConfirm (src dst : Address) (lc : LightCertificate) of
+      (* Coh w & *)
+      is_byz src &
+      (num_byz <= t0 -> lcert_correct (sentMsgs w) lc) &
+      w' = mkW (localState w)
+               ((mkP src dst (LightConfirmMsg lc) false) :: (sentMsgs w))
 
 | ByzConfirm (src dst : Address) (c : Certificate) of
       (* Coh w & *)

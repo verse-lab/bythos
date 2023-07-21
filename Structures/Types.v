@@ -30,12 +30,40 @@ Parameter PrivateKey : Set.
 Parameter Signature : Set.
 Parameter Signature_eqdec : forall (s1 s2 : Signature), {s1 = s2} + {s1 <> s2}.
 
+(* TODO should this key & signature be of the same type as above? *)
+Parameter LightPrivateKey : Set.
+Parameter LightSignature : Set.
+Parameter LightSignature_eqdec : forall (ls1 ls2 : LightSignature), {ls1 = ls2} + {ls1 <> ls2}.
+Parameter CombinedSignature : Set.
+Parameter CombinedSignature_eqdec : forall (cs1 cs2 : CombinedSignature), {cs1 = cs2} + {cs1 <> cs2}.
+
 Parameter key_map : Address -> PrivateKey.
 Parameter verify : Value -> Signature -> Address -> bool.
 Parameter sign : Value -> PrivateKey -> Signature.
 
+Parameter lightkey_map : Address -> LightPrivateKey.
+(* TODO if there is only one public key for this, should the address component be used or not? *)
+Parameter light_verify : Value -> LightSignature -> Address -> bool.
+Parameter light_sign : Value -> LightPrivateKey -> LightSignature.
+(* use dependent type to restrict the number of light signatures *)
+(* Parameter lightsig_combine : Vector.t LightSignature (N - t0) -> CombinedSignature. *)
+(* TODO using dependent type may incur difficulty in the protocol, so use a total function at first 
+  if the number of light certificates is not (N-t0), then simply return some garbage
+  (guaranteed by "combine_correct" below) *)
+Parameter lightsig_combine : list LightSignature -> CombinedSignature.
+Parameter combined_verify : Value -> CombinedSignature -> bool.
+
 Axiom key_correct : forall v n s, 
   s = (sign v (key_map n)) <-> verify v s n.
+
+Axiom lightkey_correct : forall v n ls, 
+  ls = (light_sign v (lightkey_map n)) <-> light_verify v ls n.
+
+Axiom combine_correct : forall v cs, 
+  (exists ns : list Address, 
+    NoDup ns /\ incl ns valid_nodes /\ length ns = N - t0 /\
+    cs = lightsig_combine (map (fun n => light_sign v (lightkey_map n)) ns)) 
+  <-> combined_verify v cs.
 
 Fact correct_sign_verify_ok v n :
   verify v (sign v (key_map n)) n.
@@ -49,7 +77,14 @@ Definition AddrSigPair_eqdec : forall (nsig1 nsig2 : Address * Signature), {nsig
   - apply Address_eqdec.
 Qed. 
 
+Definition AddrLightSigPair_eqdec : forall (nsig1 nsig2 : Address * LightSignature), {nsig1 = nsig2} + {nsig1 <> nsig2}.
+  intros. decide equality.
+  - apply LightSignature_eqdec. 
+  - apply Address_eqdec.
+Qed. 
+
 Definition Certificate : Type := Value * list (Address * Signature).
+Definition LightCertificate : Type := Value * CombinedSignature.
 
 Definition Certificate_eqdec : forall (c1 c2 : Certificate), {c1 = c2} + {c1 <> c2}.
   intros. decide equality. 1: do 2 (decide equality).
@@ -58,7 +93,21 @@ Definition Certificate_eqdec : forall (c1 c2 : Certificate), {c1 = c2} + {c1 <> 
   - apply Value_eqdec.
 Qed. 
 
+Definition LightCertificate_eqdec : forall (c1 c2 : LightCertificate), {c1 = c2} + {c1 <> c2}.
+  intros. decide equality.
+  - apply CombinedSignature_eqdec. 
+  - apply Value_eqdec.
+Qed. 
+
+Parameter lightcert_conflict_check : list LightCertificate -> bool.
 Parameter genproof : list Certificate -> list Address.
+
+Definition lightcert_conflict_check_spec (lcc : list LightCertificate -> bool) : Prop :=
+  forall lcerts, lcc lcerts <-> 
+    exists v1 v2 cs1 cs2,
+      v1 <> v2 /\
+      In (v1, cs1) lcerts /\
+      In (v2, cs2) lcerts.
 
 Definition genproof_can_detect (genproof : list Certificate -> list Address) : Prop :=
   forall certs n, In n (genproof certs) <-> 
