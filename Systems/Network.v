@@ -57,9 +57,9 @@ Definition lightsig_seen_in_history (src : Address) (v : Value) (ls : LightSigna
   then the light signature is unforgeable *)
 Definition lcert_correct (psent : PacketSoup) (lc : LightCertificate) : Prop :=
   let: (v, cs) := lc in
+  combined_verify v cs ->
   forall lsigs,
     cs = lightsig_combine lsigs ->
-    combined_verify v cs ->
     forall n lsig,
       In lsig lsigs ->
       is_byz n = false ->
