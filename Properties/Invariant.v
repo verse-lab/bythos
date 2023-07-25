@@ -15,13 +15,13 @@ Record node_coh (st : State) : Prop := mkNodeCoh {
     length st.(from_set) = length st.(collected_lightsigs) /\
     length st.(from_set) = length st.(collected_sigs);
   inv_conf_correct:
-    if conf st 
+    if st.(conf)
     then length st.(from_set) = N - t0
     else length st.(from_set) < N - t0;
   inv_from_nodup: NoDup st.(from_set);
   (* "NoDup nsigs" and "N - t0 <= (length nsigs)" should also hold 
     even if the certificate is sent by a Byzantine node *)
-  inv_rlcerts_mixin: forall v cs, In (v, cs) st.(received_lightcerts) -> 
+  inv_rlcerts: forall v cs, In (v, cs) st.(received_lightcerts) -> 
     combined_verify v cs;
   inv_rcerts_mixin: forall v nsigs, In (v, nsigs) st.(received_certs) -> 
     certificate_valid v nsigs /\
@@ -31,24 +31,35 @@ Record node_coh (st : State) : Prop := mkNodeCoh {
   inv_submit_mixin: 
     match st.(submitted_value) with
     | Some v => 
-      light_signatures_valid v (List.combine st.(from_set) st.(collected_lightsigs)) /\
-      certificate_valid v (List.combine st.(from_set) st.(collected_sigs))
+      v = value_bft st.(id) /\
+      light_signatures_valid v (zip_from_lsigs st) /\
+      certificate_valid v (zip_from_sigs st)
     | None => st.(from_set) = nil
     end
 }.
 
 Record node_invariant (psent : PacketSoup) (st : State) : Prop := mkNodeInv {
-  inv_nsigs_correct: forall n sig, 
-    let: (v, nsigs) := (cert st) in 
-    In (n, sig) nsigs ->
-      In (mkP n (id st) (SubmitMsg v sig) true) psent;
-  inv_rcerts_correct: forall v nsigs,
-    In (v, nsigs) (received_certs st) ->
-      exists src, In (mkP src (id st) (ConfirmMsg (v, nsigs)) true) psent;
+  inv_nsigs_correct: 
+    match st.(submitted_value) with
+    | Some v => forall n lsig sig, 
+      In (n, lsig, sig) (zip_from_lsigs_sigs st) ->
+        In (mkP n st.(id) (SubmitMsg v lsig sig) true) psent
+    | None => True
+    end;
+  inv_rlcerts_correct: forall lc,
+    In lc st.(received_lightcerts) ->
+      exists src, In (mkP src st.(id) (LightConfirmMsg lc) true) psent;
+  inv_rcerts_correct: forall c,
+    In c st.(received_certs) ->
+      exists src, In (mkP src st.(id) (ConfirmMsg c) true) psent;
   (* there must be some packets sent on some condition 
       (or, packets cannot disappear from the packet soup for no reason) *)
-  inv_conf_confmsg: 
-    conf st -> forall n, valid_node n -> exists used, In (mkP (id st) n (ConfirmMsg (cert st)) used) psent;
+  inv_conf_lightconfmsg: 
+    match st.(submitted_value) with
+    | Some v => st.(conf) -> forall n, valid_node n -> 
+      exists used, In (mkP st.(id) n (LightConfirmMsg (v, lightsig_combine st.(collected_lightsigs))) used) psent
+    | None => True
+    end;
   inv_node_coh: node_coh st
 }.
 
@@ -94,7 +105,7 @@ Proof.
 Qed.
 
 (* NoDup (snd (cert st)) is enough to show NoDup senders *)
-
+(*
 Fact node_invariant_implies_inv_cert_sender_nodup st psent 
   (Hnodeinv : node_invariant psent st) : NoDup (map fst (snd (cert st))).
 Proof.
@@ -102,22 +113,32 @@ Proof.
   destruct (cert st) as (v, nsigs).
   eapply valid_cert_nodup_implies_sender_nodup; eauto.
 Qed.
-
+*)
 (* make two views of invariants *)
 
-Definition _inv_submitmsg_correct stmap src v sig : Prop := 
+Definition _inv_submitmsg_correct stmap src v lsig sig : Prop := 
   is_byz src = false ->
     verify v sig src /\
-    v = fst (cert (stmap src)).
+    light_verify v lsig src /\
+    Some v = (stmap src).(submitted_value).
+
+Definition _inv_lightconfirmmsg_correct stmap psent_history src lc : Prop := 
+  if is_byz src
+    then num_byz <= t0 -> lcert_correct psent_history lc
+    else (stmap src).(conf) /\ Some (fst lc) = (stmap src).(submitted_value) /\
+      snd lc = lightsig_combine (stmap src).(collected_lightsigs)
+.
 
 Definition _inv_confirmmsg_correct stmap psent_history src c : Prop := 
   if is_byz src
     then cert_correct psent_history c
-    else conf (stmap src) /\ c = cert (stmap src)   (* strictly relies on that nsigs will not be updated after its size == N-t0 *)
+    else (stmap src).(conf) /\ lightcert_conflict_check (stmap src).(received_lightcerts) (* this is new *)
+      /\ Some (fst c) = (stmap src).(submitted_value) /\
+      snd c = zip_from_sigs (stmap src)
 .
 
 (* by rule, a valid full certificate cannot be rejected by an honest node for no reason *)
-
+(*
 Definition _inv_confirmmsg_receive (stmap : StateMap) dst v nsigs (b : bool) : Prop := 
   b -> is_byz dst = false ->
   certificate_valid v nsigs -> NoDup nsigs -> (N - t0 <= (length nsigs)) ->
@@ -139,30 +160,35 @@ Global Arguments _inv_msg_correct_2 _ _/.
 Record invariant_2 (w : World) : Prop := mkInv2 {
   _ : Forall (_inv_msg_correct_2 (localState w)) (sentMsgs w)
 }.
-
+*)
 Definition _inv_msg_correct stmap psent_history p : Prop :=
-  let: mkP src dst msg b := p in
+  let: mkP src dst msg _ := p in
   match msg with
-  | SubmitMsg v sig => _inv_submitmsg_correct stmap src v sig
+  | SubmitMsg v lsig sig => _inv_submitmsg_correct stmap src v lsig sig
+  | LightConfirmMsg lc => _inv_lightconfirmmsg_correct stmap psent_history src lc
   | ConfirmMsg c => _inv_confirmmsg_correct stmap psent_history src c
   end.
 
-Global Arguments _inv_submitmsg_correct _ _ _ _/.
+Global Arguments _inv_submitmsg_correct _ _ _ _ _/.
+Global Arguments _inv_lightconfirmmsg_correct _ _ _ _/.
 Global Arguments _inv_confirmmsg_correct _ _ _ _/.
 Global Arguments _inv_msg_correct _ _ _/.
 
 Record _psent_invariant (stmap : StateMap) (psent psent_history : PacketSoup) : Prop := mkPsentInv {
-  inv_submitmsg_correct: forall src dst v sig b, 
-    In (mkP src dst (SubmitMsg v sig) b) psent ->
-    _inv_submitmsg_correct stmap src v sig;
-  inv_confirmmsg_correct: forall src dst c b, 
-    In (mkP src dst (ConfirmMsg c) b) psent ->
+  inv_submitmsg_correct: forall src dst v lsig sig consumed, 
+    In (mkP src dst (SubmitMsg v lsig sig) consumed) psent ->
+    _inv_submitmsg_correct stmap src v lsig sig;
+  inv_lightconfirmmsg_correct: forall src dst lc consumed, 
+    In (mkP src dst (LightConfirmMsg lc) consumed) psent ->
+    _inv_lightconfirmmsg_correct stmap psent_history src lc;
+  inv_confirmmsg_correct: forall src dst c consumed, 
+    In (mkP src dst (ConfirmMsg c) consumed) psent ->
     _inv_confirmmsg_correct stmap psent_history src c
 }.
 
 Definition psent_invariant stmap psent := _psent_invariant stmap psent psent.
 
-Lemma psent_invariant_change stmap psent psent_history :
+Lemma psent_invariant_viewchange stmap psent psent_history :
   _psent_invariant stmap psent psent_history <->
   (forall p, In p psent -> _inv_msg_correct stmap psent_history p).
 Proof.
@@ -170,11 +196,14 @@ Proof.
   - intros p Hin.
     destruct p as (src, dst, msg, used).
     simpl.
-    destruct msg as [ v s | c ].
+    destruct msg as [ v ls s | lc | c ].
     all: eapply H; eauto.
   - constructor.
-    + intros src dst v sig b Hin_psent H_src_nonbyz.
-      specialize (H (mkP src dst (SubmitMsg v sig) b) Hin_psent).
+    + intros src dst v lsig sig b Hin_psent H_src_nonbyz.
+      specialize (H (mkP src dst (SubmitMsg v lsig sig) b) Hin_psent).
+      now apply H.
+    + intros src dst lc b Hin_psent.
+      specialize (H (mkP src dst (LightConfirmMsg lc) b) Hin_psent).
       now apply H.
     + intros src dst c b Hin_psent.
       specialize (H (mkP src dst (ConfirmMsg c) b) Hin_psent).
@@ -200,7 +229,9 @@ Tactic Notation "simpl_pkt" :=
   simpl dst in *; simpl src in *; simpl msg in *; simpl consumed in *.
 
 Tactic Notation "simpl_state" :=
-  simpl id in *; simpl conf in *; simpl cert in *; simpl received_certs in *.
+  simpl id in *; simpl conf in *; simpl submitted_value in *; simpl from_set in *;
+  simpl collected_lightsigs in *; simpl collected_sigs in *; simpl received_lightcerts in *; 
+  simpl received_certs in *.
 
 Tactic Notation "destruct_procMsg" "as_" ident(st') ident(ms) "eqn_" ident(E) :=
   match goal with 
@@ -217,12 +248,13 @@ Tactic Notation "destruct_procInt" "as_" ident(st') ident(ms) "eqn_" ident(E) :=
 (* destruct and unify at the same time *)
 
 Tactic Notation "destruct_localState" ident(w) ident(n) 
-  "as_" ident(conf) ident(c) ident(rcerts) "eqn_" ident(E) :=
+  "as_" ident(conf) ident(ov) ident(from) ident(lsigs) ident(sigs) 
+  ident(rlcerts) ident(rcerts) "eqn_" ident(E) :=
   let n' := fresh n in
   let Htmp := fresh "Htmp" in
   match goal with 
   | H : Coh w |- _ =>
-    destruct (localState w n) as (n', conf, c, rcerts) eqn:E; 
+    destruct (localState w n) as (n', conf, ov, from, lsigs, sigs, rlcerts, rcerts) eqn:E; 
     assert (n' = n) as Htmp by
       (now rewrite <- (id_coh _ H n), E); 
     subst n'
@@ -260,26 +292,59 @@ Inductive psent_mnt : bool -> PacketSoup -> PacketSoup -> Prop :=
     (Hsubset : incl psent2 psent') : 
       psent_mnt true psent1 psent'.
 
-Definition node_upd_nsigs (st : State) conf nsigs :=
-  let: Node n _ (v, _) rcerts := st in
-  Node n conf (v, nsigs) rcerts.
+Definition node_upd_collect_submit (st : State) conf from lsigs sigs :=
+  let: Node n _ ov _ _ _ rlcerts rcerts := st in
+  Node n conf ov from lsigs sigs rlcerts rcerts.
+
+Definition node_upd_rlcerts (st : State) rlcerts :=
+  let: Node n conf ov from lsigs sigs _ rcerts := st in
+  Node n conf ov from lsigs sigs rlcerts rcerts.
 
 Definition node_upd_rcerts (st : State) rcerts :=
-  let: Node n conf cert _ := st in
-  Node n conf cert rcerts.
+  let: Node n conf ov from lsigs sigs rlcerts _ := st in
+  Node n conf ov from lsigs sigs rlcerts rcerts.
 
 (* since each time there is only one field being updated, no need to make 
     recursive assumptions *)
 
 Inductive state_mnt : bool -> State -> State -> Prop :=
   | StateEq (st : State) : state_mnt false st st
-  | StateCertMnt (st : State) nsigs
-    (Hmnt : if conf st then nsigs = snd (cert st)
-      else incl (snd (cert st)) nsigs) : 
-    state_mnt true st (node_upd_nsigs st 
-      ((conf st) || (Nat.leb (N - t0) (length nsigs))) nsigs)
+  (*
+  | StateCertMnt (st : State) (bundled_content : list (Address * LightSignature * Signature))
+    (Hmnt : match st.(submitted_value) with None => True
+      | Some _ => 
+        if st.(conf) 
+        then bundled_content = zip_from_lsigs_sigs st
+        else incl (zip_from_lsigs_sigs st) bundled_content
+      end) :
+    state_mnt true st
+    (* this is too ... *)
+    (let: (tmp, sigs) := List.split bundled_content in
+    let: (from, lsigs) := List.split tmp in 
+    node_upd_collect_submit st 
+      (st.(conf) || (Nat.leb (N - t0) (length bundled_content))) 
+      from lsigs sigs)
+  *)
+  | StateCertMnt (st : State) from lsigs sigs
+    (Hlen : length from = length lsigs /\ length from = length sigs)
+    (Hmnt : match st.(submitted_value) with None => True
+      | Some _ => 
+        if st.(conf) 
+        then from = st.(from_set) /\ lsigs = st.(collected_lightsigs) /\
+          sigs = st.(collected_sigs)
+        else incl st.(from_set) from /\ incl st.(collected_lightsigs) lsigs /\
+          incl st.(collected_sigs) sigs
+      end) :
+    state_mnt true st
+    (* this is too ... *)
+    (node_upd_collect_submit st 
+      (st.(conf) || (Nat.leb (N - t0) (length from))) 
+      from lsigs sigs)
+  | StateRLCertsMnt (st : State) rlcerts
+    (Hmnt : incl st.(received_lightcerts) rlcerts) : 
+    state_mnt true st (node_upd_rlcerts st rlcerts)
   | StateRCertsMnt (st : State) rcerts
-    (Hmnt : incl (received_certs st) rcerts) : 
+    (Hmnt : incl st.(received_certs) rcerts) : 
     state_mnt true st (node_upd_rcerts st rcerts).
 
 Local Hint Constructors state_mnt : ABCinv.
@@ -377,14 +442,38 @@ Proof.
     2: apply Hcoh.
     inversion Hsmnt; subst.
     1: apply Hcoh.
-    all: destruct (stmap n0) as (?, ?, (?, ?), ?) eqn:E.
-    all: simpl.
+    all: destruct (stmap n0) eqn:E.
+    all: simpl in *.
     all: transitivity (id (stmap n0)); [ now rewrite E | apply Hcoh ].
   - intros n0 Hninvalid.
     unfold holds, upd. 
     simpl.
     destruct (Address_eqdec n n0); try eqsolve.
     now apply Hcoh in Hninvalid.
+Qed.
+
+Lemma psent_mnt_preserve_lcert_correct b psent psent'
+  (Hpmnt : psent_mnt b psent psent')
+  lc (Hcc : lcert_correct psent lc) : lcert_correct psent' lc.
+Proof.
+  destruct lc as (v, cs).
+  revert v cs Hcc. 
+  induction Hpmnt; subst; intros.
+  - assumption.
+  - hnf in Hcc |- *.
+    intros lsigs -> Hcv n lsig Hin' H_n_nonbyz Hveri.
+    specialize (Hcc _ eq_refl Hcv _ _ Hin' H_n_nonbyz Hveri).
+    hnf in Hcc |- *.
+    destruct Hcc as (dst & used & sig & Hwitness).
+    apply In_consume with (p:=p) in Hwitness; eauto.
+  - apply IHHpmnt in Hcc.
+    hnf in Hcc |- *.
+    intros lsigs -> Hcv n lsig Hin' H_n_nonbyz Hveri.
+    specialize (Hcc _ eq_refl Hcv _ _ Hin' H_n_nonbyz Hveri).
+    hnf in Hcc |- *.
+    destruct Hcc as (dst & used & sig & Hwitness).
+    exists dst, used, sig.
+    now apply Hsubset.
 Qed.
 
 Lemma psent_mnt_preserve_cert_correct b psent psent'
@@ -399,35 +488,44 @@ Proof.
     intros n sig Hin' H_n_nonbyz Hveri.
     specialize (Hcc _ _ Hin' H_n_nonbyz Hveri).
     hnf in Hcc |- *.
-    destruct Hcc as (dst & used & Hwitness).
+    destruct Hcc as (dst & used & lsig & Hwitness).
     apply In_consume with (p:=p) in Hwitness; eauto.
   - apply IHHpmnt in Hcc.
     hnf in Hcc |- *.
     intros n sig Hin' H_n_nonbyz Hveri.
     specialize (Hcc _ _ Hin' H_n_nonbyz Hveri).
     hnf in Hcc |- *.
-    destruct Hcc as (dst & used & Hwitness).
+    destruct Hcc as (dst & used & lsig & Hwitness).
     apply Hsubset in Hwitness.
-    now exists dst, used.
+    now exists dst, used, lsig.
 Qed.
 
 Lemma psent_mnt_preserve_node_invariant b psent psent'
   (Hpmnt : psent_mnt b psent psent')
   st (Hnodeinv : node_invariant psent st) : node_invariant psent' st.
 Proof.
-  destruct st as (n, conf, (v, nsigs), rcerts).
+  destruct st as (n, conf, ov, from, lsigs, sigs, rlcerts, rcerts).
   constructor; simpl_state.
-  - intros n0 sig Hin_nsig.
+  - destruct ov as [ v | ]; auto.
+    intros n0 lsig sig Hin_nsig.
     eapply In_psent_mnt'; eauto.
     now apply Hnodeinv.
-  - intros v0 nsigs0 Hin_rcerts.
-    destruct Hnodeinv as (_, Hnodeinv, _, _).
-    specialize (Hnodeinv v0 nsigs0 Hin_rcerts).
+  - intros lc Hin_rlcerts.
+    destruct Hnodeinv as (_, Hnodeinv, _, _, _).
+    specialize (Hnodeinv lc Hin_rlcerts).
     simpl in Hnodeinv.
     destruct Hnodeinv as (src & H).
     exists src.
     eapply In_psent_mnt'; eauto.
-  - destruct Hnodeinv as (_, _, Hnodeinv, _).
+  - intros c Hin_rcerts.
+    destruct Hnodeinv as (_, _, Hnodeinv, _, _).
+    specialize (Hnodeinv c Hin_rcerts).
+    simpl in Hnodeinv.
+    destruct Hnodeinv as (src & H).
+    exists src.
+    eapply In_psent_mnt'; eauto.
+  - destruct ov as [ v | ]; auto.
+    destruct Hnodeinv as (_, _, _, Hnodeinv, _).
     simpl_state.
     intros -> n0 Hn0valid.
     specialize (Hnodeinv eq_refl _ Hn0valid).
@@ -437,6 +535,19 @@ Proof.
   - apply Hnodeinv.
 Qed.
 
+Fact lightcert_conflict_check_incl rlcerts rlcerts' 
+  (Hincl : incl rlcerts rlcerts') 
+  (Hcheck : lightcert_conflict_check rlcerts) :
+  lightcert_conflict_check rlcerts'.
+Proof.
+  apply lightcert_conflict_check_correct in Hcheck.
+  apply lightcert_conflict_check_correct.
+  destruct Hcheck as (v1 & v2 & cs1 & cs2 & Hvneq & Hin1 & Hin2).
+  exists v1, v2, cs1, cs2.
+  split; [ assumption | ].
+  split; now apply Hincl.
+Qed.
+
 Lemma state_mnt_preserve_psent_invariant ob stmap n st'
   (Hsmnt : state_mnt ob (stmap n) st')
   stmap' (Hpeq : forall x, stmap' x = (upd n st' stmap) x)
@@ -444,19 +555,37 @@ Lemma state_mnt_preserve_psent_invariant ob stmap n st'
   psent_invariant stmap' psent.
 Proof.
   constructor.
-  - intros src dst v sig b Hin_psent H_src_nonbyz.
+  - intros src dst v lsig sig b Hin_psent H_src_nonbyz.
     rewrite -> Hpeq.
     unfold upd.
     destruct (Address_eqdec n src) as [ -> | Hneq ].
     2: eapply Hpsentinv; eauto.
     inversion Hsmnt; subst.
-    all: destruct (stmap src) as (?, ?, (v0, ?), ?) eqn:E.
+    all: destruct (stmap src) as (?, ?, v0, ?, ?, ?, ?, ?) eqn:E.
     all: simpl.
-    all: replace v0 with (fst (cert (stmap src))); [ eapply Hpsentinv; eauto | now rewrite E ].
-  - intros src dst c b Hin_psent.
+    all: replace v0 with (stmap src).(submitted_value); [ eapply Hpsentinv; eauto | now rewrite E ].
+  - intros src dst lc b Hin_psent.
+    (* TODO exploit some symmetry of light certs and full certs? *)
     simpl.
     rewrite -> Hpeq.
-    destruct Hpsentinv as (_, Hpsentinv).
+    destruct Hpsentinv as (_, Hpsentinv, _).
+    specialize (Hpsentinv src dst lc b Hin_psent).
+    simpl in Hpsentinv.
+    destruct (is_byz src) eqn:H_src_byz.
+    1: assumption.
+    unfold upd.
+    destruct (Address_eqdec n src) as [ -> | Hneq ].
+    2: eapply Hpsentinv; eauto.
+    destruct (stmap src) as (?, conf0, v0, ?, ?, ?, ?, ?) eqn:E.
+    inversion Hsmnt; subst.
+    all: simpl_state; try assumption.
+    destruct v0 as [ v0 | ]; try eqsolve.
+    destruct conf0; eqsolve.
+  - intros src dst c b Hin_psent.
+    (* TODO exploit some symmetry of light certs and full certs? *)
+    simpl.
+    rewrite -> Hpeq.
+    destruct Hpsentinv as (_, _, Hpsentinv).
     specialize (Hpsentinv src dst c b Hin_psent).
     simpl in Hpsentinv.
     destruct (is_byz src) eqn:H_src_byz.
@@ -464,15 +593,17 @@ Proof.
     unfold upd.
     destruct (Address_eqdec n src) as [ -> | Hneq ].
     2: eapply Hpsentinv; eauto.
-    destruct (stmap src) as (?, conf0, (v0, nsigs0), ?) eqn:E.
+    destruct (stmap src) as (?, conf0, v0, ?, ?, ?, rlcerts0, ?) eqn:E.
     inversion Hsmnt; subst.
-    all: simpl_state.
-    + assumption.
-    + destruct conf0.
-      * subst nsigs. 
-        assumption.
-      * eqsolve.
-    + assumption.
+    all: simpl_state; try assumption.
+    all: destruct v0 as [ v0 | ]; try eqsolve.
+    all: destruct conf0; try eqsolve.
+    + unfold node_upd_collect_submit.
+      simpl.
+      eqsolve.
+    + (* needs a small subset property *)
+      pose proof (lightcert_conflict_check_incl _ _ Hmnt).
+      intuition.
 Qed.
 
 Fact psent_equiv_preserve_psent_invariant stmap psent psent'
@@ -483,11 +614,25 @@ Proof.
   inversion Hpmnt0; subst.
   - assumption.
   - constructor.
-    + intros src dst v sig b Hin_psent H_src_nonbyz.
+    + intros src dst v lsig sig b Hin_psent H_src_nonbyz.
       apply In_consume_converse in Hin_psent.
       2: assumption.
       destruct Hin_psent.
       eapply Hpsentinv; eauto.
+    + intros src dst lc b Hin_psent.
+      simpl.
+      apply In_consume_converse in Hin_psent.
+      2: assumption.
+      destruct Hin_psent.
+      match goal with 
+      |- if ?cond then ?im -> _ else ?g => 
+        cut (if cond then im -> lcert_correct psent lc else g)
+      end.
+      * destruct (is_byz src).
+        2: auto.
+        intros.
+        eapply psent_mnt_preserve_lcert_correct; eauto.
+      * eapply Hpsentinv; eauto.
     + intros src dst c b Hin_psent.
       simpl.
       apply In_consume_converse in Hin_psent.

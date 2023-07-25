@@ -109,6 +109,8 @@ Definition lightcert_conflict_check_spec (lcc : list LightCertificate -> bool) :
       In (v1, cs1) lcerts /\
       In (v2, cs2) lcerts.
 
+Axiom lightcert_conflict_check_correct : lightcert_conflict_check_spec lightcert_conflict_check.
+
 Definition genproof_can_detect (genproof : list Certificate -> list Address) : Prop :=
   forall certs n, In n (genproof certs) <-> 
     exists v1 v2 sig1 sig2 nsigs1 nsigs2,

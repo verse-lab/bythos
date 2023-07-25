@@ -27,6 +27,22 @@ Qed.
 
 Inductive InternalTransition :=
   | SubmitIntTrans | LightCertCheckIntTrans.
+(* TODO 
+    If the light certificate conflict check is modelled as an internal transition, 
+    then possibly the "eventual Byzantine detection" cannot be expressed easily. 
+
+    However, in order to trigger the check, the conf must be true (which is due to the delivery
+    of the (N-t0)-th submit message) and there must be two conflicting light certificates
+    (which is due to the delivery of some LightConfirmMsg).  
+
+    They are not synchronized, so we should append "monitors" to the above
+    two delivery actions, if not to make light certificate check internal. 
+
+    This is troublesome for now. I suppose there would be a better way to systematically 
+    frame out such monitors in the proof (maybe IVy has done something similar). 
+
+  Wait. This may be done with a new kind of transitions?
+*)
 
 Record Packet := mkP {src: Address; dst: Address; msg: Message; consumed: bool}.
 
@@ -124,6 +140,16 @@ Proof.
     now destruct (in_dec Address_eqdec n valid_nodes) as [ Hin | Hnotin ].
 Qed.
 *)
+
+Definition zip_from_lsigs (st : State) := 
+  List.combine st.(from_set) st.(collected_lightsigs).
+
+Definition zip_from_sigs (st : State) := 
+  List.combine st.(from_set) st.(collected_sigs).
+
+Definition zip_from_lsigs_sigs (st : State) := 
+  List.combine (List.combine st.(from_set) st.(collected_lightsigs)) st.(collected_sigs).
+
 Definition procMsg (st : State) (src : Address) (msg : Message) : State * list Packet :=
   let: Node n conf ov from lsigs sigs rlcerts rcerts := st in
   match msg with
@@ -195,7 +221,7 @@ Definition procInt (st : State) (tr : InternalTransition) :=
         (if lightcert_conflict_check rlcerts
         then 
         (* send out full certificates only in this case *)
-          let: ps := broadcast n (ConfirmMsg (vthis, List.combine from sigs)) in
+          let: ps := broadcast n (ConfirmMsg (vthis, zip_from_sigs st)) in
           (st, ps)
         else (st, nil))
       else (st, nil)
