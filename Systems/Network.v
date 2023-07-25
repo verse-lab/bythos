@@ -66,6 +66,9 @@ Definition lcert_correct (psent : PacketSoup) (lc : LightCertificate) : Prop :=
       light_verify v lsig n ->
       lightsig_seen_in_history n v lsig psent. 
 
+Definition lcert_correct_threshold (psent : PacketSoup) (lc : LightCertificate) : Prop :=
+  (num_byz < N - (t0 + t0) -> lcert_correct psent lc).
+
 Definition consume (p : Packet) (psent : PacketSoup) :=
   (receive_pkt p) :: (List.remove Packet_eqdec p psent).
 
@@ -106,7 +109,7 @@ Inductive system_step (w w' : World) : Prop :=
 | ByzLightConfirm (src dst : Address) (lc : LightCertificate) of
       (* Coh w & *)
       is_byz src &
-      (num_byz <= t0 -> lcert_correct (sentMsgs w) lc) &
+      lcert_correct_threshold (sentMsgs w) lc &
       w' = mkW (localState w)
                ((mkP src dst (LightConfirmMsg lc) false) :: (sentMsgs w))
 
