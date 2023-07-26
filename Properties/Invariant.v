@@ -1550,6 +1550,26 @@ Proof.
   - now apply inv_step in Hstep.
 Qed.
 
+Local Fact zip_aux {A B C : Type} (l1 : list A) : forall (l2 : list B) (l3 : list C)
+  (Hsize1 : length l1 = length l2) (Hsize2 : length l1 = length l3)
+  a c (Hin : In (a, c) (combine l1 l3)),
+  exists b, In (a, b, c) (combine (combine l1 l2) l3).
+Proof.
+  induction l1 as [ | aa l1 IH ]; intros.
+  - now simpl in Hin.
+  - destruct l2 as [ | bb l2 ], l3 as [ | cc l3 ]; simpl in Hsize1, Hsize2; try lia.
+    simpl in Hin |- *.
+    destruct Hin as [ Hin | Hin ].
+    + injection_pair Hin.
+      exists bb.
+      now left.
+    + injection Hsize1 as Hsize1.
+      injection Hsize2 as Hsize2.
+      specialize (IH _ _ Hsize1 Hsize2 _ _ Hin).
+      destruct IH as (b & IH).
+      eauto.
+Qed.
+
 Lemma inv_sound_weak w (Hinv : invariant w)
   n (H_n_nonbyz : is_byz n = false)
   nb (Hacc : In nb (genproof (received_certs (localState w n)))) :
@@ -1566,43 +1586,54 @@ Proof.
   destruct Hinv as (Hcoh, Hnodeinv, Hpsentinv).
   pose proof (Hnodeinv n H_n_nonbyz) as Hnodeinv_n.
   unfold holds in Hnodeinv_n.
-  destruct Hnodeinv_n as (Hnodeinv_nsigs_n, Hnodeinv_rcerts_n, _, (_, _, Hnodeinv_rcerts_mixin, _)).
+  destruct Hnodeinv_n as (_, _, Hrcerts_trace, _, ((_ & Hsize2), _, _, _, Hrcerts, _)).
   (* sig1, sig2 must be valid *)
-  pose proof (Hnodeinv_rcerts_mixin _ _ Hin1) as (Hnsigs_valid1 & _ & _).
-  pose proof (Hnodeinv_rcerts_mixin _ _ Hin2) as (Hnsigs_valid2 & _ & _).
+  pose proof (Hrcerts _ _ Hin1) as (Hnsigs_valid1 & _ & _).
+  pose proof (Hrcerts _ _ Hin2) as (Hnsigs_valid2 & _ & _).
   pose proof Hin_nsigs1 as Hin_nsigs1_backup.
   pose proof Hin_nsigs2 as Hin_nsigs2_backup.
   eapply valid_cert_valid_sig in Hin_nsigs1, Hin_nsigs2; eauto.
   subst sig1 sig2.
-  apply Hnodeinv_rcerts_n in Hin1, Hin2.
+  apply Hrcerts_trace in Hin1, Hin2.
   destruct Hin1 as (src1 & Hin1), Hin2 as (src2 & Hin2).
   unfold psent_invariant in Hpsentinv.
-  rewrite -> psent_invariant_change in Hpsentinv.
+  rewrite -> psent_invariant_viewchange in Hpsentinv.
   apply Hpsentinv in Hin1, Hin2.
+  (* TODO slightly overlapped with the behave_byz_is_byz proof *)
   assert (forall v nsigs src dst used
     (Hin : _inv_msg_correct (localState w) (sentMsgs w) (mkP src dst (ConfirmMsg (v, nsigs)) used))
     (Hin_nsigs : In (nb, sign v (key_map nb)) nsigs),
-    v = fst (cert (localState w nb))) as Htraceback.
+    Some v = (localState w nb).(submitted_value)) as Htraceback.
   {
     intros v0 nsigs0 src0 dst0 used0 Hin Hin_nsigs.
     simpl in Hin.
     destruct (is_byz src0) eqn:Ebyz0.
     - specialize (Hin _ _ Hin_nsigs E (correct_sign_verify_ok _ _)).
-      unfold seen_in_history in Hin.
-      destruct Hin as (dst & used & Hin).
+      unfold sig_seen_in_history in Hin.
+      (* overlapping *)
+      destruct Hin as (dst & used & ls & Hin).
       apply Hpsentinv in Hin.
       simpl in Hin.
       intuition.
-    - destruct Hin as (_ & Hcert).
+    - destruct Hin as (_ & _ & Ev0 & Hcert).
       (* instantiate another nodeinv *)
       specialize (Hnodeinv src0 Ebyz0).
       unfold holds in Hnodeinv.
-      destruct Hnodeinv as (Hnodeinv_nsigs, _, _, _).
-      rewrite <- Hcert in Hnodeinv_nsigs.
-      apply Hnodeinv_nsigs in Hin_nsigs.
+      destruct Hnodeinv as (Hsubmit_trace, _, _, _, ((Hsize1' & Hsize2'), _, _, _, _, _)).
+      rewrite <- Ev0, -> (id_coh _ Hcoh src0) in Hsubmit_trace.
+      (* TODO here it actually indicates some inconvenience of not saving the complete submit message *)
+      assert (exists lsig, In (nb, lsig, sign v0 (key_map nb))
+        (zip_from_lsigs_sigs (localState w src0))) as (lsig & Hin_zip).
+      { 
+        subst.
+        unfold zip_from_lsigs_sigs, zip_from_sigs in *.
+        apply zip_aux; auto.
+      }
+      apply Hsubmit_trace in Hin_zip.
+      (* overlapping *)
       (* coming back! *)
-      apply Hpsentinv in Hin_nsigs.
-      simpl in Hin_nsigs.
+      apply Hpsentinv in Hin_zip.
+      simpl in Hin_zip.
       intuition.
   }
   apply Htraceback in Hin1.
@@ -1615,11 +1646,10 @@ Qed.
 (* supplementary *)
   
 Definition behave_byz n psent :=
-  exists v1 v2 sig1 sig2 dst1 dst2, 
+  exists v1 v2 sig1 sig2 lsig1 lsig2 dst1 dst2, 
     v1 <> v2 /\
-    In (mkP n dst1 (SubmitMsg v1 sig1) true) psent /\
-    In (mkP n dst2 (SubmitMsg v2 sig2) true) psent /\
-    verify v1 sig1 n /\ verify v2 sig2 n.
+    In (mkP n dst1 (SubmitMsg v1 lsig1 sig1) true) psent /\
+    In (mkP n dst2 (SubmitMsg v2 lsig2 sig2) true) psent.
 
 Lemma behave_byz_is_byz n psent stmap
   (Hpsentinv : psent_invariant stmap psent)
@@ -1628,9 +1658,9 @@ Proof.
   (* prove by contradiction *)
   destruct (is_byz n) eqn:E.
   1: reflexivity.
-  destruct Hbyz as (v1 & v2 & sig1 & sig2 & dst1 & dst2 & Hvneq & Hin1 & Hin2 & Hveri1 & Hveri2).
+  destruct Hbyz as (v1 & v2 & lsig1 & lsig2 & sig1 & sig2 & dst1 & dst2 & Hvneq & Hin1 & Hin2).
   hnf in Hpsentinv.
-  rewrite -> psent_invariant_change in Hpsentinv.
+  rewrite -> psent_invariant_viewchange in Hpsentinv.
   apply Hpsentinv in Hin1, Hin2.
   simpl in Hin1, Hin2.
   eqsolve.
@@ -1740,6 +1770,7 @@ Proof.
     now apply inv_2_step in Hstep.
 Qed.
 
+(*
 Lemma accountability w (Hinv : invariant w) (Hinv2 : invariant_2 w)
   n1 (H_n1_nonbyz : is_byz n1 = false) (Hn1valid : valid_node n1)
   n2 (H_n2_nonbyz : is_byz n2 = false) (Hn2valid : valid_node n2)
@@ -1845,6 +1876,7 @@ Proof.
     eapply inv_sound_weak with (n:=n1); eauto.
     now apply Hcommonproof.
 Qed.
+*)
 
 End Main_Proof.
 
