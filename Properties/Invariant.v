@@ -1550,6 +1550,23 @@ Proof.
   - now apply inv_step in Hstep.
 Qed.
 
+Local Fact zip_aux_pre {A B : Type} (l1 : list A) : forall (l2 : list B)
+  (Hsize : length l1 = length l2)
+  a (Hin : In a l1), exists b, In (a, b) (combine l1 l2).
+Proof.
+  induction l1 as [ | aa l1 IH ]; intros.
+  - now simpl in Hin.
+  - destruct l2 as [ | bb l2 ]; simpl in Hsize; try lia.
+    simpl in Hin |- *.
+    destruct Hin as [ <- | Hin ].
+    + exists bb.
+      now left.
+    + injection Hsize as Hsize.
+      specialize (IH _ Hsize _ Hin).
+      destruct IH as (b & IH).
+      eauto.
+Qed.
+
 Local Fact zip_aux {A B C : Type} (l1 : list A) : forall (l2 : list B) (l3 : list C)
   (Hsize1 : length l1 = length l2) (Hsize2 : length l1 = length l3)
   a c (Hin : In (a, c) (combine l1 l3)),
@@ -1730,6 +1747,104 @@ Proof.
       * apply Hcert_valid1 in Hin'.
         now simpl in Hin'.
 Qed.
+
+Section Proof_of_Agreement.
+
+  (*
+  Definition has_consensus (stmap : StateMap) :=
+    exists v : Value, Forall (fun n => if is_byz n then True 
+      else (stmap n).(conf) -> (stmap n).(submitted_value) = Some v) valid_nodes.
+  *)
+
+  Definition consensus_broken (stmap : StateMap) :=
+    exists n1 n2 v1 v2, 
+      n1 <> n2 /\
+      valid_node n1 /\
+      valid_node n2 /\
+      is_byz n1 = false /\
+      is_byz n2 = false /\
+      v1 <> v2 /\
+      (stmap n1).(submitted_value) = Some v1 /\
+      (stmap n2).(submitted_value) = Some v2 /\
+      (stmap n1).(conf) /\
+      (stmap n2).(conf).
+
+  (* proof by reducing to absurd, using weak soundess *)
+
+  Lemma agreement w (Hinv : invariant w) (H_byz_minor : num_byz < N - (t0 + t0)) :
+    consensus_broken (localState w) -> False.
+  Proof.
+    intros (n1 & n2 & v1 & v2 & Hnneq & Hn1valid & Hn2valid & H_n1_nonbyz & H_n2_nonbyz &
+      Hvneq & Hn1v1 & Hn2v2 & Hn1conf & Hn2conf).
+    pose proof (coh _ Hinv) as Hcoh.
+    destruct_localState w n1 as_ conf1 ov1 from1 lsigs1 sigs1 rlcerts1 rcerts1 eqn_ En1.
+    destruct_localState w n2 as_ conf2 ov2 from2 lsigs2 sigs2 rlcerts2 rcerts2 eqn_ En2.
+    simpl_state.
+    destruct conf1, conf2; try eqsolve.
+    subst ov1 ov2.
+    (* get to know the size of sigs *)
+    pose proof Hinv as (_, Hnodeinv, _).
+    pose proof (Hnodeinv n1 H_n1_nonbyz) as Hnodeinv1.
+    pose proof (Hnodeinv n2 H_n2_nonbyz) as Hnodeinv2.
+    unfold holds in Hnodeinv1, Hnodeinv2.
+    rewrite -> En1 in Hnodeinv1.
+    rewrite -> En2 in Hnodeinv2.
+    destruct Hnodeinv1 as (Hsubmit_trace1, _, _, _, ((Hsize1 & Hsize1'), Hconf_size1, Hfrom_nodup1, _, _, Hcoll_valid1)).
+    destruct Hnodeinv2 as (Hsubmit_trace2, _, _, _, ((Hsize2 & Hsize2'), Hconf_size2, Hfrom_nodup2, _, _, Hcoll_valid2)).
+    simpl_state.
+    simpl in Hsubmit_trace1, Hsubmit_trace2, Hconf_size1, Hconf_size2, Hcoll_valid1, Hcoll_valid2.
+    (* get to know the size of quorums *)
+    destruct Hcoll_valid1 as (Ev1 & _ & Hcert_valid1), Hcoll_valid2 as (Ev2 & _ & Hcert_valid2).
+    unfold zip_from_sigs in Hcert_valid1, Hcert_valid2.
+    simpl_state.
+    epose proof (conflicting_cert_quorum_size v1 v2 (combine from1 sigs1) (combine from2 sigs2)
+      Hcert_valid1 (NoDup_combine_l from1 sigs1 Hfrom_nodup1) ?[Goalq1] 
+      Hcert_valid2 (NoDup_combine_l from2 sigs2 Hfrom_nodup2) ?[Goalq2]) as Hsize.
+    [Goalq1]: rewrite -> combine_length; lia.
+    [Goalq2]: rewrite -> combine_length; lia.
+    rewrite <- map_length with (f:=fst), -> combine_map_fst in Hsize.
+    2: assumption.
+    pose proof (filter_compose fst (fun n' => in_dec Address_eqdec n' from1) (combine from2 sigs2)) as Htmp.
+    simpl in Htmp.
+    rewrite <- Htmp, -> combine_map_fst in Hsize.
+    2: assumption.
+    clear Htmp.
+    assert (Forall is_byz (filter (fun n' => in_dec Address_eqdec n' from1) from2)) as Hbyz.
+    {
+      (* trace back *)
+      apply Forall_forall.
+      intros n (Hin2 & Hin1')%filter_In.
+      unfold is_left in Hin1'.
+      destruct (in_dec Address_eqdec n from1) as [ Hin1 | ]; try discriminate.
+      eapply behave_byz_is_byz.
+      1: apply (psent_inv _ Hinv).
+      pose proof (zip_aux_pre _ _ Hsize1' _ Hin1) as (sig1 & Hin1_nsig).
+      pose proof (zip_aux_pre _ _ Hsize2' _ Hin2) as (sig2 & Hin2_nsig).
+      pose proof (zip_aux _ _ _ Hsize1 Hsize1' _ _ Hin1_nsig) as (lsig1 & Hin1_submit).
+      pose proof (zip_aux _ _ _ Hsize2 Hsize2' _ _ Hin2_nsig) as (lsig2 & Hin2_submit).
+      unfold zip_from_lsigs_sigs in *.
+      simpl_state.
+      apply Hsubmit_trace1 in Hin1_submit.
+      apply Hsubmit_trace2 in Hin2_submit.
+      hnf.
+      exists v1, v2, sig1, sig2, lsig1, lsig2, n1, n2.
+      intuition.
+    }
+    assert (length (filter (fun n' => in_dec Address_eqdec n' from1) from2) <= num_byz) as Hgoal.
+    {
+      unfold num_byz.
+      apply NoDup_incl_length.
+      - now apply NoDup_filter.
+      - intros n Hin.
+        eapply Forall_forall with (x:=n) in Hbyz; try assumption.
+        pose proof (byz_is_valid _ Hbyz) as Hvalid.
+        now apply filter_In.
+    }
+    (* now simple math *)
+    lia.
+  Qed.
+
+End Proof_of_Agreement.
 
 Lemma conflicting_cert_quorum_in_proof rcerts v1 v2 nsigs1 nsigs2
   (Hvneq : v1 <> v2)

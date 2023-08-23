@@ -54,3 +54,40 @@ Proof.
   intros.
   now apply H.
 Qed.
+
+Fact NoDup_combine_l [A B : Type] (l1 : list A) (l2 : list B) (H : NoDup l1) :
+  NoDup (combine l1 l2).
+Proof.
+  revert l2.
+  induction l1 as [ | a l1 IH ]; intros; simpl.
+  1: constructor.
+  destruct l2 as [ | b l2 ].
+  1: constructor.
+  rewrite -> NoDup_cons_iff in H |- *.
+  split.
+  - intros HH.
+    now apply in_combine_l in HH.
+  - now apply IH.
+Qed.
+
+Lemma filter_compose [A B : Type] (f : A -> B) (g : B -> bool) (l : list A) :
+  filter g (map f l) = map f (filter (fun x => g (f x)) l).
+Proof.
+  induction l as [ | x l IH ].
+  - reflexivity.
+  - simpl.
+    rewrite -> ! IH.
+    now destruct (g (f x)).
+Qed.
+
+Lemma combine_map_fst [A B : Type] (l1 : list A) (l2 : list B) (H : length l1 = length l2) :
+  map fst (combine l1 l2) = l1.
+Proof.
+  revert l2 H.
+  induction l1 as [ | x l1 IH ]; intros; simpl in H |- *; 
+    destruct l2 as [ | y l2 ]; simpl in H |- *; try discriminate.
+  - reflexivity.
+  - f_equal.
+    apply IH.
+    now injection H.
+Qed.
