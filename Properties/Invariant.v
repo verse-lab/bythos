@@ -1769,7 +1769,8 @@ Section Proof_of_Agreement.
       (stmap n1).(conf) /\
       (stmap n2).(conf).
 
-  (* proof by reducing to absurd, using weak soundess *)
+  (* proof by reducing to absurd, using "if a node behaves like a Byzantine node then it is"
+     still, that message is possibly not sent by itself, due to key sharing *)
 
   Lemma agreement w (Hinv : invariant w) (H_byz_minor : num_byz < N - (t0 + t0)) :
     consensus_broken (localState w) -> False.
