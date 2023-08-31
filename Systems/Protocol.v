@@ -71,11 +71,15 @@ Record State :=
     collected_lightsigs : list LightSignature;
     collected_sigs : list Signature;
     received_lightcerts : list LightCertificate;
-    received_certs : list Certificate
+    received_certs : list Certificate;
+    (* holding all pending submit messages *)
+    (* TODO add it here, or in a separate State type? *)
+    msg_buffer : list (Address * Message)
   }.
 
 Definition State_eqdec : forall (s1 s2 : State), {s1 = s2} + {s1 <> s2}.
   intros. decide equality.
+  - decide equality. decide equality; [ apply Message_eqdec | apply Address_eqdec ].
   - decide equality. apply Certificate_eqdec.
   - decide equality. apply LightCertificate_eqdec.
   - decide equality. apply Signature_eqdec.
@@ -87,7 +91,7 @@ Definition State_eqdec : forall (s1 s2 : State), {s1 = s2} + {s1 <> s2}.
 Qed.
 
 Definition Init (n : Address) : State :=
-  Node n false None nil nil nil nil nil.
+  Node n false None nil nil nil nil nil nil.
 
 Definition broadcast (src : Address) (m : Message) :=
   (map (fun x => mkP src x m false) valid_nodes).
@@ -151,13 +155,14 @@ Definition zip_from_lsigs_sigs (st : State) :=
   List.combine (List.combine st.(from_set) st.(collected_lightsigs)) st.(collected_sigs).
 
 Definition procMsg (st : State) (src : Address) (msg : Message) : State * list Packet :=
-  let: Node n conf ov from lsigs sigs rlcerts rcerts := st in
+  let: Node n conf ov from lsigs sigs rlcerts rcerts buffer := st in
   match msg with
   | SubmitMsg v lsig sig =>
     match ov with 
     | Some vthis => 
       if Value_eqdec v vthis 
       then
+        (* just to clarify: in the paper, this check is subsumed by Line 6 *)
         (if verify v sig src
         then 
           (if light_verify v lsig src
@@ -173,18 +178,20 @@ Definition procMsg (st : State) (src : Address) (msg : Message) : State * list P
             let: ps := (if conf' 
               then broadcast n (LightConfirmMsg (v, lightsig_combine lsigs'))
               else nil) in
-            let: st' := Node n conf' ov from' lsigs' sigs' rlcerts rcerts in
+            let: st' := Node n conf' ov from' lsigs' sigs' rlcerts rcerts buffer in
             (st', ps)
           else (st, nil))
         else (st, nil))
       else (st, nil)
-    | None => (st, nil)
+    | None => 
+      (* add to the buffer and wait *)
+      (Node n conf ov from lsigs sigs rlcerts rcerts ((src, msg) :: buffer), nil)
     end
   | LightConfirmMsg lc =>
     let: (v, cs) := lc in
     if combined_verify v cs
     then 
-      let: st' := Node n conf ov from lsigs sigs (lc :: rlcerts) rcerts in
+      let: st' := Node n conf ov from lsigs sigs (lc :: rlcerts) rcerts buffer in
       (st', nil)
     else (st, nil)
   | ConfirmMsg c => 
@@ -198,7 +205,7 @@ Definition procMsg (st : State) (src : Address) (msg : Message) : State * list P
       then
         (if verify_certificate v nsigs
         then 
-          let: st' := Node n conf ov from lsigs sigs rlcerts (c :: rcerts) in
+          let: st' := Node n conf ov from lsigs sigs rlcerts (c :: rcerts) buffer in
           (st', nil)
         else (st, nil))
       else (st, nil))
@@ -206,13 +213,21 @@ Definition procMsg (st : State) (src : Address) (msg : Message) : State * list P
   end.
 
 Definition procInt (st : State) (tr : InternalTransition) :=
-  let: Node n conf ov from lsigs sigs rlcerts rcerts := st in
+  let: Node n conf ov from lsigs sigs rlcerts rcerts buffer := st in
   match tr with
   | SubmitIntTrans => 
+    (* TODO constrain this to happen at most once? *)
     let: vthis := value_bft n in
     let: ps := broadcast n 
       (SubmitMsg vthis (light_sign vthis (lightkey_map n)) (sign vthis (key_map n))) in
-    (Node n conf (Some vthis) from lsigs sigs rlcerts rcerts, ps)
+    (* also start to process all messages in the buffer *)
+    (* not putting ps into the initial value of fold should be easier? *)
+    let: (st', ps') := 
+      fold_right
+        (fun nmsg stps => let: (res1, res2) := procMsg (fst stps) (fst nmsg) (snd nmsg) in
+          (res1, res2 ++ snd stps)) 
+        (Node n conf (Some vthis) from lsigs sigs rlcerts rcerts nil, nil) buffer in
+    (st', ps' ++ ps)
   | LightCertCheckIntTrans =>
     match ov with 
     | Some vthis => 

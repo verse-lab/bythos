@@ -1,4 +1,4 @@
-From Coq Require Import List Bool Lia ssrbool.
+From Coq Require Import List Bool Lia ssrbool ListSet.
 From Coq Require ssreflect.
 Import ssreflect.SsrSyntax.
 From ABCProtocol Require Import Types Address Protocol States Network ListFacts.
@@ -35,7 +35,10 @@ Record node_coh (st : State) : Prop := mkNodeCoh {
       light_signatures_valid v (zip_from_lsigs st) /\
       certificate_valid v (zip_from_sigs st)
     | None => st.(from_set) = nil
-    end
+    end;
+  inv_buffer_mixin: (st.(submitted_value) -> st.(msg_buffer) = nil) /\
+    Forall (fun nmsg => valid_node (fst nmsg) /\
+      (match snd nmsg with SubmitMsg _ _ _ => True | _ => False end)) st.(msg_buffer)
 }.
 
 Record node_invariant (psent : PacketSoup) (st : State) : Prop := mkNodeInv {
@@ -60,6 +63,9 @@ Record node_invariant (psent : PacketSoup) (st : State) : Prop := mkNodeInv {
       exists used, In (mkP st.(id) n (LightConfirmMsg (v, lightsig_combine st.(collected_lightsigs))) used) psent
     | None => True
     end;
+  (* have to guarantee that the messages in the buffer are already delivered *)
+  inv_buffer_received: 
+    Forall (fun nmsg => In (mkP (fst nmsg) st.(id) (snd nmsg) true) psent) st.(msg_buffer);
   inv_node_coh: node_coh st
 }.
 
@@ -137,6 +143,19 @@ Definition _inv_confirmmsg_correct stmap psent_history src c : Prop :=
       snd c = zip_from_sigs (stmap src)
 .
 
+Definition _inv_submitmsg_receive (stmap : StateMap) src dst v lsig sig (consumed : bool) : Prop := 
+  consumed -> is_byz dst = false ->
+  match (stmap dst).(submitted_value) with
+  | None => In (src, SubmitMsg v lsig sig) (stmap dst).(msg_buffer)
+  | Some ov => 
+    (* TODO the length condition may be more natural, but it would be hard to reason about 
+      without invariant 1? maybe replace it with the condition on conf *)
+    length (stmap dst).(from_set) < N - t0 ->
+    v = ov -> verify v sig src -> light_verify v lsig src ->
+      In src (stmap dst).(from_set) (* ths should be enough *)
+  end
+.
+
 (* by rule, a valid light/full certificate cannot be rejected by an honest node for no reason *)
 Definition _inv_lightconfirmmsg_receive (stmap : StateMap) dst v cs (consumed : bool) : Prop := 
   consumed -> is_byz dst = false ->
@@ -154,9 +173,10 @@ Definition _inv_msg_correct_2 stmap p : Prop :=
   match msg with
   | LightConfirmMsg (v, cs) => _inv_lightconfirmmsg_receive stmap dst v cs b
   | ConfirmMsg (v, nsigs) => _inv_confirmmsg_receive stmap dst v nsigs b
-  | _ => True
+  | SubmitMsg v lsig sig => _inv_submitmsg_receive stmap src dst v lsig sig b
   end.
 
+Global Arguments _inv_submitmsg_receive _ _ _ _ _ _ _/.
 Global Arguments _inv_lightconfirmmsg_receive _ _ _ _ _/.
 Global Arguments _inv_confirmmsg_receive _ _ _ _ _/.
 Global Arguments _inv_msg_correct_2 _ _/.
@@ -237,7 +257,7 @@ Tactic Notation "simpl_pkt" :=
 Tactic Notation "simpl_state" :=
   simpl id in *; simpl conf in *; simpl submitted_value in *; simpl from_set in *;
   simpl collected_lightsigs in *; simpl collected_sigs in *; simpl received_lightcerts in *; 
-  simpl received_certs in *.
+  simpl received_certs in *; simpl msg_buffer in *.
 
 Tactic Notation "destruct_procMsg" "as_" ident(st') ident(ms) "eqn_" ident(E) :=
   match goal with 
@@ -255,12 +275,12 @@ Tactic Notation "destruct_procInt" "as_" ident(st') ident(ms) "eqn_" ident(E) :=
 
 Tactic Notation "destruct_localState" ident(w) ident(n) 
   "as_" ident(conf) ident(ov) ident(from) ident(lsigs) ident(sigs) 
-  ident(rlcerts) ident(rcerts) "eqn_" ident(E) :=
+  ident(rlcerts) ident(rcerts) ident(buffer) "eqn_" ident(E) :=
   let n' := fresh n in
   let Htmp := fresh "Htmp" in
   match goal with 
   | H : Coh w |- _ =>
-    destruct (localState w n) as (n', conf, ov, from, lsigs, sigs, rlcerts, rcerts) eqn:E; 
+    destruct (localState w n) as (n', conf, ov, from, lsigs, sigs, rlcerts, rcerts, buffer) eqn:E; 
     assert (n' = n) as Htmp by
       (now rewrite <- (id_coh _ H n), E); 
     subst n'
@@ -293,26 +313,30 @@ Inductive psent_mnt : bool -> PacketSoup -> PacketSoup -> Prop :=
   | PsentEq (psent : PacketSoup) : psent_mnt false psent psent
   | PsentEq' (p : Packet) (psent : PacketSoup) 
     (Hin : In p psent) : psent_mnt false psent (consume p psent)
+  (* since we do not count, mutual in is enough (rather than permutation) *)
+  (* TODO replace PsentEq with this more general version? *)
+  | PsentEq'' (psent psent' : PacketSoup) 
+    (Hinin : forall p, In p psent <-> In p psent') : psent_mnt false psent psent'
   | PsentLe (psent1 psent2 psent' : PacketSoup) 
     (Hpsenteq : psent_mnt false psent1 psent2)
     (Hsubset : incl psent2 psent') : 
       psent_mnt true psent1 psent'.
 
 Definition node_submit (st : State) v :=
-  let: Node n conf _ from lsigs sigs rlcerts rcerts := st in
-  Node n conf (Some v) from lsigs sigs rlcerts rcerts.
+  let: Node n conf _ from lsigs sigs rlcerts rcerts buffer := st in
+  Node n conf (Some v) from lsigs sigs rlcerts rcerts buffer.
 
 Definition node_upd_collect_submit (st : State) conf from lsigs sigs :=
-  let: Node n _ ov _ _ _ rlcerts rcerts := st in
-  Node n conf ov from lsigs sigs rlcerts rcerts.
+  let: Node n _ ov _ _ _ rlcerts rcerts buffer := st in
+  Node n conf ov from lsigs sigs rlcerts rcerts buffer.
 
 Definition node_upd_rlcerts (st : State) rlcerts :=
-  let: Node n conf ov from lsigs sigs _ rcerts := st in
-  Node n conf ov from lsigs sigs rlcerts rcerts.
+  let: Node n conf ov from lsigs sigs _ rcerts buffer := st in
+  Node n conf ov from lsigs sigs rlcerts rcerts buffer.
 
 Definition node_upd_rcerts (st : State) rcerts :=
-  let: Node n conf ov from lsigs sigs rlcerts _ := st in
-  Node n conf ov from lsigs sigs rlcerts rcerts.
+  let: Node n conf ov from lsigs sigs rlcerts _ buffer := st in
+  Node n conf ov from lsigs sigs rlcerts rcerts buffer.
 
 (* since each time there is only one field being updated, no need to make 
     recursive assumptions *)
@@ -400,6 +424,11 @@ Proof.
     + exists true.
       match goal with H : context[Packet_eqdec ?p' p] |- _ => destruct (Packet_eqdec p' p); eauto end.
     + eauto. 
+  - exists used.
+    rewrite <- Hinin.
+    split.
+    + now destruct used.
+    + assumption. 
   - eapply IHHpmnt in Hin.
     firstorder.
 Qed.
@@ -485,6 +514,10 @@ Proof.
     hnf in Hcc |- *.
     destruct Hcc as (dst & used & sig & Hwitness).
     apply In_consume with (p:=p) in Hwitness; eauto.
+  - hnf in Hcc |- *.
+    unfold lightsig_seen_in_history in Hcc |- *.
+    setoid_rewrite <- Hinin.
+    assumption.
   - apply IHHpmnt in Hcc.
     hnf in Hcc |- *.
     intros Hcv lsigs -> n lsig Hin' H_n_nonbyz Hveri.
@@ -509,6 +542,10 @@ Proof.
     hnf in Hcc |- *.
     destruct Hcc as (dst & used & lsig & Hwitness).
     apply In_consume with (p:=p) in Hwitness; eauto.
+  - hnf in Hcc |- *.
+    unfold sig_seen_in_history in Hcc |- *.
+    setoid_rewrite <- Hinin.
+    assumption.
   - apply IHHpmnt in Hcc.
     hnf in Hcc |- *.
     intros n sig Hin' H_n_nonbyz Hveri.
@@ -523,34 +560,38 @@ Lemma psent_mnt_preserve_node_invariant b psent psent'
   (Hpmnt : psent_mnt b psent psent')
   st (Hnodeinv : node_invariant psent st) : node_invariant psent' st.
 Proof.
-  destruct st as (n, conf, ov, from, lsigs, sigs, rlcerts, rcerts).
+  destruct st as (n, conf, ov, from, lsigs, sigs, rlcerts, rcerts, buffer).
   constructor; simpl_state.
   - destruct ov as [ v | ]; auto.
     intros n0 lsig sig Hin_nsig.
     eapply In_psent_mnt'; eauto.
     now apply Hnodeinv.
   - intros lc Hin_rlcerts.
-    destruct Hnodeinv as (_, Hnodeinv, _, _, _).
+    destruct Hnodeinv as (_, Hnodeinv, _, _, _, _).
     specialize (Hnodeinv lc Hin_rlcerts).
     simpl in Hnodeinv.
     destruct Hnodeinv as (src & H).
     exists src.
     eapply In_psent_mnt'; eauto.
   - intros c Hin_rcerts.
-    destruct Hnodeinv as (_, _, Hnodeinv, _, _).
+    destruct Hnodeinv as (_, _, Hnodeinv, _, _, _).
     specialize (Hnodeinv c Hin_rcerts).
     simpl in Hnodeinv.
     destruct Hnodeinv as (src & H).
     exists src.
     eapply In_psent_mnt'; eauto.
   - destruct ov as [ v | ]; auto.
-    destruct Hnodeinv as (_, _, _, Hnodeinv, _).
+    destruct Hnodeinv as (_, _, _, Hnodeinv, _, _).
     simpl_state.
     intros -> n0 Hn0valid.
     specialize (Hnodeinv eq_refl _ Hn0valid).
     destruct Hnodeinv as (used & H).
     eapply In_psent_mnt in H; eauto.
     firstorder.
+  - destruct Hnodeinv as (_, _, _, _, Hnodeinv, _).
+    rewrite -> Forall_forall in Hnodeinv |- *.
+    intros.
+    eapply In_psent_mnt', Hnodeinv; eauto.
   - apply Hnodeinv.
 Qed.
 
@@ -580,7 +621,7 @@ Proof.
     destruct (Address_eqdec n src) as [ -> | Hneq ].
     2: eapply Hpsentinv; eauto.
     inversion Hsmnt; subst.
-    all: destruct (stmap src) as (?, ?, v0, ?, ?, ?, ?, ?) eqn:E.
+    all: destruct (stmap src) as (?, ?, v0, ?, ?, ?, ?, ?, ?) eqn:E.
     all: simpl.
     1,3-5: replace v0 with (stmap src).(submitted_value); [ eapply Hpsentinv; eauto | now rewrite E ].
     (* this is only for the submit transition *)
@@ -604,7 +645,7 @@ Proof.
     unfold upd.
     destruct (Address_eqdec n src) as [ -> | Hneq ].
     2: eapply Hpsentinv; eauto.
-    destruct (stmap src) as (?, conf0, v0, ?, ?, ?, ?, ?) eqn:E.
+    destruct (stmap src) as (?, conf0, v0, ?, ?, ?, ?, ?, ?) eqn:E.
     inversion Hsmnt; subst.
     all: simpl_state; try assumption.
     1: subst v0; eqsolve.
@@ -622,7 +663,7 @@ Proof.
     unfold upd.
     destruct (Address_eqdec n src) as [ -> | Hneq ].
     2: eapply Hpsentinv; eauto.
-    destruct (stmap src) as (?, conf0, v0, ?, ?, ?, rlcerts0, ?) eqn:E.
+    destruct (stmap src) as (?, conf0, v0, ?, ?, ?, rlcerts0, ?, ?) eqn:E.
     inversion Hsmnt; subst.
     all: simpl_state; try assumption.
     all: destruct v0 as [ v0 | ]; try eqsolve.
@@ -673,6 +714,29 @@ Proof.
         2: auto.
         eapply psent_mnt_preserve_cert_correct; eauto.
       * eapply Hpsentinv; eauto.
+  - constructor.
+    + setoid_rewrite <- Hinin.
+      apply Hpsentinv.
+    + unfold _inv_lightconfirmmsg_correct, lcert_correct_threshold, lcert_correct, lightsig_seen_in_history.
+      setoid_rewrite <- Hinin.
+      intros src dst lc b Hin_psent.
+      destruct Hpsentinv as (_, Hpsentinv, _).
+      specialize (Hpsentinv src dst lc b Hin_psent).
+      simpl in Hpsentinv.
+      destruct lc as (v, cs), (is_byz src).
+      * setoid_rewrite <- Hinin.
+        apply Hpsentinv.
+      * apply Hpsentinv.
+    + unfold _inv_confirmmsg_correct, cert_correct, sig_seen_in_history.
+      setoid_rewrite <- Hinin.
+      intros src dst c b Hin_psent.
+      destruct Hpsentinv as (_, _, Hpsentinv).
+      specialize (Hpsentinv src dst c b Hin_psent).
+      simpl in Hpsentinv.
+      destruct c as (v, nsigs), (is_byz src).
+      * setoid_rewrite <- Hinin.
+        apply Hpsentinv.
+      * apply Hpsentinv.
 Qed.
 
 Lemma psent_history_mnt_preserve__inv_msg_correct 
@@ -788,6 +852,12 @@ Proof.
   eqsolve.
 Qed.
 
+Corollary inv_preserve_stmap_pointwise_eq stmap stmap' psent
+  (Hpeq : forall x, stmap x = stmap' x)
+  (Hinv : invariant (mkW stmap psent)) : 
+  invariant (mkW stmap' psent).
+Proof. eapply inv_preserve_00; eauto. apply PsentEq. Qed.
+
 Lemma inv_init : invariant initWorld.
 Proof with basic_solver.
   constructor.
@@ -803,386 +873,464 @@ Proof with basic_solver.
   - constructor; simpl...
 Qed.
 
-Lemma inv_step w w' :
-  invariant w -> system_step w w' -> invariant w'.
+Lemma inv_deliver_step w w' p :
+  invariant w -> system_step (Deliver p) w w' -> invariant w'.
 Proof with basic_solver.
   intros H Hstep. 
   pose proof (coh _ H) as Hcoh.
   inversion Hstep as [ 
-    | p Hpin Hnvalid Hsrcvalid Hnonbyz Heq 
-    | n t Hnvalid H_n_nonbyz Heq 
-    | n dst v s H_n_byz Heq 
-    | n dst lc H_n_byz Hcc Heq
-    | n dst c H_n_byz Hcc Heq ].
-  - now subst.
-  - destruct p as (src, dst, msg, used) eqn:Ep.
-    simpl_pkt.
-    rewrite <- Ep in *.
-    destruct_procMsg as_ st' ms eqn_ Epm.
-    destruct_localState w dst as_ conf_dst ov_dst from_dst lsigs_dst sigs_dst 
-      rlcerts_dst rcerts_dst eqn_ Edst.
-    subst w'.
-    (* TODO may do case analysis in a smarter way. there is still some repetition *)
-    destruct msg as [ v ls s | lc | c ].
-    + simpl in Epm.
-      (* prepare *)
-      pose proof H as Hconf.
-      destruct Hconf as (_, Hconf, _).
-      specialize (Hconf dst Hnonbyz).
-      unfold holds in Hconf.
-      rewrite -> Edst in Hconf.
-      destruct Hconf as (Hsubmit_trace, Hrlcerts_trace, Hrcerts_trace, Hlcert_sent, 
-        ((Hsize1 & Hsize2), Hconf, Hfrom_nodup, Hrlcerts, Hrcerts, Hcoll_valid)).
-      simpl in Hsubmit_trace, Hrlcerts_trace, Hrcerts_trace, Hlcert_sent, 
-        Hsize1, Hsize2, Hconf, Hfrom_nodup, Hrlcerts, Hrcerts, Hcoll_valid.
-      destruct (match ov_dst with
-        | Some v_dst => if Value_eqdec v v_dst 
-          then (if verify v s src 
-                then (if light_verify v ls src
-                      then (if (negb conf_dst) 
-                            then (negb (is_left (In_dec Address_eqdec src from_dst))) 
-                            else false) 
-                      else false)
-                else false)
-          else false
-        | None => false end) eqn:Edecide.
-      * destruct ov_dst as [ v_dst | ] eqn:Eov_dst...
-        destruct (Value_eqdec v v_dst) as [ <- | ], 
-          (verify v s src) eqn:Everi, 
-          (light_verify v ls src) eqn:Elveri, 
-          conf_dst eqn:Econf, 
-          (In_dec Address_eqdec src from_dst) as [ Ensig_in | Ensig_in ]...
-        unfold zip_from_lsigs, zip_from_sigs in Hcoll_valid.
-        simpl in Epm, Hcoll_valid.
-        destruct Hcoll_valid as (Ev & Hlsigs_valid & Hsigs_valid).
-        inversion Hconf as [ Hle | thr Hle Ethr ].
-        --(* the only 11 case in the proof *)
-          (* now cannot prove by applying 01 then 10 due to interrelation *)
-          rewrite <- Hle, -> PeanoNat.Nat.leb_refl in Epm.
-          injection_pair Epm.
-          (* still can get state mnt, which simplifies some proof *)
+    | p' Hq Hpin Hnvalid Hsrcvalid Hnonbyz Heq 
+    | | | | ]; try discriminate.
+  injection Hq as <-.
+  destruct p as (src, dst, msg, used) eqn:Ep.
+  simpl_pkt.
+  rewrite <- Ep in *.
+  destruct_procMsg as_ st' ms eqn_ Epm.
+  destruct_localState w dst as_ conf_dst ov_dst from_dst lsigs_dst sigs_dst 
+    rlcerts_dst rcerts_dst buffer_dst eqn_ Edst.
+  subst w'.
+  (* TODO may do case analysis in a smarter way. there is still some repetition *)
+  destruct msg as [ v ls s | lc | c ].
+  - simpl in Epm.
+    (* prepare *)
+    pose proof H as Hconf.
+    destruct Hconf as (_, Hconf, _).
+    specialize (Hconf dst Hnonbyz).
+    unfold holds in Hconf.
+    rewrite -> Edst in Hconf.
+    destruct Hconf as (Hsubmit_trace, Hrlcerts_trace, Hrcerts_trace, Hlcert_sent, Hbuffer_recv,
+      ((Hsize1 & Hsize2), Hconf, Hfrom_nodup, Hrlcerts, Hrcerts, Hcoll_valid, Hbuffer)).
+    simpl in Hsubmit_trace, Hrlcerts_trace, Hrcerts_trace, Hlcert_sent, Hbuffer_recv, 
+      Hsize1, Hsize2, Hconf, Hfrom_nodup, Hrlcerts, Hrcerts, Hcoll_valid, Hbuffer.
+    destruct (match ov_dst with
+      | Some v_dst => if Value_eqdec v v_dst 
+        then (if verify v s src 
+              then (if light_verify v ls src
+                    then (if (negb conf_dst) 
+                          then (negb (is_left (In_dec Address_eqdec src from_dst))) 
+                          else false) 
+                    else false)
+              else false)
+        else false
+      | None => false end) eqn:Edecide.
+    2: destruct ov_dst as [ v_dst | ].
+    + destruct ov_dst as [ v_dst | ] eqn:Eov_dst...
+      destruct (Value_eqdec v v_dst) as [ <- | ], 
+        (verify v s src) eqn:Everi, 
+        (light_verify v ls src) eqn:Elveri, 
+        conf_dst eqn:Econf, 
+        (In_dec Address_eqdec src from_dst) as [ Ensig_in | Ensig_in ]...
+      unfold zip_from_lsigs, zip_from_sigs in Hcoll_valid.
+      simpl in Epm, Hcoll_valid.
+      destruct Hcoll_valid as (Ev & Hlsigs_valid & Hsigs_valid).
+      inversion Hconf as [ Hle | thr Hle Ethr ].
+      * (* the only 11 case in the proof *)
+        (* now cannot prove by applying 01 then 10 due to interrelation *)
+        rewrite <- Hle, -> PeanoNat.Nat.leb_refl in Epm.
+        injection_pair Epm.
+        (* still can get state mnt, which simplifies some proof *)
+        pose proof (StateCertMnt (localState w dst) (src :: from_dst) (ls :: lsigs_dst) (s :: sigs_dst)) as Hsmnt.
+        simpl in Hsmnt.
+        specialize (Hsmnt (conj (f_equal S Hsize1) (f_equal S Hsize2))). 
+        rewrite -> Edst, <- Hle in Hsmnt.
+        unfold incl in Hsmnt.
+        simpl in Hsmnt.
+        rewrite -> PeanoNat.Nat.leb_refl in Hsmnt.
+        specialize (Hsmnt (conj (fun _ p => or_intror p) (conj (fun _ p => or_intror p) (fun _ p => or_intror p)))).
+        constructor.
+        --eapply state_mnt_preserve_Coh; eauto.
+          ++rewrite -> Edst.
+            now apply Hsmnt.
+          ++eapply Coh_psent_irrelevant.
+            rewrite_w_expand w in_ H.
+            now apply H.
+        --intros n H_n_nonbyz.
+          unfold holds, upd.
+          cbn delta -[consume] iota beta.
+          destruct (Address_eqdec dst n) as [ -> | Hnneq ].
+          2:{
+            eapply psent_mnt_preserve_node_invariant.
+            1: eapply PsentLe with (psent1:=(sentMsgs w)) (psent2:=(consume p (sentMsgs w)))...
+            now apply H.
+          }
+          (* only consider the updated node, i.e. itself *)
+          pose proof (PsentLe _ _ _ (PsentEq' _ (sentMsgs w) Hpin) 
+            (incl_appl_simple _ (broadcast n (LightConfirmMsg (v, lightsig_combine (ls :: lsigs_dst)))))) as Hpmnt1.
+          constructor; simpl_state.
+          ++cbn delta -[consume] iota beta.
+            intros n0 lsig sig Hin.
+            rewrite -> in_app_iff.
+            left.
+            simpl in Hin.
+            destruct Hin as [ Hin | Hin ].
+            1: inversion Hin; subst; simpl...
+            apply In_consume'...
+          ++intros lc Hin.
+            specialize (Hrlcerts_trace lc Hin).
+            destruct Hrlcerts_trace as (src0 & HH).
+            exists src0.
+            eapply In_psent_mnt'; eauto.
+          ++intros c Hin.
+            specialize (Hrcerts_trace c Hin).
+            destruct Hrcerts_trace as (src0 & HH).
+            exists src0.
+            eapply In_psent_mnt'; eauto.
+          ++intros _ n0 Hn0valid.
+            exists false.
+            rewrite -> in_app_iff.
+            right.
+            apply In_broadcast.
+            eauto.
+          ++rewrite -> Forall_forall in Hbuffer_recv |- *.
+            intros.
+            apply in_app_iff, or_introl, In_consume'...
+          ++constructor; simpl...
+            unfold zip_from_lsigs, zip_from_sigs.
+            simpl.
+            intuition constructor; simpl...
+        --cbn delta -[consume] iota beta.
+          eapply psent_invariant_by_extend with (psent:=consume p (sentMsgs w)).
+          1:{
+            exists (consume p (sentMsgs w)).
+            split...
+            split...
+            intros p0 Hp0in Hp0notin.
+            rewrite -> in_app_iff in Hp0in.
+            destruct Hp0in as [ Hp0in | Hp0in ]...
+            rewrite -> In_broadcast in Hp0in.
+            destruct Hp0in as (n0 & Hn0valid & ->).
+            simpl.
+            rewrite -> Hnonbyz.
+            unfold upd.
+            destruct (Address_eqdec dst dst)...
+          }
+          apply psent_equiv_preserve_psent_invariant with (psent:=(sentMsgs w))...
+          eapply state_mnt_preserve_psent_invariant.
+          1: rewrite -> Edst; apply Hsmnt.
+          1: intros; reflexivity.
+          apply H.
+      * simpl in Epm.
+        assert (~ (thr <= length from_dst)) as Hgt...
+        apply PeanoNat.Nat.leb_nle in Hgt.
+        rewrite <- Ethr in Epm.
+        simpl in Epm. 
+        rewrite -> Hgt in Epm.
+        injection_pair Epm.
+        rewrite -> app_nil_r.
+        (* 10 case *)
+        eapply inv_preserve_10...
+        --(* TODO some repetition here, with regard to above *)
           pose proof (StateCertMnt (localState w dst) (src :: from_dst) (ls :: lsigs_dst) (s :: sigs_dst)) as Hsmnt.
           simpl in Hsmnt.
           specialize (Hsmnt (conj (f_equal S Hsize1) (f_equal S Hsize2))). 
-          rewrite -> Edst, <- Hle in Hsmnt.
+          rewrite -> Edst, <- Ethr in Hsmnt.
           unfold incl in Hsmnt.
           simpl in Hsmnt.
-          rewrite -> PeanoNat.Nat.leb_refl in Hsmnt.
+          rewrite -> Hgt in Hsmnt.
           specialize (Hsmnt (conj (fun _ p => or_intror p) (conj (fun _ p => or_intror p) (fun _ p => or_intror p)))).
-          constructor.
-          ++eapply state_mnt_preserve_Coh; eauto.
-            **rewrite -> Edst.
-              now apply Hsmnt.
-            **eapply Coh_psent_irrelevant.
-              rewrite_w_expand w in_ H.
-              now apply H.
-          ++intros n H_n_nonbyz.
-            unfold holds, upd.
-            cbn delta -[consume] iota beta.
-            destruct (Address_eqdec dst n) as [ -> | Hnneq ].
-            2:{
-              eapply psent_mnt_preserve_node_invariant.
-              1: eapply PsentLe with (psent1:=(sentMsgs w)) (psent2:=(consume p (sentMsgs w)))...
-              now apply H.
-            }
-            (* only consider the updated node, i.e. itself *)
-            pose proof (PsentLe _ _ _ (PsentEq' _ (sentMsgs w) Hpin) 
-              (incl_appl_simple _ (broadcast n (LightConfirmMsg (v, lightsig_combine (ls :: lsigs_dst)))))) as Hpmnt1.
-            constructor; simpl_state.
-            **cbn delta -[consume] iota beta.
-              intros n0 lsig sig Hin.
-              rewrite -> in_app_iff.
-              left.
-              simpl in Hin.
-              destruct Hin as [ Hin | Hin ].
-              1: inversion Hin; subst; simpl...
-              apply In_consume'...
-            **intros lc Hin.
-              specialize (Hrlcerts_trace lc Hin).
-              destruct Hrlcerts_trace as (src0 & HH).
-              exists src0.
-              eapply In_psent_mnt'; eauto.
-            **intros c Hin.
-              specialize (Hrcerts_trace c Hin).
-              destruct Hrcerts_trace as (src0 & HH).
-              exists src0.
-              eapply In_psent_mnt'; eauto.
-            **intros _ n0 Hn0valid.
-              exists false.
-              rewrite -> in_app_iff.
-              right.
-              apply In_broadcast.
-              eauto.
-            **constructor; simpl...
-              unfold zip_from_lsigs, zip_from_sigs.
-              simpl.
-              intuition constructor; simpl...
+          rewrite -> Edst.
+          apply Hsmnt.
+        --destruct H as (_, Hnodeinv, _).
+          specialize (Hnodeinv dst Hnonbyz).
+          hnf in Hnodeinv.
+          rewrite -> Edst in Hnodeinv.
+          pose proof (psent_mnt_preserve_node_invariant _ _ _ (PsentEq' p (sentMsgs w) Hpin) _ Hnodeinv) as Hnodeinv'.
+          (* destruct Hnodeinv as (Hnodeinv_nsigs, Hnodeinv_rcerts, Hnodeinv_confsent, Hnodeinv_conf). *)
+          constructor; simpl_state...
           ++cbn delta -[consume] iota beta.
-            eapply psent_invariant_by_extend with (psent:=consume p (sentMsgs w)).
-            1:{
-              exists (consume p (sentMsgs w)).
-              split...
-              split...
-              intros p0 Hp0in Hp0notin.
-              rewrite -> in_app_iff in Hp0in.
-              destruct Hp0in as [ Hp0in | Hp0in ]...
-              rewrite -> In_broadcast in Hp0in.
-              destruct Hp0in as (n0 & Hn0valid & ->).
-              simpl.
-              rewrite -> Hnonbyz.
-              unfold upd.
-              destruct (Address_eqdec dst dst)...
-            }
-            apply psent_equiv_preserve_psent_invariant with (psent:=(sentMsgs w))...
-            eapply state_mnt_preserve_psent_invariant.
-            1: rewrite -> Edst; apply Hsmnt.
-            1: intros; reflexivity.
-            apply H.
-        --simpl in Epm.
-          assert (~ (thr <= length from_dst)) as Hgt...
-          apply PeanoNat.Nat.leb_nle in Hgt.
-          rewrite <- Ethr in Epm.
-          simpl in Epm. 
-          rewrite -> Hgt in Epm.
-          injection_pair Epm.
-          rewrite -> app_nil_r.
-          (* 10 case *)
-          eapply inv_preserve_10...
-          ++(* TODO some repetition here, with regard to above *)
-            pose proof (StateCertMnt (localState w dst) (src :: from_dst) (ls :: lsigs_dst) (s :: sigs_dst)) as Hsmnt.
-            simpl in Hsmnt.
-            specialize (Hsmnt (conj (f_equal S Hsize1) (f_equal S Hsize2))). 
-            rewrite -> Edst, <- Ethr in Hsmnt.
-            unfold incl in Hsmnt.
-            simpl in Hsmnt.
-            rewrite -> Hgt in Hsmnt.
-            specialize (Hsmnt (conj (fun _ p => or_intror p) (conj (fun _ p => or_intror p) (fun _ p => or_intror p)))).
-            rewrite -> Edst.
-            apply Hsmnt.
-          ++destruct H as (_, Hnodeinv, _).
-            specialize (Hnodeinv dst Hnonbyz).
-            hnf in Hnodeinv.
-            rewrite -> Edst in Hnodeinv.
-            pose proof (psent_mnt_preserve_node_invariant _ _ _ (PsentEq' p (sentMsgs w) Hpin) _ Hnodeinv) as Hnodeinv'.
-            (* destruct Hnodeinv as (Hnodeinv_nsigs, Hnodeinv_rcerts, Hnodeinv_confsent, Hnodeinv_conf). *)
-            constructor; simpl_state...
-            **cbn delta -[consume] iota beta.
-              intros n0 lsig sig Hin.
-              destruct Hin as [ Hin | Hin ].
-              1: inversion Hin; subst; simpl...
-              apply In_consume'...
-            **destruct Hnodeinv'.
-              assumption.
-            **destruct Hnodeinv'.
-              assumption.
-            **constructor; simpl...
-              unfold zip_from_lsigs, zip_from_sigs.
-              simpl.
-              intuition constructor; simpl...
-          ++eapply inv_preserve_00 with (psent:=(sentMsgs w))...
-            now rewrite_w_expand w in_ H.
-      * (* local state: essentially no change, and psent is regularly changed *)
-        assert (st' = (localState w dst)) as ->.
-        { 
-          rewrite -> Edst.
-          destruct ov_dst as [ v_dst | ] eqn:Eov_dst...
-          destruct (Value_eqdec v v_dst), (verify v s src), (light_verify v ls src), 
-            conf_dst eqn:E, (In_dec Address_eqdec src from_dst) as [ Ensig_in | Ensig_in ]...
-          all: injection_pair Epm...
-          all: try rewrite -> Hconf, PeanoNat.Nat.leb_refl...
-          rewrite <- PeanoNat.Nat.leb_gt in Hconf.
-          rewrite -> Hconf...
-        }
-        destruct (match ov_dst with
-          | Some v_dst => if Value_eqdec v v_dst 
-            then (if verify v s src 
-                  then (if light_verify v ls src
-                        then conf_dst
-                        else false)
-                  else false)
-            else false
-          | None => false end) eqn:Edecide'.
-        --destruct ov_dst as [ v_dst | ] eqn:Eov_dst...
-          destruct (Value_eqdec v v_dst) as [ <- | ], (verify v s src), (light_verify v ls src)...
+            intros n0 lsig sig Hin.
+            destruct Hin as [ Hin | Hin ].
+            1: inversion Hin; subst; simpl...
+            apply In_consume'...
+          ++destruct Hnodeinv'.
+            assumption.
+          ++destruct Hnodeinv'.
+            assumption.
+          ++destruct Hnodeinv'.
+            assumption.
+          ++constructor; simpl...
+            unfold zip_from_lsigs, zip_from_sigs.
+            simpl.
+            intuition constructor; simpl...
+        --eapply inv_preserve_00 with (psent:=(sentMsgs w))...
+          now rewrite_w_expand w in_ H.
+    + (* local state: essentially no change, and psent is regularly changed *)
+      assert (st' = (localState w dst)) as ->.
+      { 
+        rewrite -> Edst.
+        (* destruct ov_dst as [ v_dst | ] eqn:Eov_dst... *)
+        destruct (Value_eqdec v v_dst), (verify v s src), (light_verify v ls src), 
+          conf_dst eqn:E, (In_dec Address_eqdec src from_dst) as [ Ensig_in | Ensig_in ]...
+        all: injection_pair Epm...
+        all: try rewrite -> Hconf, PeanoNat.Nat.leb_refl...
+        rewrite <- PeanoNat.Nat.leb_gt in Hconf.
+        rewrite -> Hconf...
+      }
+      destruct (if Value_eqdec v v_dst 
+          then (if verify v s src 
+                then (if light_verify v ls src
+                      then conf_dst
+                      else false)
+                else false)
+          else false) eqn:Edecide'.
+      * destruct (Value_eqdec v v_dst) as [ <- | ], (verify v s src), (light_verify v ls src)...
+        subst conf_dst.
+        (* send light confirm message *)
+        simpl in Epm.
+        rewrite -> Hconf, PeanoNat.Nat.leb_refl, <- Edst in Epm.
+        inversion Epm.
+        subst ms.
+        eapply inv_preserve_01.
+        1: apply upd_same_pointwise_eq.
+        2: rewrite_w_expand w in_ H; apply H.
+        exists (consume p (sentMsgs w)).
+        split...
+        split...
+        intros p0 Hin_app Hnotin.
+        rewrite -> in_app_iff in Hin_app.
+        destruct Hin_app as [ | Hin_ms ]...
+        rewrite -> In_broadcast in Hin_ms.
+        destruct Hin_ms as (dst' & H_dst'_valid & ->).
+        simpl.
+        rewrite -> Hnonbyz.
+        now rewrite -> Edst.
+      * assert (ms = nil) as ->.
+        {
+          destruct (Value_eqdec v v_dst), (verify v s src), (light_verify v ls src)...
           subst conf_dst.
-          (* send light confirm message *)
+          destruct (In_dec Address_eqdec src from_dst)...
+          rewrite <- PeanoNat.Nat.leb_gt in Hconf.
           simpl in Epm.
-          rewrite -> Hconf, PeanoNat.Nat.leb_refl, <- Edst in Epm.
-          inversion Epm.
-          subst ms.
-          eapply inv_preserve_01.
-          1: apply upd_same_pointwise_eq.
-          2: rewrite_w_expand w in_ H; apply H.
-          exists (consume p (sentMsgs w)).
-          split...
-          split...
-          intros p0 Hin_app Hnotin.
-          rewrite -> in_app_iff in Hin_app.
-          destruct Hin_app as [ | Hin_ms ]...
-          rewrite -> In_broadcast in Hin_ms.
-          destruct Hin_ms as (dst' & H_dst'_valid & ->).
+          rewrite -> Hconf in Epm...
+        }
+        rewrite -> app_nil_r.
+        eapply inv_preserve_00.
+        ++apply upd_same_pointwise_eq.
+        ++now apply PsentEq'.
+        ++now rewrite_w_expand w in_ H.
+    + (* prepend the buffer; belong to none of the monotone cases? *)
+      injection_pair Epm.
+      rewrite app_nil_r.
+      constructor.
+      * apply upd_id_intact_preserve_Coh; try assumption.
+        --rewrite Edst.
+          reflexivity.
+        --eapply Coh_psent_irrelevant.
+          rewrite_w_expand w in_ H.
+          now apply H.
+      * intros n H_n_nonbyz.
+        unfold holds, upd.
+        cbn delta -[consume] iota beta.
+        destruct (Address_eqdec dst n) as [ -> | Hnneq ].
+        2:{
+          eapply psent_mnt_preserve_node_invariant.
+          1: eapply PsentLe with (psent1:=(sentMsgs w)) (psent2:=(consume p (sentMsgs w)))...
+          now apply H.
+        }
+        (* only consider the updated node, i.e. itself *)
+        pose proof (PsentLe _ _ _ (PsentEq' _ (sentMsgs w) Hpin) 
+          (incl_appl_simple _ (broadcast n (LightConfirmMsg (v, lightsig_combine (ls :: lsigs_dst)))))) as Hpmnt1.
+        constructor; simpl_state...
+        --intros lc Hin.
+          specialize (Hrlcerts_trace lc Hin).
+          destruct Hrlcerts_trace as (src0 & HH).
+          exists src0.
+          eapply In_consume'; eauto.
+        --intros c Hin.
+          specialize (Hrcerts_trace c Hin).
+          destruct Hrcerts_trace as (src0 & HH).
+          exists src0.
+          eapply In_consume'; eauto.
+        --rewrite -> Forall_forall in Hbuffer_recv |- *.
           simpl.
-          rewrite -> Hnonbyz.
-          now rewrite -> Edst.
-        --assert (ms = nil) as ->.
-          {
-            destruct ov_dst as [ v_dst | ] eqn:Eov_dst...
-            destruct (Value_eqdec v v_dst), (verify v s src), (light_verify v ls src)...
-            subst conf_dst.
-            destruct (In_dec Address_eqdec src from_dst)...
-            rewrite <- PeanoNat.Nat.leb_gt in Hconf.
-            simpl in Epm.
-            rewrite -> Hconf in Epm...
-          }
-          rewrite -> app_nil_r.
-          eapply inv_preserve_00.
-          ++apply upd_same_pointwise_eq.
-          ++now apply PsentEq'.
-          ++now rewrite_w_expand w in_ H.
-    + simpl in Epm.
-      destruct lc as (v, cs).
-      destruct (combined_verify v cs) eqn:Edecide.
-      * injection_pair Epm.
-        rewrite -> app_nil_r.
-        (* eapply inv_preserve_00 with (psent:=(sentMsgs w))... *)
-        eapply inv_preserve_10...
-        --match goal with
-          |- state_mnt _ _ ?st => replace st with (node_upd_rlcerts (localState w dst) ((v, cs) :: rlcerts_dst))
-          end.
-          2: simpl; now rewrite -> Edst.
-          apply StateRLCertsMnt.
-          rewrite -> Edst.
-          hnf.
-          intuition.
-        --destruct H as (_, Hnodeinv, _).
-          specialize (Hnodeinv dst Hnonbyz).
-          hnf in Hnodeinv.
-          rewrite -> Edst in Hnodeinv.
-          pose proof (psent_mnt_preserve_node_invariant _ _ _ (PsentEq' p (sentMsgs w) Hpin) _ Hnodeinv) as Hnodeinv'.
-          (* preserve these ? to make auto work *)
-          destruct Hnodeinv as (?, ?, ?, ?, (?, ?, ?, Hrlcerts, ?, ?)).
-          constructor; simpl_state.
-          ++apply Hnodeinv'.
-          ++simpl.
-            destruct Hnodeinv' as (_, Hrlcerts_trace', _, _, _).
-            intros (v0, cs0) [ Hin | Hin ].
-            2: now apply Hrlcerts_trace' in Hin.
-            injection_pair Hin.
-            exists src.
-            subst p.
-            now left.
-          ++apply Hnodeinv'.
-          ++apply Hnodeinv'.
-          ++constructor...
-            simpl.
-            intros v0 cs0 [ Hpeq | ]...
-        --eapply inv_preserve_00 with (psent:=(sentMsgs w))...
-          now rewrite_w_expand w in_ H.
-      * (* essentially no change *)
-        injection_pair Epm.
-        rewrite -> app_nil_r.
-        eapply inv_preserve_00.
-        --rewrite <- Edst.
-          apply upd_same_pointwise_eq.
-        --now apply PsentEq'.
-        --now rewrite_w_expand w in_ H.
-    + simpl in Epm.
-      destruct c as (v, nsigs).
-      destruct (if NoDup_eqdec AddrSigPair_eqdec nsigs
-        then (if Nat.leb (N - t0) (length nsigs)
-              then is_left (verify_certificate v nsigs)
-              else false)
-        else false) eqn:Edecide.
-      * destruct (NoDup_eqdec AddrSigPair_eqdec nsigs) as [ Hnodup | ],
-          (Nat.leb (N - t0) (length nsigs)) eqn:Hlnsigs, 
-          (verify_certificate v nsigs) eqn:Everic...
-        injection_pair Epm.
-        rewrite -> app_nil_r.
-        (* eapply inv_preserve_00 with (psent:=(sentMsgs w))... *)
-        eapply inv_preserve_10...
-        --match goal with
-          |- state_mnt _ _ ?st => replace st with (node_upd_rcerts (localState w dst) ((v, nsigs) :: rcerts_dst))
-          end.
-          2: simpl; now rewrite -> Edst.
-          apply StateRCertsMnt.
-          rewrite -> Edst.
-          hnf.
-          intuition.
-        --destruct H as (_, Hnodeinv, _).
-          specialize (Hnodeinv dst Hnonbyz).
-          hnf in Hnodeinv.
-          rewrite -> Edst in Hnodeinv.
-          pose proof (psent_mnt_preserve_node_invariant _ _ _ (PsentEq' p (sentMsgs w) Hpin) _ Hnodeinv) as Hnodeinv'.
-          (* preserve these ? to make auto work *)
-          destruct Hnodeinv as (?, ?, ?, ?, (?, ?, ?, ?, Hrcerts, ?)).
-          constructor; simpl_state.
-          ++apply Hnodeinv'.
-          ++apply Hnodeinv'.
-          ++simpl.
-            destruct Hnodeinv' as (_, _, Hrcerts_trace', _, _).
-            intros (v0, nsigs0) [ Hin | Hin ].
-            2: now apply Hrcerts_trace' in Hin.
-            injection_pair Hin.
-            exists src.
-            subst p.
-            now left.
-          ++apply Hnodeinv'.
-          ++constructor...
-            simpl.
-            intros v0 nsigs0 [ Hpeq | ]...
-            injection_pair Hpeq.
-            split; [ | split ]...
-            now apply PeanoNat.Nat.leb_le.
-        --eapply inv_preserve_00 with (psent:=(sentMsgs w))...
-          now rewrite_w_expand w in_ H.
-      * assert ((localState w dst, nil) = (st', ms)) as Epm'
-          by (destruct (NoDup_eqdec AddrSigPair_eqdec nsigs),
-            (Nat.leb (N - t0) (length nsigs)), (verify_certificate v nsigs); eqsolve).
-        (* essentially no change *)
-        injection_pair Epm'.
-        rewrite -> app_nil_r.
-        eapply inv_preserve_00.
-        --apply upd_same_pointwise_eq.
-        --now apply PsentEq'.
-        --now rewrite_w_expand w in_ H.
-  - destruct_procInt as_ st' ms eqn_ Epm.
-    destruct_localState w n as_ conf ov from lsigs sigs rlcerts rcerts eqn_ En.
-    subst w'.
-    destruct t.
-    all: simpl in Epm.
-    1: injection_pair Epm.
-    1: destruct ov as [ v | ] eqn:Eov.
-    + pose proof H as Hv.
-      destruct Hv as (_, Hv, _).
-      specialize (Hv n H_n_nonbyz).
-      unfold holds in Hv.
-      rewrite -> En in Hv.
-      destruct Hv as (_, _, _, _, (_, _, _, _, _, Hv)).
-      simpl in Hv.
-      destruct Hv as (-> & _ & _).
-      (* nothing would change *)
-      rewrite <- En.
-      eapply inv_preserve_01.
-      1: apply upd_same_pointwise_eq.
-      2: rewrite_w_expand w in_ H; apply H.
-      exists (sentMsgs w).
-      split...
-      split...
-      intros p0 Hin_app Hnotin.
-      rewrite -> in_app_iff in Hin_app.
-      destruct Hin_app as [ Hin_ms | ]...
-      rewrite -> In_broadcast in Hin_ms.
-      destruct Hin_ms as (dst & H_dst_valid & ->).
-      simpl.
-      intros _.
-      split; [ | split ].
-      * now apply key_correct.
-      * now apply lightkey_correct.
-      * now rewrite -> En.
-    + (* this is a different kind of update; may not belong to the monoticity class *)
-      (* OK, now added one another case to state monotone ... *)
-      (* TODO should there be that "submit messages must be traced after this change"?
-          If so, first 01 then 10 may not work here *)
+          intros ? [ <- | ].
+          2: apply In_consume'...
+          subst p.
+          left.
+          reflexivity.
+        --constructor; simpl...
+          split...
+          constructor...
+      * eapply psent_equiv_preserve_psent_invariant.
+        1: now apply PsentEq'.
+        destruct H as (_, _, Hpsentinv).
+        constructor; simpl.
+        all: intros src0; unfold upd; destruct (Address_eqdec dst src0) as [ <- | ]; [ simpl | apply Hpsentinv ].
+        1: destruct Hpsentinv as (Hpsentinv, _, _).
+        2: destruct Hpsentinv as (_, Hpsentinv, _).
+        3: destruct Hpsentinv as (_, _, Hpsentinv).
+        all: specialize (Hpsentinv dst); simpl in Hpsentinv; rewrite Edst in Hpsentinv.
+        all: apply Hpsentinv.
+  - simpl in Epm.
+    destruct lc as (v, cs).
+    destruct (combined_verify v cs) eqn:Edecide.
+    + injection_pair Epm.
+      rewrite -> app_nil_r.
+      (* eapply inv_preserve_00 with (psent:=(sentMsgs w))... *)
+      eapply inv_preserve_10...
+      * match goal with
+        |- state_mnt _ _ ?st => replace st with (node_upd_rlcerts (localState w dst) ((v, cs) :: rlcerts_dst))
+        end.
+        2: simpl; now rewrite -> Edst.
+        apply StateRLCertsMnt.
+        rewrite -> Edst.
+        hnf.
+        intuition.
+      * destruct H as (_, Hnodeinv, _).
+        specialize (Hnodeinv dst Hnonbyz).
+        hnf in Hnodeinv.
+        rewrite -> Edst in Hnodeinv.
+        pose proof (psent_mnt_preserve_node_invariant _ _ _ (PsentEq' p (sentMsgs w) Hpin) _ Hnodeinv) as Hnodeinv'.
+        (* preserve these ? to make auto work *)
+        destruct Hnodeinv as (?, ?, ?, ?, ?, (?, ?, ?, Hrlcerts, ?, ?, ?)).
+        constructor; simpl_state.
+        --apply Hnodeinv'.
+        --simpl.
+          destruct Hnodeinv' as (_, Hrlcerts_trace', _, _, _, _).
+          intros (v0, cs0) [ Hin | Hin ].
+          2: now apply Hrlcerts_trace' in Hin.
+          injection_pair Hin.
+          exists src.
+          subst p.
+          now left.
+        --apply Hnodeinv'.
+        --apply Hnodeinv'.
+        --apply Hnodeinv'.
+        --constructor...
+          simpl.
+          intros v0 cs0 [ Hpeq | ]...
+      * eapply inv_preserve_00 with (psent:=(sentMsgs w))...
+        now rewrite_w_expand w in_ H.
+    + (* essentially no change *)
+      injection_pair Epm.
+      rewrite -> app_nil_r.
+      eapply inv_preserve_00.
+      * rewrite <- Edst.
+        apply upd_same_pointwise_eq.
+      * now apply PsentEq'.
+      * now rewrite_w_expand w in_ H.
+  - simpl in Epm.
+    destruct c as (v, nsigs).
+    destruct (if NoDup_eqdec AddrSigPair_eqdec nsigs
+      then (if Nat.leb (N - t0) (length nsigs)
+            then is_left (verify_certificate v nsigs)
+            else false)
+      else false) eqn:Edecide.
+    + destruct (NoDup_eqdec AddrSigPair_eqdec nsigs) as [ Hnodup | ],
+        (Nat.leb (N - t0) (length nsigs)) eqn:Hlnsigs, 
+        (verify_certificate v nsigs) eqn:Everic...
+      injection_pair Epm.
+      rewrite -> app_nil_r.
+      (* eapply inv_preserve_00 with (psent:=(sentMsgs w))... *)
+      eapply inv_preserve_10...
+      * match goal with
+        |- state_mnt _ _ ?st => replace st with (node_upd_rcerts (localState w dst) ((v, nsigs) :: rcerts_dst))
+        end.
+        2: simpl; now rewrite -> Edst.
+        apply StateRCertsMnt.
+        rewrite -> Edst.
+        hnf.
+        intuition.
+      * destruct H as (_, Hnodeinv, _).
+        specialize (Hnodeinv dst Hnonbyz).
+        hnf in Hnodeinv.
+        rewrite -> Edst in Hnodeinv.
+        pose proof (psent_mnt_preserve_node_invariant _ _ _ (PsentEq' p (sentMsgs w) Hpin) _ Hnodeinv) as Hnodeinv'.
+        (* preserve these ? to make auto work *)
+        destruct Hnodeinv as (?, ?, ?, ?, ?, (?, ?, ?, ?, Hrcerts, ?, ?)).
+        constructor; simpl_state.
+        --apply Hnodeinv'.
+        --apply Hnodeinv'.
+        --simpl.
+          destruct Hnodeinv' as (_, _, Hrcerts_trace', _, _, _).
+          intros (v0, nsigs0) [ Hin | Hin ].
+          2: now apply Hrcerts_trace' in Hin.
+          injection_pair Hin.
+          exists src.
+          subst p.
+          now left.
+        --apply Hnodeinv'.
+        --apply Hnodeinv'.
+        --constructor...
+          simpl.
+          intros v0 nsigs0 [ Hpeq | ]...
+          injection_pair Hpeq.
+          split; [ | split ]...
+          now apply PeanoNat.Nat.leb_le.
+      * eapply inv_preserve_00 with (psent:=(sentMsgs w))...
+        now rewrite_w_expand w in_ H.
+    + assert ((localState w dst, nil) = (st', ms)) as Epm'
+        by (destruct (NoDup_eqdec AddrSigPair_eqdec nsigs),
+          (Nat.leb (N - t0) (length nsigs)), (verify_certificate v nsigs); eqsolve).
+      (* essentially no change *)
+      injection_pair Epm'.
+      rewrite -> app_nil_r.
+      eapply inv_preserve_00.
+      * apply upd_same_pointwise_eq.
+      * now apply PsentEq'.
+      * now rewrite_w_expand w in_ H.
+Qed.
+
+Lemma inv_internal_submit_step w w' n :
+  invariant w -> system_step (Intern n SubmitIntTrans) w w' -> invariant w'.
+Proof with basic_solver.
+  intros H Hstep. 
+  pose proof (coh _ H) as Hcoh.
+  inversion Hstep as [ |
+    | n' t Hq Hnvalid H_n_nonbyz Heq 
+    | | | ]; try discriminate.
+  injection Hq as <-.
+  subst t.
+  destruct_procInt as_ st' ms eqn_ Epm.
+  destruct_localState w n as_ conf ov from lsigs sigs rlcerts rcerts buffer eqn_ En.
+  subst w'.
+  simpl in Epm.
+  destruct ov as [ v | ] eqn:Eov.
+  - (* simpler *)
+    pose proof H as Hv.
+    destruct Hv as (_, Hv, _).
+    specialize (Hv n H_n_nonbyz).
+    unfold holds in Hv.
+    rewrite -> En in Hv.
+    destruct Hv as (_, _, _, _, _, (_, _, _, _, _, Hv, (Hbuffer1 & Hbuffer2))).
+    simpl in Hbuffer1.
+    specialize (Hbuffer1 eq_refl).
+    subst buffer.
+    simpl in Epm.
+    injection_pair Epm.
+    simpl in Hv.
+    destruct Hv as (-> & _ & _).
+    (* nothing would change *)
+    rewrite <- En.
+    eapply inv_preserve_01.
+    1: apply upd_same_pointwise_eq.
+    2: rewrite_w_expand w in_ H; apply H.
+    exists (sentMsgs w).
+    split...
+    split...
+    intros p0 Hin_app Hnotin.
+    rewrite -> in_app_iff in Hin_app.
+    destruct Hin_app as [ Hin_ms | ]...
+    rewrite -> In_broadcast in Hin_ms.
+    destruct Hin_ms as (dst & H_dst_valid & ->).
+    simpl.
+    intros _.
+    split; [ | split ].
+    + now apply key_correct.
+    + now apply lightkey_correct.
+    + now rewrite -> En.
+  - (* this is a different kind of update; may not belong to the monoticity class *)
+    (* OK, now added one another case to state monotone ... *)
+    (* OK, now it is impossible to do first 01 then 10; need brute force *)
+    subst ov.
+    destruct (fold_right _ _ _) as (st_, ps_) eqn:Efr in Epm.
+    injection_pair Epm.
+    rewrite <- app_assoc.
+    (* take one step first *)
+    match goal with |- context[broadcast n ?mm] =>
+    match type of Efr with context[fold_right _ (?st', nil) _] =>
+      assert (invariant (mkW (upd n st' (localState w)) (broadcast n mm ++ sentMsgs w))) as H' end end.
+    {
       eapply inv_preserve_01 with (psent:=(sentMsgs w)).
       1: reflexivity.
       1:{
@@ -1203,36 +1351,178 @@ Proof with basic_solver.
         - apply correct_sign_verify_ok.
         - now apply lightkey_correct.
       }
-      eapply inv_preserve_10...
-      3: now rewrite_w_expand w in_ H.
-      1: match goal with |- state_mnt _ _ ?s => 
-        replace s with (node_submit (localState w n) (value_bft n)) 
-          by (rewrite -> En; reflexivity) end.
-      1: constructor.
-      1: rewrite -> En...
-      (* TODO can this be streamlined? *)
-      pose proof H as Hnodeinv.
-      destruct Hnodeinv as (_, Hnodeinv, _).
-      specialize (Hnodeinv n H_n_nonbyz).
-      unfold holds in Hnodeinv.
-      rewrite -> En in Hnodeinv.
-      destruct Hnodeinv as (_, Hrlcerts_trace, Hrcerts_trace, _, 
-        ((Hsize1 & Hsize2), Hconf, _, Hrlcerts, Hrcerts, Hcoll_valid)).
-      simpl in Hrlcerts_trace, Hrcerts_trace, 
-        Hsize1, Hsize2, Hconf, Hrlcerts, Hrcerts, Hcoll_valid.
-      subst from.
-      destruct lsigs, sigs; simpl in Hsize1, Hsize2...
-      constructor; simpl...
-      * (* since N > t0 so impossible to confirm here *)
-        intros ->.
-        simpl in Hconf.
-        pose proof t0_lt_N.
-        lia.
-      * constructor; simpl...
-        unfold zip_from_lsigs, zip_from_sigs.
-        simpl.
-        intuition constructor; simpl...
-    + destruct (match ov with
+      (* TODO this is troublesome *)
+      constructor.
+      - apply upd_id_intact_preserve_Coh...
+        + now rewrite En.
+        + now rewrite_w_expand w in_ Hcoh.
+      - intros n0 H_n0_nonbyz.
+        unfold holds, upd.
+        cbn delta -[consume] iota beta.
+        destruct (Address_eqdec n n0) as [ <- | Hnneq ].
+        2: now apply H.
+        pose proof H as Hnodeinv.
+        destruct Hnodeinv as (_, Hnodeinv, _).
+        specialize (Hnodeinv n H_n_nonbyz).
+        unfold holds in Hnodeinv.
+        rewrite -> En in Hnodeinv.
+        destruct Hnodeinv as (_, Hrlcerts_trace, Hrcerts_trace, _, _, 
+          ((Hsize1 & Hsize2), Hconf, _, Hrlcerts, Hrcerts, Hcoll_valid, _)).
+        simpl in Hrlcerts_trace, Hrcerts_trace, 
+          Hsize1, Hsize2, Hconf, Hrlcerts, Hrcerts, Hcoll_valid.
+        subst from.
+        destruct lsigs, sigs; simpl in Hsize1, Hsize2...
+        constructor; simpl_state; simpl...
+        + (* since N > t0 so impossible to confirm here *)
+          intros ->.
+          simpl in Hconf.
+          pose proof t0_lt_N.
+          lia.
+        + constructor; simpl...
+          unfold zip_from_lsigs, zip_from_sigs.
+          simpl.
+          intuition constructor; simpl...
+      - destruct H as (_, _, Hpsentinv).
+        constructor; simpl.
+        all: intros src0; unfold upd; destruct (Address_eqdec n src0) as [ <- | ]; [ simpl | apply Hpsentinv ].
+        1: destruct Hpsentinv as (Hpsentinv, _, _).
+        2: destruct Hpsentinv as (_, Hpsentinv, _).
+        3: destruct Hpsentinv as (_, _, Hpsentinv).
+        all: specialize (Hpsentinv n); simpl in Hpsentinv; rewrite En in Hpsentinv; simpl in Hpsentinv.
+        + intros a b c d e f g. 
+          exfalso.
+          specialize (Hpsentinv a b c d e f g).
+          intuition congruence.
+        + rewrite H_n_nonbyz in Hpsentinv |- *.
+          intros a b c d. 
+          exfalso.
+          specialize (Hpsentinv a b c d).
+          intuition congruence.
+        + rewrite H_n_nonbyz in Hpsentinv |- *.
+          intros a b c d. 
+          exfalso.
+          specialize (Hpsentinv a b c d).
+          intuition congruence.
+    }
+    (* throw w; only keep some necessary things about buffer *)
+    match type of H' with invariant ?ww => remember ww as w' eqn:Ew' end.
+    enough (invariant (mkW (upd n st_ (localState w')) (ps_ ++ sentMsgs w'))) as Hgoal.
+    {
+      subst w'.
+      simpl in Hgoal.
+      eapply inv_preserve_stmap_pointwise_eq.
+      2: apply Hgoal.
+      intros n0.
+      unfold upd.
+      destruct (Address_eqdec n n0)...
+    }
+    replace (_, nil) with (localState w' n, @nil Packet) in Efr.
+    2:{
+      subst w'.
+      simpl.
+      unfold upd.
+      destruct (Address_eqdec n n)...
+    }
+    pose proof H as Hnodeinv.
+    destruct Hnodeinv as (_, Hnodeinv, _).
+    specialize (Hnodeinv n H_n_nonbyz).
+    unfold holds in Hnodeinv.
+    rewrite -> En in Hnodeinv.
+    destruct Hnodeinv as (_, _, _, _, Hbuffer_recv, (_, _, _, _, _, _, (_ & Hbuffer))).
+    simpl in Hbuffer_recv, Hbuffer.
+    eapply Forall_impl in Hbuffer_recv.
+    2:{
+      intros p HH.
+      match type of Ew' with context[broadcast n ?mm] => rewrite -> in_app_iff with (l:=broadcast n mm) end.
+      right.
+      apply HH.
+    }
+    pose proof (eq_refl (sentMsgs w')) as Htmp.
+    rewrite Ew' in Htmp at 1.
+    simpl in Htmp.
+    rewrite -> Htmp in Hbuffer_recv.
+    clear Htmp.
+    clear Ew' Hstep Hcoh w H En.
+    revert st_ ps_ Efr.
+    induction buffer as [ | nmsg buffer IH ]; intros; simpl in Efr.
+    + injection_pair Efr.
+      simpl.
+      eapply inv_preserve_stmap_pointwise_eq.
+      * apply upd_same_pointwise_eq.
+      * now rewrite_w_expand w' in_ H'.
+    + (* processing another buffered message is equivalent with delivering a message *)
+      match type of Efr with context[fold_right ?ff ?ini _] =>
+        destruct (fold_right ff ini buffer) as (st_', ps_') eqn:Estps end.
+      simpl in Efr.
+      rewrite -> Forall_cons_iff in Hbuffer, Hbuffer_recv.
+      specialize (IH (proj2 Hbuffer) (proj2 Hbuffer_recv) _ _ eq_refl).
+      apply proj1 in Hbuffer, Hbuffer_recv.
+      destruct nmsg as (src, [ v ls s | lc | c ]).
+      all: simpl in Hbuffer; destruct Hbuffer as (H_src_valid & Htmp); try contradiction.
+      simpl in Efr, Hbuffer_recv.
+      destruct (procMsg st_' src (SubmitMsg v ls s)) as (res1, res2) eqn:Eproc.
+      injection_pair Efr.
+      rewrite <- app_assoc.
+      eapply inv_deliver_step with (p:=mkP src n (SubmitMsg v ls s) true) in IH.
+      2:{
+        eapply DeliverStep; eauto.
+        - simpl.
+          apply in_app_iff...
+        - simpl.
+          unfold upd at 1.
+          destruct (Address_eqdec n n); [ | contradiction ].
+          rewrite Eproc.
+          reflexivity.
+      }
+      eapply inv_preserve_00.
+      3: apply IH.
+      1:{
+        intros m.
+        unfold upd.
+        destruct (Address_eqdec n m)...
+      }
+      (* the most interesting part *)
+      apply PsentEq''.
+      intros p.
+      simpl.
+      split.
+      * rewrite ! in_app_iff.
+        intros [ <- | Hin ].
+        1: tauto.
+        destruct Hin as [ ([ | ]%in_app_iff & Hneq)%in_remove | ].
+        all: tauto.
+      * rewrite 1 in_app_iff.
+        intros [ Hin | Hin ].
+        all: rewrite ! in_app_iff.
+        --tauto.
+        --destruct (Packet_eqdec (mkP src n (SubmitMsg v ls s) true) p) as [ <- | Hneq1 ].
+          1: now left.
+          right.
+          left.
+          apply in_in_remove...
+Qed.
+
+Lemma inv_step q w w' :
+  invariant w -> system_step q w w' -> invariant w'.
+Proof with basic_solver.
+  intros H Hstep. 
+  pose proof (coh _ H) as Hcoh.
+  inversion Hstep as [ 
+    | p Hq Hpin Hnvalid Hsrcvalid Hnonbyz Heq 
+    | n t Hq Hnvalid H_n_nonbyz Heq 
+    | n dst v ls s Hq H_n_byz Heq 
+    | n dst lc Hq H_n_byz Hcc Heq
+    | n dst c Hq H_n_byz Hcc Heq ].
+  all: subst q.
+  - now subst.
+  - eapply inv_deliver_step; eauto.
+  - destruct t.
+    + eapply inv_internal_submit_step; eauto.
+    + destruct_procInt as_ st' ms eqn_ Epm.
+      destruct_localState w n as_ conf ov from lsigs sigs rlcerts rcerts buffer eqn_ En.
+      subst w'.
+      simpl in Epm.    
+      destruct (match ov with
         | Some v => if conf
           then lightcert_conflict_check rlcerts
           else false
@@ -1259,9 +1549,8 @@ Proof with basic_solver.
       * assert (st' = localState w n /\ ms = nil) as (-> & ->) by (destruct ov, conf, 
           (lightcert_conflict_check rlcerts); simpl in Epm; now injection_pair Epm).
         simpl.
-        eapply inv_preserve_00.
+        eapply inv_preserve_stmap_pointwise_eq.
         --apply upd_same_pointwise_eq.
-        --now apply PsentEq.
         --now rewrite_w_expand w in_ H.
   - subst w'.
     eapply inv_preserve_01.
@@ -1332,190 +1621,537 @@ Proof.
   - now destruct msg0 as [ | (?, ?) | (?, ?) ].
 Qed.
 
+(* pure facts; should not require any invariant *)
+
+Fact procMsg_sent_packets_are_fresh st src msg :
+  forall p (Hin : In p (snd (procMsg st src msg))), consumed p = false.
+Proof with basic_solver.
+  intros.
+  destruct (procMsg st src msg) as (st', ms) eqn:Epm.
+  simpl in Hin.
+  destruct st as (n, conf, ov, from, lsigs, sigs, rlcerts, rcerts, buffer) eqn:Est.
+  destruct msg as [ v' ls s | (v, cs) | (v, nsigs) ]; simpl in Epm.
+  - (* avoid processing so many subgoals at the same time ... *)
+    destruct ov as [ v | ] eqn:Eov.
+    2: now injection_pair Epm.
+    destruct (Value_eqdec v' v) as [ -> | ].
+    2: now injection_pair Epm.
+    destruct (verify v s src).
+    2: now injection_pair Epm.
+    destruct (light_verify v ls src).
+    2: now injection_pair Epm.
+    destruct (conf || in_dec Address_eqdec src from).
+    + destruct (Nat.leb (N - t0) (length from)); injection_pair Epm.
+      * apply In_broadcast in Hin.
+        now destruct Hin as (? & ? & ->).
+      * simpl in Hin...
+    + destruct (Nat.leb (N - t0) (length (src :: from))); injection_pair Epm.
+      * apply In_broadcast in Hin.
+        now destruct Hin as (? & ? & ->).
+      * simpl in Hin...
+  - destruct (combined_verify v cs).
+    all: now injection_pair Epm.
+  - destruct (NoDup_eqdec AddrSigPair_eqdec nsigs),
+      (Nat.leb (N - t0) (length nsigs)), (verify_certificate v nsigs).
+    all: now injection_pair Epm.
+Qed.
+
+Fact procInt_sent_packets_are_fresh st tr :
+  forall p (Hin : In p (snd (procInt st tr))), consumed p = false.
+Proof with basic_solver.
+  intros.
+  destruct (procInt st tr) as (st', ms) eqn:Epm.
+  simpl in Hin.
+  destruct st as (n, conf, ov, from, lsigs, sigs, rlcerts, rcerts, buffer) eqn:Est.
+  destruct tr; simpl in Epm.
+  - destruct (fold_right _ _ _) as (st'', ps') eqn:Estps in Epm.
+    injection_pair Epm.
+    rewrite in_app_iff in Hin.
+    destruct Hin as [ Hin | Hin ].
+    + clear Est.
+      revert st'' ps' Estps Hin.
+      induction buffer as [ | (src, msg) buffer IH ]; intros; simpl in Estps.
+      * now injection_pair Estps.
+      * destruct (fold_right _ _ _) as (st_, ps_) eqn:Estps' in Estps.
+        specialize (IH st_ ps_ Estps').
+        simpl in Estps.
+        destruct (procMsg st_ src msg) as (st__, ps__) eqn:Epm'.
+        injection_pair Estps.
+        rewrite in_app_iff in Hin.
+        destruct Hin as [ Hin | Hin ]...
+        epose proof (procMsg_sent_packets_are_fresh st_ src msg) as H.
+        rewrite Epm' in H.
+        simpl in H.
+        now apply H.
+    + apply In_broadcast in Hin.
+      now destruct Hin as (? & ? & ->).
+  - destruct ov, conf, (lightcert_conflict_check rlcerts).
+    all: injection_pair Epm.
+    all: simpl in Hin...
+    all: rewrite -> In_broadcast in Hin.
+    all: destruct Hin as (? & ? & ->)...
+Qed.
+
 Lemma inv_2_init : invariant_2 initWorld.
 Proof with basic_solver.
   do 2 constructor.
 Qed.
 
-Lemma inv_2_step w w' (Hinv2 : invariant_2 w)
-  (Hcoh : Coh w) (Hstep : system_step w w') : invariant_2 w'.
+Lemma inv_2_deliver_step w w' p 
+  (Hinv2 : invariant_2 w) (Hinv : invariant w) (Hcoh : Coh w)
+  (Hstep : system_step (Deliver p) w w') : invariant_2 w'.
 Proof with basic_solver.
   destruct Hinv2 as (Hpsentinv).
   pose proof Hpsentinv as Hpsentinv'.
   rewrite -> Forall_forall in Hpsentinv'.
   inversion Hstep as [ 
-    | p Hpin Hnvalid Hsrcvalid Hnonbyz Heq 
-    | n t Hnvalid H_n_nonbyz Heq 
-    | n dst v s H_n_byz Heq 
-    | n dst lc H_n_byz Hcc Heq
-    | n dst c H_n_byz Hcc Heq ].
-  - now subst.
-  - destruct p as (src, dst, msg, used) eqn:Ep.
-    simpl_pkt.
-    rewrite <- Ep in *.
-    destruct_procMsg as_ st' ms eqn_ Epm.
-    destruct_localState w dst as_ conf_dst ov_dst from_dst lsigs_dst sigs_dst 
-      rlcerts_dst rcerts_dst eqn_ Edst.
-    subst w'.
-    destruct msg as [ v ls s | lc | c ].
-    + simpl in Epm.
-      (* do some brute force *)
-      assert (received_lightcerts st' = rlcerts_dst /\ received_certs st' = rcerts_dst /\ 
-        (forall p, In p ms -> consumed p = false)) as (Hrcerts_intact & Hin_ms).
-      {
-        destruct ov_dst as [ v_dst | ] eqn:Eov_dst...
-        1: destruct (Value_eqdec v v_dst), (verify v s src), (light_verify v ls src), 
-          conf_dst eqn:E, (In_dec Address_eqdec src from_dst) as [ Ensig_in | Ensig_in ], 
-          (Nat.leb (N - t0) (length from_dst)) eqn:Ele.
-        all: simpl in Epm.
-        all: try rewrite Ele in Epm.
-        all: injection_pair Epm.
-        all: split; [ reflexivity | ].
-        all: split; [ reflexivity | ].
-        all: simpl.
-        all: try (intuition; fail).
-        4-5: destruct (Nat.leb (N - t0) (S (length from_dst))) eqn:Ele'.
-        all: simpl.
-        all: try (intuition; fail).
-        all: intros p0 Hinb.
-        all: apply In_broadcast in Hinb.
-        all: now destruct Hinb as (? & ? & ->).
+    | p' Hq Hpin Hnvalid Hsrcvalid Hnonbyz Heq 
+    | | | | ]; try discriminate.
+  injection Hq as <-.
+  destruct p as (src, dst, msg, used) eqn:Ep.
+  simpl_pkt.
+  rewrite <- Ep in *.
+  pose proof (procMsg_sent_packets_are_fresh (localState w dst) src msg) as Hfresh.
+  destruct_procMsg as_ st' ms eqn_ Epm.
+  destruct_localState w dst as_ conf_dst ov_dst from_dst lsigs_dst sigs_dst 
+    rlcerts_dst rcerts_dst buffer_dst eqn_ Edst.
+  subst w'.
+  simpl in Hfresh.
+  destruct msg as [ v ls s | lc | c ].
+  - simpl in Epm.
+    (* do some brute force to obtain some consequence after delivery *)
+    (* TODO merge the following two proofs? *)
+    assert (received_lightcerts st' = rlcerts_dst /\ received_certs st' = rcerts_dst /\ 
+      ov_dst = st'.(submitted_value)) as (Hrlcerts_intact & Hrcerts_intact & Eov).
+    {
+      destruct ov_dst as [ v_dst | ] eqn:Eov_dst.
+      (* TODO possibly optimize this exhaustive case analysis? *)
+      1: destruct (Value_eqdec v v_dst), (verify v s src), (light_verify v ls src), 
+        conf_dst eqn:E, (In_dec Address_eqdec src from_dst) as [ Ensig_in | Ensig_in ], 
+        (Nat.leb (N - t0) (length from_dst)) eqn:Ele.
+      all: simpl in Epm.
+      all: try rewrite Ele in Epm.
+      all: injection_pair Epm...
+    }
+    pose proof Hinv as Hnodeinv.
+    destruct Hnodeinv as (_, Hnodeinv, _).
+    specialize (Hnodeinv dst Hnonbyz).
+    unfold holds in Hnodeinv.
+    rewrite -> Edst in Hnodeinv.
+    destruct Hnodeinv as (_, _, _, _, Hbuffer_recv,
+      (_, Hconf, Hfrom_nodup, _, _, _, (Hbuffer1 & Hbuffer2))).
+    simpl in Hbuffer_recv,  
+      Hconf, Hfrom_nodup, Hbuffer1, Hbuffer2.
+    assert (match ov_dst with
+      | Some v_dst => if (if Value_eqdec v v_dst 
+          then (if verify v s src 
+                then (if light_verify v ls src
+                      then (if (negb conf_dst) 
+                            then (negb (is_left (In_dec Address_eqdec src from_dst)))
+                                (* (if (negb (is_left (In_dec Address_eqdec src from_dst)))
+                                  then negb (Nat.leb (N - t0) (S (length from_dst)))
+                                  else false)  *)
+                            else false) 
+                      else false)
+                else false)
+          else false)
+        then st'.(from_set) = src :: from_dst
+        else st'.(from_set) = from_dst
+      | None => st'.(msg_buffer) = (src, SubmitMsg v ls s) :: buffer_dst
+      end) as Hov_res.
+    {
+      destruct ov_dst as [ v_dst | ] eqn:Eov_dst.
+      - destruct (Value_eqdec v v_dst) as [ <- | ]. 
+        2: now injection_pair Epm.
+        destruct (verify v s src).
+        2: now injection_pair Epm.
+        destruct (light_verify v ls src).
+        2: now injection_pair Epm.
+        destruct conf_dst eqn:E; simpl in Epm |- *.
+        + pose proof (le_n (length from_dst)) as Hle. (* ? *)
+          rewrite -> Hconf, <- PeanoNat.Nat.leb_le in Hle at 1.
+          rewrite Hle in Epm.
+          now injection_pair Epm.
+        + pose proof Hconf as Hlt.
+          rewrite <- PeanoNat.Nat.leb_gt in Hlt.
+          destruct (In_dec Address_eqdec src from_dst) as [ Ensig_in | Ensig_in ]; simpl in Epm |- *.
+          * rewrite Hlt in Epm.
+            now injection_pair Epm.
+          * destruct (Nat.leb (N - t0) (S (length from_dst))); simpl in Epm |- *.
+            all: now injection_pair Epm.
+      - now injection_pair Epm.
+    }
+    (* now discuss; mainly care about the case if the message is submit *)
+    apply inv_2_by_extend_freshpkt with (psent:=consume p (sentMsgs w)).
+    1: setoid_rewrite -> in_app_iff.
+    1: intuition.
+    constructor.
+    apply Forall_forall.
+    simpl.
+    intros p0 [ Hin | Hin ].
+    + rewrite Ep in Hin.
+      simpl in Hin.
+      subst p0.
+      unfold upd.
+      destruct (Address_eqdec dst dst)...
+      rewrite <- Eov.
+      intros _ _.
+      destruct ov_dst as [ v_dst | ].
+      * intros Hc <- He Hf.
+        destruct (Value_eqdec v v), (verify v s src), (light_verify v ls src)...
+        destruct conf_dst; simpl in Hov_res.
+        --rewrite Hov_res in Hc.
+          lia.
+        --destruct (In_dec Address_eqdec src from_dst) as [ Ensig_in | Ensig_in ]; simpl in Hov_res.
+          ++now rewrite Hov_res.
+          ++rewrite Hov_res.
+            simpl...
+      * rewrite Hov_res.
+        simpl...
+    + destruct p0 as (src0, dst0, msg0, b0).
+      apply in_remove in Hin.
+      destruct Hin as (Hin & _).
+      apply Hpsentinv' in Hin.
+      simpl in Hin.
+      unfold upd.
+      destruct (Address_eqdec dst dst0) as [ <- | Hnneq ].
+      2: apply Hin.
+      rewrite -> Hrcerts_intact, <- Eov, -> Hrlcerts_intact.
+      rewrite -> Edst in Hin.
+      simpl in Hin |- *.
+      destruct msg0 as [ v0 ls0 s0 | (?, ?) | (?, ?) ]...
+      intros Ha Hb.
+      specialize (Hin Ha Hb).
+      destruct ov_dst as [ v_dst | ].
+      --match type of Hov_res with if ?bb then _ else _ => destruct bb; rewrite Hov_res end.
+        ++intros Hc Hd He Hf.
+          simpl in Hc |- *.
+          right.
+          revert Hd He Hf.
+          apply Hin...
+        ++assumption.
+      --rewrite Hov_res.
+        simpl...
+  - (* critical case 1 *)
+    simpl in Epm.
+    destruct lc as (v, cs).
+    assert (ms = nil) as -> by (destruct (combined_verify v cs); eqsolve).
+    rewrite -> app_nil_r.
+    constructor.
+    rewrite -> Forall_forall in Hpsentinv |- *.
+    simpl.
+    intros (src0, dst0, msg0, b0) [ Hin | Hin ].
+    + destruct p.
+      simpl in Hin.
+      injection Ep as ->.
+      injection Hin as ->.
+      subst.
+      unfold upd.
+      destruct (Address_eqdec dst0 dst0) as [ _ | ? ].
+      2: eqsolve.
+      destruct (combined_verify v cs) eqn:Everi...
+      injection Epm as <-.
+      simpl. 
+      intuition.
+    + apply in_remove in Hin.
+      destruct Hin as (Hin & _).
+      apply Hpsentinv' in Hin.
+      simpl in Hin.
+      unfold upd.
+      destruct (Address_eqdec dst dst0) as [ <- | Hnneq ].
+      2: apply Hin.
+      rewrite -> Edst in Hin.
+      simpl in Hin.
+      destruct msg0 as [ | (v0, cs0) | (?, ?) ]...
+      all: destruct (combined_verify v cs) eqn:Everi.
+      all: injection Epm as <-...
+      simpl.
+      intuition.
+  - (* critical case 2 *)
+    simpl in Epm.
+    destruct c as (v, nsigs).
+    assert (ms = nil) as ->
+      by (destruct (NoDup_eqdec AddrSigPair_eqdec nsigs),
+        (Nat.leb (N - t0) (length nsigs)), (verify_certificate v nsigs); eqsolve).
+    rewrite -> app_nil_r.
+    constructor.
+    rewrite -> Forall_forall in Hpsentinv |- *.
+    simpl.
+    intros (src0, dst0, msg0, b0) [ Hin | Hin ].
+    + destruct p.
+      simpl in Hin.
+      injection Ep as ->.
+      injection Hin as ->.
+      subst.
+      unfold upd.
+      destruct (Address_eqdec dst0 dst0) as [ _ | ? ].
+      2: eqsolve.
+      destruct (NoDup_eqdec AddrSigPair_eqdec nsigs) as [ Hnodup | ],
+        (Nat.leb (N - t0) (length nsigs)) eqn:Hlnsigs, 
+        (verify_certificate v nsigs) eqn:Everic...
+      all: injection Epm as <-.
+      * simpl. 
+        intuition.
+      * intros.
+        rewrite <- PeanoNat.Nat.leb_le in *.
+        eqsolve.
+    + apply in_remove in Hin.
+      destruct Hin as (Hin & _).
+      apply Hpsentinv' in Hin.
+      simpl in Hin.
+      unfold upd.
+      destruct (Address_eqdec dst dst0) as [ <- | Hnneq ].
+      2: apply Hin.
+      rewrite -> Edst in Hin.
+      destruct msg0 as [ | (?, ?) | (v0, nsigs0) ]...
+      simpl in Hin |- *.
+      all: destruct (NoDup_eqdec AddrSigPair_eqdec nsigs) as [ Hnodup | ],
+        (Nat.leb (N - t0) (length nsigs)) eqn:Hlnsigs, 
+        (verify_certificate v nsigs) eqn:Everic.
+      all: injection Epm as <-...
+      simpl.
+      intuition.
+Qed.
+
+Lemma inv_2_internal_submit_step w w' n
+  (Hinv2 : invariant_2 w) (Hinv : invariant w) (Hcoh : Coh w)
+  (Hstep : system_step (Intern n SubmitIntTrans) w w') : invariant_2 w'.
+Proof with basic_solver.
+  pose proof Hinv2 as (Hpsentinv').
+  rewrite -> Forall_forall in Hpsentinv'.
+  inversion Hstep as [ |
+    | n' t Hq Hnvalid H_n_nonbyz Heq 
+    | | | ]; try discriminate.
+  injection Hq as <-.
+  subst t.
+  pose proof (procInt_sent_packets_are_fresh (localState w n) SubmitIntTrans) as Hfresh.
+  destruct_procInt as_ st' ms eqn_ Epm.
+  destruct_localState w n as_ conf ov from lsigs sigs rlcerts rcerts buffer eqn_ En.
+  subst w'.
+  simpl in Hfresh.
+  apply inv_2_by_extend_freshpkt with (psent:=(sentMsgs w)).
+  1:{
+    setoid_rewrite in_app_iff.
+    intros p [ Hin | ]...
+  }
+  clear Hfresh.
+  simpl in Epm.
+  pose proof Hinv as Hv.
+  destruct Hv as (_, Hv, _).
+  specialize (Hv n H_n_nonbyz).
+  unfold holds in Hv.
+  rewrite -> En in Hv.
+  destruct Hv as (_, _, _, _, Hbuffer_recv, (_, _, _, _, _, Hv, (Hbuffer1 & Hbuffer2))).
+  simpl in Hbuffer_recv, Hbuffer1, Hbuffer2, Hv.
+  destruct ov as [ v | ] eqn:Eov.
+  - specialize (Hbuffer1 eq_refl).
+    subst buffer.
+    destruct Hv as (-> & _ & _).
+    simpl in Epm.
+    injection_pair Epm.
+    rewrite <- En.
+    eapply stmap_pointwise_eq_preserve_inv_2.
+    + apply upd_same_pointwise_eq.
+    + rewrite_w_expand w in_ Hinv2.
+      assumption.
+  - subst from ov.
+    remember (map (fun nmsg => mkP (fst nmsg) n (snd nmsg) true) buffer) as pkts eqn:Epkts.
+    destruct (fold_right _ _ _) as (st_, ps_) eqn:Efr in Epm.
+    injection_pair Epm.
+    clear Hstep.
+    (* initial step by retracting Hpsentinv' *)
+    match type of Efr with context[fold_right _ (?st', nil) _] =>
+      remember (mkW (upd n st' (localState w)) (set_diff Packet_eqdec (sentMsgs w) pkts)) as w' eqn:Ew' end.
+    assert (invariant_2 w') as Hpsentinv''.
+    {
+      constructor.
+      rewrite -> Forall_forall.
+      subst w'.
+      cbn delta [sentMsgs localState] beta iota.
+      intros (src0, dst0, msg0, b0) Hin%set_diff_iff.
+      destruct Hin as (Hin & Hnotin).
+      apply Hpsentinv' in Hin.
+      simpl in Hin |- *.
+      unfold upd.
+      destruct (Address_eqdec n dst0) as [ <- | ].
+      2: now apply Hin.
+      rewrite En in Hin.
+      simpl in Hin |- *.
+      destruct msg0 as [ v0 lsig0 sig0 | lc0 | c0 ]...
+      intros Ha Hb.
+      specialize (Hin Ha Hb).
+      destruct b0...
+      match type of Epkts with _ = map ?ff _ => eapply in_map with (f:=ff) in Hin end.
+      simpl in Hin...
+    }
+    assert (invariant_2 (mkW (upd n st_ (localState w')) (pkts ++ sentMsgs w'))) as Hgoal.
+    {
+      replace (_, nil) with (localState w' n, @nil Packet) in Efr.
+      2:{
+        subst w'.
+        simpl.
+        unfold upd.
+        destruct (Address_eqdec n n)...
       }
-      (* now discuss *)
-      apply inv_2_by_extend_freshpkt with (psent:=consume p (sentMsgs w)).
-      1: setoid_rewrite -> in_app_iff.
-      1: intuition.
-      constructor.
-      apply Forall_forall.
-      simpl.
-      intros (src0, dst0, msg0, b0) [ Hin | Hin ].
-      * destruct p.
-        simpl in Hin.
-        injection Ep as ->.
-        injection Hin as ->.
-        now subst.
-      * apply in_remove in Hin.
-        destruct Hin as (Hin & _).
-        apply Hpsentinv' in Hin.
-        simpl in Hin.
-        unfold upd.
-        destruct (Address_eqdec dst dst0) as [ <- | Hnneq ].
-        2: apply Hin.
-        rewrite -> Edst in Hin.
-        rewrite -> Hrcerts_intact.
-        simpl in Hin |- *.
-        destruct msg0 as [ ? ? ? | (?, ?) | (?, ?) ]...
-    + (* critical case 1 *)
-      simpl in Epm.
-      destruct lc as (v, cs).
-      assert (ms = nil) as -> by (destruct (combined_verify v cs); eqsolve).
-      rewrite -> app_nil_r.
-      constructor.
-      rewrite -> Forall_forall in Hpsentinv |- *.
-      simpl.
-      intros (src0, dst0, msg0, b0) [ Hin | Hin ].
-      * destruct p.
-        simpl in Hin.
-        injection Ep as ->.
-        injection Hin as ->.
-        subst.
-        unfold upd.
-        destruct (Address_eqdec dst0 dst0) as [ _ | ? ].
-        2: eqsolve.
-        destruct (combined_verify v cs) eqn:Everi...
-        injection Epm as <-.
-        simpl. 
-        intuition.
-      * apply in_remove in Hin.
-        destruct Hin as (Hin & _).
-        apply Hpsentinv' in Hin.
-        simpl in Hin.
-        unfold upd.
-        destruct (Address_eqdec dst dst0) as [ <- | Hnneq ].
-        2: apply Hin.
-        rewrite -> Edst in Hin.
-        simpl in Hin.
-        destruct msg0 as [ | (v0, cs0) | (?, ?) ]...
-        all: destruct (combined_verify v cs) eqn:Everi.
-        all: injection Epm as <-...
+      clear Ew' Hbuffer1 En.
+      revert st_ ps_ Efr pkts Epkts.
+      induction buffer as [ | nmsg buffer IH ]; intros; simpl in Epkts, Efr.
+      - subst pkts.
+        injection_pair Efr.
         simpl.
-        intuition.
-    + (* critical case 2 *)
-      simpl in Epm.
-      destruct c as (v, nsigs).
-      assert (ms = nil) as ->
-        by (destruct (NoDup_eqdec AddrSigPair_eqdec nsigs),
-          (Nat.leb (N - t0) (length nsigs)), (verify_certificate v nsigs); eqsolve).
-      rewrite -> app_nil_r.
-      constructor.
-      rewrite -> Forall_forall in Hpsentinv |- *.
+        eapply stmap_pointwise_eq_preserve_inv_2.
+        + apply upd_same_pointwise_eq.
+        + rewrite_w_expand w' in_ Hpsentinv''.
+          assumption.
+      - (* TODO repeating the induction above? *)
+        match type of Efr with context[fold_right ?ff ?ini _] =>
+          destruct (fold_right ff ini buffer) as (st_', ps_') eqn:Estps end.
+        simpl in Efr.
+        destruct pkts as [ | p pkts ]...
+        injection Epkts as ->.
+        match goal with HH : pkts = _ |- _ => rename HH into Epkts end.
+        rewrite -> Forall_cons_iff in Hbuffer_recv, Hbuffer2.
+        specialize (IH (proj2 Hbuffer_recv) (proj2 Hbuffer2) _ _ eq_refl _ Epkts).
+        apply proj1 in Hbuffer2, Hbuffer_recv.
+        destruct nmsg as (src, [ v ls s | lc | c ]).
+        all: simpl in Hbuffer2; destruct Hbuffer2 as (H_src_valid & Htmp); try contradiction.
+        simpl in Efr, Hbuffer_recv |- *.
+        destruct (procMsg st_' src (SubmitMsg v ls s)) as (res1, res2) eqn:Eproc.
+        injection_pair Efr.
+        pose proof (inv_2_deliver_step _ _ ).
+
+
+
+        eapply inv_deliver_step with (p:=mkP src n (SubmitMsg v ls s) true) in IH.
+      2:{
+        eapply DeliverStep; eauto.
+        - simpl.
+          apply in_app_iff...
+        - simpl.
+          unfold upd at 1.
+          destruct (Address_eqdec n n); [ | contradiction ].
+          rewrite Eproc.
+          reflexivity.
+      }
+      eapply inv_preserve_00.
+      3: apply IH.
+      1:{
+        intros m.
+        unfold upd.
+        destruct (Address_eqdec n m)...
+      }
+      (* the most interesting part *)
+      apply PsentEq''.
+      intros p.
       simpl.
-      intros (src0, dst0, msg0, b0) [ Hin | Hin ].
-      * destruct p.
-        simpl in Hin.
-        injection Ep as ->.
-        injection Hin as ->.
-        subst.
-        unfold upd.
-        destruct (Address_eqdec dst0 dst0) as [ _ | ? ].
-        2: eqsolve.
-        destruct (NoDup_eqdec AddrSigPair_eqdec nsigs) as [ Hnodup | ],
-          (Nat.leb (N - t0) (length nsigs)) eqn:Hlnsigs, 
-          (verify_certificate v nsigs) eqn:Everic...
-        all: injection Epm as <-.
-        --simpl. 
-          intuition.
-        --intros.
-          rewrite <- PeanoNat.Nat.leb_le in *.
-          eqsolve.
-      * apply in_remove in Hin.
-        destruct Hin as (Hin & _).
-        apply Hpsentinv' in Hin.
-        simpl in Hin.
-        unfold upd.
-        destruct (Address_eqdec dst dst0) as [ <- | Hnneq ].
-        2: apply Hin.
-        rewrite -> Edst in Hin.
-        destruct msg0 as [ | (?, ?) | (v0, nsigs0) ]...
-        simpl in Hin |- *.
-        all: destruct (NoDup_eqdec AddrSigPair_eqdec nsigs) as [ Hnodup | ],
-          (Nat.leb (N - t0) (length nsigs)) eqn:Hlnsigs, 
-          (verify_certificate v nsigs) eqn:Everic.
-        all: injection Epm as <-...
-        simpl.
-        intuition.
-  - destruct_procInt as_ st' ms eqn_ Epm.
-    destruct_localState w n as_ conf ov from lsigs sigs rlcerts rcerts eqn_ En.
+      split.
+      * rewrite ! in_app_iff.
+        intros [ <- | Hin ].
+        1: tauto.
+        destruct Hin as [ ([ | ]%in_app_iff & Hneq)%in_remove | ].
+        all: tauto.
+      * rewrite 1 in_app_iff.
+        intros [ Hin | Hin ].
+        all: rewrite ! in_app_iff.
+        --tauto.
+        --destruct (Packet_eqdec (mkP src n (SubmitMsg v ls s) true) p) as [ <- | Hneq1 ].
+          1: now left.
+          right.
+          left.
+          apply in_in_remove...
+
+
+        eapply inv_deliver_step with (p:=mkP src n (SubmitMsg v ls s) true) in IH.
+      
+
+
+
+
+
+    enough (invariant_2 (mkW (upd n st_ (localState w'))) ()) as Hgoal.
+    
+
+
+
+    rewrite <- app_assoc.
+    
+
+
+
+    pose proof Hinv as Hpsentinv.
+    destruct Hv as (_, Hv, _).
+    specialize (Hv n H_n_nonbyz).
+  
+
+
+
+    simpl in Hv.
+    destruct Hv as (-> & _ & _).
+    (* nothing would change *)
+    rewrite <- En.
+    eapply inv_preserve_01.
+    1: apply upd_same_pointwise_eq.
+    2: rewrite_w_expand w in_ H; apply H.
+    exists (sentMsgs w).
+    split...
+    split...
+    intros p0 Hin_app Hnotin.
+    rewrite -> in_app_iff in Hin_app.
+    destruct Hin_app as [ Hin_ms | ]...
+    rewrite -> In_broadcast in Hin_ms.
+    destruct Hin_ms as (dst & H_dst_valid & ->).
+    simpl.
+    intros _.
+    split; [ | split ].
+    + now apply key_correct.
+    + now apply lightkey_correct.
+    + now rewrite -> En.
+  
+
+
+
+Lemma inv_2_step q w w' (Hinv2 : invariant_2 w) (Hinv : invariant w)
+  (Hstep : system_step q w w') : invariant_2 w'.
+Proof with basic_solver.
+  pose proof (coh _ Hinv) as Hcoh.
+  pose proof Hinv2 as (Hpsentinv).
+  pose proof Hpsentinv as Hpsentinv'.
+  rewrite -> Forall_forall in Hpsentinv'.
+  inversion Hstep as [ 
+    | p Hq Hpin Hnvalid Hsrcvalid Hnonbyz Heq 
+    | n t Hq Hnvalid H_n_nonbyz Heq 
+    | n dst v ls s Hq H_n_byz Heq 
+    | n dst lc Hq H_n_byz Hcc Heq
+    | n dst c Hq H_n_byz Hcc Heq ].
+  all: subst q.
+  - now subst.
+  - eapply inv_2_deliver_step; eauto.
+  - pose proof (procInt_sent_packets_are_fresh (localState w n) t) as Hfresh.
+    destruct_procInt as_ st' ms eqn_ Epm.
+    destruct_localState w n as_ conf ov from lsigs sigs rlcerts rcerts buffer eqn_ En.
     subst w'.
+    simpl in Hfresh.
     apply inv_2_by_extend_freshpkt with (psent:=(sentMsgs w)).
     1:{
       setoid_rewrite in_app_iff.
       intros p [ Hin | ]...
-      right.
-      destruct t; simpl in Epm.
-      2: destruct ov, conf, (lightcert_conflict_check rlcerts).
-      all: injection_pair Epm.
-      all: simpl in Hin...
-      all: rewrite -> In_broadcast in Hin.
-      all: destruct Hin as (? & ? & ->)...
     }
-    (* only one case changes st' *)
     destruct t; simpl in Epm.
-    2: destruct ov, conf, (lightcert_conflict_check rlcerts).
-    all: injection_pair Epm.
-    all: try rewrite <- En.
-    2-9: eapply stmap_pointwise_eq_preserve_inv_2; 
-      [ apply upd_same_pointwise_eq | constructor; simpl ]...
-    constructor.
-    simpl.
-    rewrite -> Forall_forall in Hpsentinv |- *.
-    intros (src, dst, msg, b) Hin.
-    specialize (Hpsentinv _ Hin).
-    simpl in Hpsentinv |- *.
-    unfold upd.
-    destruct (Address_eqdec n dst) as [ <- | ]...
-    rewrite -> En in Hpsentinv.
-    simpl in Hpsentinv |- *...
+    + constructor.
+      simpl.
+      rewrite -> Forall_forall in Hpsentinv |- *.
+      intros (src, dst, msg, b) Hin.
+      specialize (Hpsentinv _ Hin).
+      simpl in Hpsentinv |- *.
+      unfold upd.
+      destruct (Address_eqdec n dst) as [ <- | ]...
+      rewrite -> En in Hpsentinv.
+      simpl in Hpsentinv |- *...
+    + destruct ov, conf, (lightcert_conflict_check rlcerts).
+      all: injection_pair Epm.
+      all: try rewrite <- En.
+      all: eapply stmap_pointwise_eq_preserve_inv_2; 
+        [ apply upd_same_pointwise_eq | constructor; simpl ]...
   (* TODO repeating below *)
   - subst w'.
     apply inv_2_by_extend_freshpkt with (psent:=(sentMsgs w)).

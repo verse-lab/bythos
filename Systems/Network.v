@@ -72,13 +72,22 @@ Definition lcert_correct_threshold (psent : PacketSoup) (lc : LightCertificate) 
 Definition consume (p : Packet) (psent : PacketSoup) :=
   (receive_pkt p) :: (List.remove Packet_eqdec p psent).
 
+Inductive system_step_descriptor : Type :=
+  | Idle | Deliver (p : Packet) 
+  | Intern (proc : Address) (t : InternalTransition) 
+  | ByzSubmit (src dst : Address) (v : Value) (ls : LightSignature) (s : Signature) 
+  | ByzLightConfirm (src dst : Address) (lc : LightCertificate) 
+  | ByzConfirm (src dst : Address) (c : Certificate)
+.
+
 (* TODO use this or indexed inductive relation?
     and put Coh inside the invariant or here?
 *)
-Inductive system_step (w w' : World) : Prop :=
-| Idle of w = w'
+Inductive system_step (q : system_step_descriptor) (w w' : World) : Prop :=
+| IdleStep of q = Idle & w = w'
 
-| Deliver (p : Packet) of
+| DeliverStep (p : Packet) of
+      q = Deliver p &
       (* Coh w &  *)
       In p (sentMsgs w) &
       (* try modelling message duplication *)
@@ -91,7 +100,8 @@ Inductive system_step (w w' : World) : Prop :=
       w' = mkW (upd (dst p) st' (localState w))
                ((consume p (sentMsgs w)) ++ ms)
 
-| Intern (proc : Address) (t : InternalTransition) of
+| InternStep (proc : Address) (t : InternalTransition) of
+      q = Intern proc t &
       (* Coh w & *)
       valid_node proc &
       is_byz proc = false &
@@ -100,20 +110,23 @@ Inductive system_step (w w' : World) : Prop :=
                (ms ++ (sentMsgs w))
 
 (* can possibly generate garbage in the following two trans *)
-| ByzSubmit (src dst : Address) (v : Value) (ls : LightSignature) (s : Signature) of
+| ByzSubmitStep (src dst : Address) (v : Value) (ls : LightSignature) (s : Signature) of
+      q = ByzSubmit src dst v ls s &
       (* Coh w & *)
       is_byz src &
       w' = mkW (localState w)
                ((mkP src dst (SubmitMsg v ls s) false) :: (sentMsgs w))
 
-| ByzLightConfirm (src dst : Address) (lc : LightCertificate) of
+| ByzLightConfirmStep (src dst : Address) (lc : LightCertificate) of
+      q = ByzLightConfirm src dst lc &
       (* Coh w & *)
       is_byz src &
       lcert_correct_threshold (sentMsgs w) lc &
       w' = mkW (localState w)
                ((mkP src dst (LightConfirmMsg lc) false) :: (sentMsgs w))
 
-| ByzConfirm (src dst : Address) (c : Certificate) of
+| ByzConfirmStep (src dst : Address) (c : Certificate) of
+      q = ByzConfirm src dst c &
       (* Coh w & *)
       is_byz src &
       cert_correct (sentMsgs w) c &
