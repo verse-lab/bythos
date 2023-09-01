@@ -1945,9 +1945,10 @@ Proof with basic_solver.
 Qed.
 
 Lemma inv_2_internal_submit_step w w' n
-  (Hinv2 : invariant_2 w) (Hinv : invariant w) (Hcoh : Coh w)
+  (Hinv2 : invariant_2 w) (Hinv : invariant w)
   (Hstep : system_step (Intern n SubmitIntTrans) w w') : invariant_2 w'.
 Proof with basic_solver.
+  pose proof Hinv as (Hcoh, _, _).
   pose proof Hinv2 as (Hpsentinv').
   rewrite -> Forall_forall in Hpsentinv'.
   inversion Hstep as [ |
@@ -1986,23 +1987,6 @@ Proof with basic_solver.
   - subst from ov.
     clear Hbuffer1 Hstep.
     remember (map (fun nmsg => mkP (fst nmsg) n (snd nmsg) true) buffer) as pkts eqn:Epkts.
-    (* remember (map (fun nmsg => mkP (fst nmsg) n (snd nmsg) false) buffer) as pkts_fresh eqn:Epkts_fresh. *)
-    (*
-    rewrite -> Forall_forall in Hbuffer_recv, Hbuffer2.
-    *)
-    (*
-    assert (forall src dst msg used, In (mkP src dst msg used) pkts ->
-      dst = n /\ valid_node src /\ match msg with SubmitMsg _ _ _ => True | _ => False end) as Haux.
-    {
-      subst pkts.
-      intros ? ? ? ? ((src1, msg1) & E & Hin)%in_map_iff.
-      simpl in E.
-      inversion E.
-      subst.
-      specialize (Hbuffer2 _ Hin).
-      simpl in *...
-    }
-    *)
     destruct (fold_right _ _ _) as (st_, ps_) eqn:Efr in Epm.
     injection_pair Epm.
     setoid_rewrite in_app_iff in Hfresh.
@@ -2024,16 +2008,6 @@ Proof with basic_solver.
     assert (invariant_2 w') as Hpsentinv''.
     {
       subst st' w'.
-      (*
-      apply inv_2_by_extend_freshpkt with (psent:=set_diff Packet_eqdec (sentMsgs w) pkts).
-      1:{
-        intros p [ Hin | Hin ]%in_app_iff...
-        subst pkts_fresh.
-        rewrite -> in_map_iff in Hin.
-        destruct Hin as (nmsg & <- & Hin).
-        now right.
-      }
-      *)
       constructor.
       rewrite -> Forall_forall.
       cbn delta [sentMsgs localState] beta iota.
@@ -2064,7 +2038,7 @@ Proof with basic_solver.
         destruct (Address_eqdec n n)...
       }
       clear Ew' En st' Est' Hfresh.
-      revert st_ ps_ Efr pkts Epkts(* pkts_fresh Epkts_fresh *).
+      revert st_ ps_ Efr pkts Epkts.
       induction buffer as [ | nmsg buffer IH ]; intros; simpl in Epkts, Efr.
       - subst pkts.
         injection_pair Efr.
