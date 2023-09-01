@@ -2162,23 +2162,18 @@ Proof with basic_solver.
     destruct_localState w n as_ conf ov from lsigs sigs rlcerts rcerts buffer eqn_ En.
     subst w'.
     simpl in Hfresh.
-    apply inv_2_by_extend_freshpkt with (psent:=(sentMsgs w)).
-    1:{
-      setoid_rewrite in_app_iff.
-      intros p [ Hin | ]...
-    }
-    destruct t; simpl in Epm.
-    + constructor.
-      simpl.
-      rewrite -> Forall_forall in Hpsentinv |- *.
-      intros (src, dst, msg, b) Hin.
-      specialize (Hpsentinv _ Hin).
-      simpl in Hpsentinv |- *.
-      unfold upd.
-      destruct (Address_eqdec n dst) as [ <- | ]...
-      rewrite -> En in Hpsentinv.
-      simpl in Hpsentinv |- *...
-    + destruct ov, conf, (lightcert_conflict_check rlcerts).
+    destruct t.
+    + eapply inv_2_internal_submit_step in Hinv2.
+      2: assumption.
+      2: apply Hstep.
+      assumption.
+    + apply inv_2_by_extend_freshpkt with (psent:=(sentMsgs w)).
+      1:{
+        setoid_rewrite in_app_iff.
+        intros p [ Hin | ]...
+      }
+      simpl in Epm.
+      destruct ov, conf, (lightcert_conflict_check rlcerts).
       all: injection_pair Epm.
       all: try rewrite <- En.
       all: eapply stmap_pointwise_eq_preserve_inv_2; 
@@ -2204,15 +2199,15 @@ Proof with basic_solver.
     all: intuition.
 Qed.
 
-Inductive reachable : World -> Prop :=
-  | ReachableInit : reachable initWorld
-  | ReachableStep (w w' : World) (Hstep : system_step w w')
-    (H_w_reachable : reachable w) : reachable w'.
+Inductive reachable : list system_step_descriptor -> World -> Prop :=
+  | ReachableInit : reachable nil initWorld
+  | ReachableStep q (w w' : World) (Hstep : system_step q w w')
+    sched (H_w_reachable : reachable sched w) : reachable (q :: sched) w'.
 
-Lemma reachable_inv w (H_w_reachable : reachable w) :
+Lemma reachable_inv w sched (H_w_reachable : reachable sched w) :
   invariant w.
 Proof.
-  induction H_w_reachable as [ | w w' Hstep H_w_reachable IH ].
+  induction H_w_reachable as [ | q w w' Hstep sched H_w_reachable IH ].
   - apply inv_init.
   - now apply inv_step in Hstep.
 Qed.
@@ -2270,7 +2265,7 @@ Proof.
   destruct Hinv as (Hcoh, Hnodeinv, Hpsentinv).
   pose proof (Hnodeinv n H_n_nonbyz) as Hnodeinv_n.
   unfold holds in Hnodeinv_n.
-  destruct Hnodeinv_n as (_, _, Hrcerts_trace, _, ((_ & Hsize2), _, _, _, Hrcerts, _)).
+  destruct Hnodeinv_n as (_, _, Hrcerts_trace, _, _, ((_ & Hsize2), _, _, _, Hrcerts, _, _)).
   (* sig1, sig2 must be valid *)
   pose proof (Hrcerts _ _ Hin1) as (Hnsigs_valid1 & _ & _).
   pose proof (Hrcerts _ _ Hin2) as (Hnsigs_valid2 & _ & _).
@@ -2303,7 +2298,7 @@ Proof.
       (* instantiate another nodeinv *)
       specialize (Hnodeinv src0 Ebyz0).
       unfold holds in Hnodeinv.
-      destruct Hnodeinv as (Hsubmit_trace, _, _, _, ((Hsize1' & Hsize2'), _, _, _, _, _)).
+      destruct Hnodeinv as (Hsubmit_trace, _, _, _, _, ((Hsize1' & Hsize2'), _, _, _, _, _, _)).
       rewrite <- Ev0, -> (id_coh _ Hcoh src0) in Hsubmit_trace.
       (* TODO here it actually indicates some inconvenience of not saving the complete submit message *)
       assert (exists lsig, In (nb, lsig, sign v0 (key_map nb))
@@ -2445,8 +2440,8 @@ Section Proof_of_Agreement.
     intros (n1 & n2 & v1 & v2 & Hnneq & Hn1valid & Hn2valid & H_n1_nonbyz & H_n2_nonbyz &
       Hvneq & Hn1v1 & Hn2v2 & Hn1conf & Hn2conf).
     pose proof (coh _ Hinv) as Hcoh.
-    destruct_localState w n1 as_ conf1 ov1 from1 lsigs1 sigs1 rlcerts1 rcerts1 eqn_ En1.
-    destruct_localState w n2 as_ conf2 ov2 from2 lsigs2 sigs2 rlcerts2 rcerts2 eqn_ En2.
+    destruct_localState w n1 as_ conf1 ov1 from1 lsigs1 sigs1 rlcerts1 rcerts1 buffer1 eqn_ En1.
+    destruct_localState w n2 as_ conf2 ov2 from2 lsigs2 sigs2 rlcerts2 rcerts2 buffer2 eqn_ En2.
     simpl_state.
     destruct conf1, conf2; try eqsolve.
     subst ov1 ov2.
@@ -2457,8 +2452,8 @@ Section Proof_of_Agreement.
     unfold holds in Hnodeinv1, Hnodeinv2.
     rewrite -> En1 in Hnodeinv1.
     rewrite -> En2 in Hnodeinv2.
-    destruct Hnodeinv1 as (Hsubmit_trace1, _, _, _, ((Hsize1 & Hsize1'), Hconf_size1, Hfrom_nodup1, _, _, Hcoll_valid1)).
-    destruct Hnodeinv2 as (Hsubmit_trace2, _, _, _, ((Hsize2 & Hsize2'), Hconf_size2, Hfrom_nodup2, _, _, Hcoll_valid2)).
+    destruct Hnodeinv1 as (Hsubmit_trace1, _, _, _, _, ((Hsize1 & Hsize1'), Hconf_size1, Hfrom_nodup1, _, _, Hcoll_valid1, _)).
+    destruct Hnodeinv2 as (Hsubmit_trace2, _, _, _, _, ((Hsize2 & Hsize2'), Hconf_size2, Hfrom_nodup2, _, _, Hcoll_valid2, _)).
     simpl_state.
     simpl in Hsubmit_trace1, Hsubmit_trace2, Hconf_size1, Hconf_size2, Hcoll_valid1, Hcoll_valid2.
     (* get to know the size of quorums *)
@@ -2544,12 +2539,12 @@ Proof.
       intuition.
 Qed.
 
-Lemma reachable_inv_2 w (H_w_reachable : reachable w) :
+Lemma reachable_inv_2 w sched (H_w_reachable : reachable sched w) :
   invariant_2 w.
 Proof.
-  induction H_w_reachable as [ | w w' Hstep H_w_reachable IH ].
+  induction H_w_reachable as [ | q w w' Hstep sched H_w_reachable IH ].
   - apply inv_2_init.
-  - pose proof (reachable_inv _ H_w_reachable) as (Hcoh, _, _).
+  - pose proof (reachable_inv _ _ H_w_reachable) as Hinv.
     now apply inv_2_step in Hstep.
 Qed.
 
