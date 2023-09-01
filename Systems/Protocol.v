@@ -174,7 +174,8 @@ Definition procMsg (st : State) (src : Address) (msg : Message) : State * list P
             let: from' := if conf || in_from then from else src :: from in
             let: lsigs' := if conf || in_from then lsigs else lsig :: lsigs in
             let: sigs' := if conf || in_from then sigs else sig :: sigs in
-            let: conf' := (Nat.leb (N - t0) (length from')) in
+            (* let: conf' := (Nat.leb (N - t0) (length from')) in *)
+            let: conf' := conf || (Nat.leb (N - t0) (length from')) in
             let: ps := (if conf' 
               then broadcast n (LightConfirmMsg (v, lightsig_combine lsigs'))
               else nil) in

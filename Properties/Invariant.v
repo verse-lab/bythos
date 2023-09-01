@@ -148,9 +148,10 @@ Definition _inv_submitmsg_receive (stmap : StateMap) src dst v lsig sig (consume
   match (stmap dst).(submitted_value) with
   | None => In (src, SubmitMsg v lsig sig) (stmap dst).(msg_buffer)
   | Some ov => 
-    (* TODO the length condition may be more natural, but it would be hard to reason about 
-      without invariant 1? maybe replace it with the condition on conf *)
-    length (stmap dst).(from_set) < N - t0 ->
+    (* the length condition may be more natural, but it would be hard to reason about 
+      without invariant 1; so replace it with the condition on conf *)
+    (* length (stmap dst).(from_set) < N - t0 -> *)
+    (stmap dst).(conf) = false ->
     v = ov -> verify v sig src -> light_verify v lsig src ->
       In src (stmap dst).(from_set) (* ths should be enough *)
   end
@@ -1077,7 +1078,7 @@ Proof with basic_solver.
         subst conf_dst.
         (* send light confirm message *)
         simpl in Epm.
-        rewrite -> Hconf, PeanoNat.Nat.leb_refl, <- Edst in Epm.
+        rewrite <- Edst in Epm.
         inversion Epm.
         subst ms.
         eapply inv_preserve_01.
@@ -1640,12 +1641,18 @@ Proof with basic_solver.
     2: now injection_pair Epm.
     destruct (light_verify v ls src).
     2: now injection_pair Epm.
-    destruct (conf || in_dec Address_eqdec src from).
+    destruct conf; simpl in Epm.
+    1:{
+      injection_pair Epm.
+      apply In_broadcast in Hin.
+      now destruct Hin as (? & ? & ->).
+    }
+    destruct (in_dec Address_eqdec src from); simpl in Epm.
     + destruct (Nat.leb (N - t0) (length from)); injection_pair Epm.
       * apply In_broadcast in Hin.
         now destruct Hin as (? & ? & ->).
       * simpl in Hin...
-    + destruct (Nat.leb (N - t0) (length (src :: from))); injection_pair Epm.
+    + destruct (Nat.leb (N - t0) (S (length from))); injection_pair Epm.
       * apply In_broadcast in Hin.
         now destruct Hin as (? & ? & ->).
       * simpl in Hin...
@@ -1699,7 +1706,7 @@ Proof with basic_solver.
 Qed.
 
 Lemma inv_2_deliver_step w w' p 
-  (Hinv2 : invariant_2 w) (Hinv : invariant w) (Hcoh : Coh w)
+  (Hinv2 : invariant_2 w) (Hcoh : Coh w) 
   (Hstep : system_step (Deliver p) w w') : invariant_2 w'.
 Proof with basic_solver.
   destruct Hinv2 as (Hpsentinv).
@@ -1720,10 +1727,10 @@ Proof with basic_solver.
   simpl in Hfresh.
   destruct msg as [ v ls s | lc | c ].
   - simpl in Epm.
-    (* do some brute force to obtain some consequence after delivery *)
+    (* do some brute force to obtain some pure facts after delivery *)
     (* TODO merge the following two proofs? *)
     assert (received_lightcerts st' = rlcerts_dst /\ received_certs st' = rcerts_dst /\ 
-      ov_dst = st'.(submitted_value)) as (Hrlcerts_intact & Hrcerts_intact & Eov).
+      ov_dst = st'.(submitted_value) /\ (conf_dst -> conf st')) as (Hrlcerts_intact & Hrcerts_intact & Eov & Hconf_impl).
     {
       destruct ov_dst as [ v_dst | ] eqn:Eov_dst.
       (* TODO possibly optimize this exhaustive case analysis? *)
@@ -1734,8 +1741,7 @@ Proof with basic_solver.
       all: try rewrite Ele in Epm.
       all: injection_pair Epm...
     }
-    pose proof Hinv as Hnodeinv.
-    destruct Hnodeinv as (_, Hnodeinv, _).
+    (*
     specialize (Hnodeinv dst Hnonbyz).
     unfold holds in Hnodeinv.
     rewrite -> Edst in Hnodeinv.
@@ -1743,6 +1749,7 @@ Proof with basic_solver.
       (_, Hconf, Hfrom_nodup, _, _, _, (Hbuffer1 & Hbuffer2))).
     simpl in Hbuffer_recv,  
       Hconf, Hfrom_nodup, Hbuffer1, Hbuffer2.
+    *)
     assert (match ov_dst with
       | Some v_dst => if (if Value_eqdec v v_dst 
           then (if verify v s src 
@@ -1761,6 +1768,7 @@ Proof with basic_solver.
       | None => st'.(msg_buffer) = (src, SubmitMsg v ls s) :: buffer_dst
       end) as Hov_res.
     {
+      (* TODO is the following partly repeating the proof of procMsg_sent_packets_are_fresh? *)
       destruct ov_dst as [ v_dst | ] eqn:Eov_dst.
       - destruct (Value_eqdec v v_dst) as [ <- | ]. 
         2: now injection_pair Epm.
@@ -1768,18 +1776,10 @@ Proof with basic_solver.
         2: now injection_pair Epm.
         destruct (light_verify v ls src).
         2: now injection_pair Epm.
-        destruct conf_dst eqn:E; simpl in Epm |- *.
-        + pose proof (le_n (length from_dst)) as Hle. (* ? *)
-          rewrite -> Hconf, <- PeanoNat.Nat.leb_le in Hle at 1.
-          rewrite Hle in Epm.
-          now injection_pair Epm.
-        + pose proof Hconf as Hlt.
-          rewrite <- PeanoNat.Nat.leb_gt in Hlt.
-          destruct (In_dec Address_eqdec src from_dst) as [ Ensig_in | Ensig_in ]; simpl in Epm |- *.
-          * rewrite Hlt in Epm.
-            now injection_pair Epm.
-          * destruct (Nat.leb (N - t0) (S (length from_dst))); simpl in Epm |- *.
-            all: now injection_pair Epm.
+        destruct (conf_dst); simpl in Epm |- *.
+        1: now injection_pair Epm.
+        destruct (in_dec Address_eqdec src from_dst); simpl in Epm |- *.
+        all: now injection_pair Epm.
       - now injection_pair Epm.
     }
     (* now discuss; mainly care about the case if the message is submit *)
@@ -1800,9 +1800,9 @@ Proof with basic_solver.
       destruct ov_dst as [ v_dst | ].
       * intros Hc <- He Hf.
         destruct (Value_eqdec v v), (verify v s src), (light_verify v ls src)...
-        destruct conf_dst; simpl in Hov_res.
-        --rewrite Hov_res in Hc.
-          lia.
+        destruct conf_dst; simpl in Epm, Hov_res.
+        --(* now get false *)
+          injection_pair Epm...
         --destruct (In_dec Address_eqdec src from_dst) as [ Ensig_in | Ensig_in ]; simpl in Hov_res.
           ++now rewrite Hov_res.
           ++rewrite Hov_res.
@@ -1824,13 +1824,13 @@ Proof with basic_solver.
       intros Ha Hb.
       specialize (Hin Ha Hb).
       destruct ov_dst as [ v_dst | ].
-      --match type of Hov_res with if ?bb then _ else _ => destruct bb; rewrite Hov_res end.
-        ++intros Hc Hd He Hf.
-          simpl in Hc |- *.
-          right.
-          revert Hd He Hf.
-          apply Hin...
-        ++assumption.
+      --intros Hc.
+        rewrite Hc in Hconf_impl.
+        destruct conf_dst.
+        1: specialize (Hconf_impl eq_refl)...
+        specialize (Hin eq_refl).
+        match type of Hov_res with if ?bb then _ else _ => destruct bb eqn:Edecide; rewrite Hov_res end.
+        all: simpl...
       --rewrite Hov_res.
         simpl...
   - (* critical case 1 *)
