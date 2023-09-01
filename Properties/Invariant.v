@@ -1656,6 +1656,7 @@ Proof with basic_solver.
     all: now injection_pair Epm.
 Qed.
 
+(* TODO is this necessary or useful? *)
 Fact procInt_sent_packets_are_fresh st tr :
   forall p (Hin : In p (snd (procInt st tr))), consumed p = false.
 Proof with basic_solver.
@@ -1928,14 +1929,7 @@ Proof with basic_solver.
   destruct_procInt as_ st' ms eqn_ Epm.
   destruct_localState w n as_ conf ov from lsigs sigs rlcerts rcerts buffer eqn_ En.
   subst w'.
-  simpl in Hfresh.
-  apply inv_2_by_extend_freshpkt with (psent:=(sentMsgs w)).
-  1:{
-    setoid_rewrite in_app_iff.
-    intros p [ Hin | ]...
-  }
-  clear Hfresh.
-  simpl in Epm.
+  simpl in Hfresh, Epm.
   pose proof Hinv as Hv.
   destruct Hv as (_, Hv, _).
   specialize (Hv n H_n_nonbyz).
@@ -1944,7 +1938,13 @@ Proof with basic_solver.
   destruct Hv as (_, _, _, _, Hbuffer_recv, (_, _, _, _, _, Hv, (Hbuffer1 & Hbuffer2))).
   simpl in Hbuffer_recv, Hbuffer1, Hbuffer2, Hv.
   destruct ov as [ v | ] eqn:Eov.
-  - specialize (Hbuffer1 eq_refl).
+  - apply inv_2_by_extend_freshpkt with (psent:=(sentMsgs w)).
+    1:{
+      setoid_rewrite in_app_iff.
+      intros p [ Hin | ]...
+    }
+    clear Hfresh.
+    specialize (Hbuffer1 eq_refl).
     subst buffer.
     destruct Hv as (-> & _ & _).
     simpl in Epm.
@@ -1956,17 +1956,33 @@ Proof with basic_solver.
       assumption.
   - subst from ov.
     remember (map (fun nmsg => mkP (fst nmsg) n (snd nmsg) true) buffer) as pkts eqn:Epkts.
+    rewrite -> Forall_forall in Hbuffer_recv, Hbuffer2.
+    assert (forall src dst msg used, In (mkP src dst msg used) pkts ->
+      dst = n /\ valid_node src /\ match msg with SubmitMsg _ _ _ => True | _ => False end) as Haux.
+    {
+      subst pkts.
+      intros ? ? ? ? ((src1, msg1) & E & Hin)%in_map_iff.
+      simpl in E.
+      inversion E.
+      subst.
+      specialize (Hbuffer2 _ Hin).
+      simpl in *...
+    }
     destruct (fold_right _ _ _) as (st_, ps_) eqn:Efr in Epm.
     injection_pair Epm.
-    clear Hstep.
+    setoid_rewrite in_app_iff in Hfresh.
+    remember (broadcast _ _) as pkts_b eqn:Epkts_b in |- *.
+    rewrite <- Epkts_b in *.
+    match type of Efr with context[fold_right _ (?ss, nil) _] => remember ss as st' eqn:Est' end.
+    remember (mkW (upd n st' (localState w)) (pkts_b ++ set_diff Packet_eqdec (sentMsgs w) pkts)) as w' eqn:Ew'.
     (* initial step by retracting Hpsentinv' *)
-    match type of Efr with context[fold_right _ (?st', nil) _] =>
-      remember (mkW (upd n st' (localState w)) (set_diff Packet_eqdec (sentMsgs w) pkts)) as w' eqn:Ew' end.
     assert (invariant_2 w') as Hpsentinv''.
     {
+      subst st' w'.
+      apply inv_2_by_extend_freshpkt with (psent:=set_diff Packet_eqdec (sentMsgs w) pkts).
+      1: setoid_rewrite in_app_iff; intros p; specialize (Hfresh p); intuition.
       constructor.
       rewrite -> Forall_forall.
-      subst w'.
       cbn delta [sentMsgs localState] beta iota.
       intros (src0, dst0, msg0, b0) Hin%set_diff_iff.
       destruct Hin as (Hin & Hnotin).
@@ -1984,6 +2000,251 @@ Proof with basic_solver.
       match type of Epkts with _ = map ?ff _ => eapply in_map with (f:=ff) in Hin end.
       simpl in Hin...
     }
+    (* 
+      to do induction, also need inv 1; but need some steps to prepare
+      1. prove that inv 1 holds for buffer clean (by definition, seemingly no better way?)
+      2. prove that inv 1 holds for one step after submission
+      3. prove that inv 1 holds for removing the messages in buffer from the packet soup (i.e., w')
+    *)
+    assert (invariant (mkW (upd n (Node n conf None nil lsigs sigs rlcerts rcerts nil) (localState w)) (sentMsgs w))) as Hinv_.
+    {
+      constructor.
+      - apply upd_id_intact_preserve_Coh...
+        + rewrite En...
+        + rewrite_w_expand w in_ Hcoh.
+          assumption.
+      - intros n0 H_n0_nonbyz.
+        unfold holds, upd.
+        simpl.
+        destruct (Address_eqdec n n0) as [ <- | Hnneq ].
+        2: now apply Hinv.
+        destruct Hinv as (_, Hinv, _).
+        specialize (Hinv _ H_n_nonbyz).
+        unfold holds in Hinv.
+        rewrite En in Hinv.
+        constructor; simpl_state; simpl; try apply Hinv...
+        constructor; simpl_state; simpl; try apply Hinv...
+      - destruct Hinv as (_, _, Hinv).
+        simpl.
+        hnf in Hinv |- *.
+        rewrite -> psent_invariant_viewchange in Hinv |- *.
+        intros (src0, dst0, msg0, b0) Hin.
+        specialize (Hinv (mkP src0 dst0 msg0 b0) Hin).
+        unfold upd.
+        simpl in Hinv |- *.
+        destruct (Address_eqdec n src0) as [ <- | Hnneq ].
+        2: now apply Hinv.
+        rewrite En in Hinv.
+        simpl_state.
+        apply Hinv.
+    }
+    assert (invariant (mkW (localState w') (pkts_b ++ sentMsgs w))) as Hinv__.
+    {
+      subst w' st' pkts_b.
+      cbn delta [sentMsgs localState] beta iota.
+      (* need congruence step *)
+      match goal with Hinv_ : invariant (mkW ?ls _) |- invariant (mkW (upd n ?ss _) _) => 
+        eapply inv_preserve_stmap_pointwise_eq with (stmap:=upd n ss ls) end.
+      1: intros m; unfold upd; destruct (Address_eqdec n m)...
+      eapply inv_internal_submit_step.
+      1: apply Hinv_.
+      instantiate (1:=n).
+      eapply InternStep.
+      1: reflexivity.
+      all: try assumption.
+      unfold upd.
+      simpl.
+      destruct (Address_eqdec n n)...
+      simpl.
+      reflexivity.
+    }
+    assert (invariant w') as Hinv'.
+    {
+      subst st' w'.
+      cbn delta [sentMsgs localState] beta iota in *.
+      remember (upd n _ _) as stmap eqn:Estmap in Hinv__ |- *.
+      constructor.
+      - eapply Coh_psent_irrelevant, Hinv__.
+      - pose proof Hinv__ as (Hcoh__, Hnodeinv, _).
+        intros n0 H_n0_nonbyz.
+        specialize (Hnodeinv _ H_n0_nonbyz).
+        unfold holds in Hnodeinv |- *.
+        simpl in Hnodeinv |- *.
+        destruct (stmap n0) as (n0', conf0, ov0, from0, lsigs0, sigs0, rlcerts0, rcerts0, buffer0) eqn:En0.
+        (* FIXME: cannot easily destruct things here *)
+        assert (n0' = n0) as ->.
+        {
+          rewrite <- (id_coh _ Hcoh__ n0).
+          simpl.
+          now rewrite En0.
+        }
+        (* TODO tedious handcraft and much repeating *)
+        destruct Hnodeinv as (Ha, Hb, Hc, Hd, He, Hf).
+        constructor; simpl_state.
+        + destruct ov0...
+          intros a b c d.
+          specialize (Ha a b c d).
+          rewrite in_app_iff in Ha |- *.
+          destruct Ha as [ Ha | Ha ]...
+          right.
+          apply set_diff_iff.
+          split...
+          intros HH.
+          apply Haux in HH.
+          destruct HH as (-> & HH & _).
+          subst stmap.
+          unfold upd in En0.
+          destruct (Address_eqdec n n)...
+          rewrite <- En0 in d.
+          simpl in d...
+        + intros a b.
+          specialize (Hb a b).
+          destruct Hb as (src0 & Hb%in_app_iff).
+          exists src0.
+          apply in_app_iff.
+          destruct Hb as [ Hb | Hb ]...
+          right.
+          apply set_diff_iff.
+          split...
+          intros HH.
+          apply Haux in HH...
+        + intros a b.
+          specialize (Hc a b).
+          destruct Hc as (src0 & Hc%in_app_iff).
+          exists src0.
+          apply in_app_iff.
+          destruct Hc as [ Hc | Hc ]...
+          right.
+          apply set_diff_iff.
+          split...
+          intros HH.
+          apply Haux in HH...
+        + destruct ov0...
+          intros a b c.
+          specialize (Hd a b c).
+          destruct Hd as (src0 & Hd%in_app_iff).
+          exists src0.
+          apply in_app_iff.
+          destruct Hd as [ Hd | Hd ]...
+          right.
+          apply set_diff_iff.
+          split...
+          intros HH.
+          apply Haux in HH...
+        + rewrite -> Forall_forall in He |- *.
+          intros nmsg0 Hin.
+          specialize (He nmsg0 Hin).
+          rewrite in_app_iff in He |- *.
+          destruct He as [ He | He ]...
+          right.
+          apply set_diff_iff.
+          split...
+          intros HH.
+          apply Haux in HH.
+          destruct HH as (-> & HH1 & HH2).
+          subst stmap.
+          unfold upd in En0.
+          destruct (Address_eqdec n n)...
+          inversion En0.
+          subst...
+        + constructor; simpl_state; try apply Hf.
+      - pose proof Hinv__ as (Hcoh__, _, Hpsentinv__).
+        hnf in Hpsentinv__ |- *.
+        rewrite -> psent_invariant_viewchange in Hpsentinv__ |- *.
+        cbn delta [sentMsgs localState] beta iota in *.
+        intros (src0, dst0, msg0, b0) Hin.
+        destruct (stmap src0) as (n0', conf0, ov0, from0, lsigs0, sigs0, rlcerts0, rcerts0, buffer0) eqn:En0.
+        (* FIXME: cannot easily destruct things here *)
+        assert (n0' = src0) as ->.
+        {
+          rewrite <- (id_coh _ Hcoh__ src0).
+          simpl.
+          now rewrite En0.
+        }
+        rewrite -> in_app_iff, set_diff_iff in Hin.
+        setoid_rewrite in_app_iff in Hpsentinv__.
+        specialize (Hpsentinv__ _ (match Hin with or_introl a => or_introl a | or_intror b => or_intror (proj1 b) end)).
+        simpl in Hpsentinv__ |- *.
+        destruct msg0 as [ v0 ls0 s0 | lc0 | c0 ]...
+        + destruct lc0 as (v0, cs0), (is_byz src0).
+          * unfold lcert_correct_threshold, lcert_correct, lightsig_seen_in_history in Hpsentinv__ |- *.
+            intros Hth.
+            specialize (Hpsentinv__ Hth).
+            hnf in Hpsentinv__ |- *.
+
+            lcert_correct
+            setoid_rewrite <- Hinin.
+            apply Hpsentinv.
+          * apply Hpsentinv.
+
+
+        
+
+        + setoid_rewrite <- Hinin.
+      apply Hpsentinv.
+    + unfold _inv_lightconfirmmsg_correct, 
+      setoid_rewrite <- Hinin.
+      intros src dst lc b Hin_psent.
+      destruct Hpsentinv as (_, Hpsentinv, _).
+      specialize (Hpsentinv src dst lc b Hin_psent).
+      simpl in Hpsentinv.
+      destruct lc as (v, cs), (is_byz src).
+      * setoid_rewrite <- Hinin.
+        apply Hpsentinv.
+      * apply Hpsentinv.
+    + unfold _inv_confirmmsg_correct, cert_correct, sig_seen_in_history.
+      setoid_rewrite <- Hinin.
+      intros src dst c b Hin_psent.
+      destruct Hpsentinv as (_, _, Hpsentinv).
+      specialize (Hpsentinv src dst c b Hin_psent).
+      simpl in Hpsentinv.
+      destruct c as (v, nsigs), (is_byz src).
+      * setoid_rewrite <- Hinin.
+        apply Hpsentinv.
+      * apply Hpsentinv.
+
+
+        intros.
+
+        apply Hpsentinv__.
+    }
+      
+
+
+          rewrite <- En0 in d.
+          simpl in d...
+
+
+
+
+          
+
+
+          
+
+
+
+
+        constructor; simpl_state; simpl; try apply Hinv...
+
+        unfold upd in Hnodeinv |- *.
+        destruct (Address_eqdec n n0) as [ <- | Hnneq ].
+        + constructor; simpl_state; simpl; try apply Hinv...
+
+
+          admit.
+        + constructor; simpl_state; simpl; try apply Hinv...
+
+        2: constructor; simpl_state; simpl; try apply Hinv...
+        
+        
+        unfold holds in Hinv.
+        rewrite En in Hinv.
+        constructor; simpl_state; simpl; try apply Hinv...
+        constructor; simpl_state; simpl; try apply Hinv...
+
+    
+
     assert (invariant_2 (mkW (upd n st_ (localState w')) (pkts ++ sentMsgs w'))) as Hgoal.
     {
       replace (_, nil) with (localState w' n, @nil Packet) in Efr.
