@@ -1707,7 +1707,7 @@ Qed.
 
 Lemma inv_2_deliver_step w w' p 
   (Hinv2 : invariant_2 w) (Hcoh : Coh w) 
-  (Hstep : system_step (Deliver p) w w') : invariant_2 w'.
+  (Hstep : system_step (Deliver p) w w') : invariant_2 w' /\ Coh w'. (* there is inevitably repetition for Coh proof *)
 Proof with basic_solver.
   destruct Hinv2 as (Hpsentinv).
   pose proof Hpsentinv as Hpsentinv'.
@@ -1730,7 +1730,7 @@ Proof with basic_solver.
     (* do some brute force to obtain some pure facts after delivery *)
     (* TODO merge the following two proofs? *)
     assert (received_lightcerts st' = rlcerts_dst /\ received_certs st' = rcerts_dst /\ 
-      ov_dst = st'.(submitted_value) /\ (conf_dst -> conf st')) as (Hrlcerts_intact & Hrcerts_intact & Eov & Hconf_impl).
+      ov_dst = st'.(submitted_value) /\ (conf_dst -> conf st') /\ id st' = dst) as (Hrlcerts_intact & Hrcerts_intact & Eov & Hconf_impl & Hid_intact).
     {
       destruct ov_dst as [ v_dst | ] eqn:Eov_dst.
       (* TODO possibly optimize this exhaustive case analysis? *)
@@ -1740,6 +1740,14 @@ Proof with basic_solver.
       all: simpl in Epm.
       all: try rewrite Ele in Epm.
       all: injection_pair Epm...
+    }
+    split.
+    2:{
+      apply Coh_psent_irrelevant with (psent:=sentMsgs w).
+      apply upd_id_intact_preserve_Coh...
+      - now rewrite Edst.
+      - rewrite_w_expand w in_ Hcoh.
+        assumption.
     }
     (*
     specialize (Hnodeinv dst Hnonbyz).
@@ -1836,25 +1844,31 @@ Proof with basic_solver.
   - (* critical case 1 *)
     simpl in Epm.
     destruct lc as (v, cs).
-    assert (ms = nil) as -> by (destruct (combined_verify v cs); eqsolve).
+    assert (ms = nil /\ id st' = dst) as (-> & Hid_intact) by (destruct (combined_verify v cs); injection_pair Epm; eqsolve).
     rewrite -> app_nil_r.
+    split.
+    2:{
+      apply Coh_psent_irrelevant with (psent:=sentMsgs w).
+      apply upd_id_intact_preserve_Coh...
+      - now rewrite Edst.
+      - rewrite_w_expand w in_ Hcoh.
+        assumption.
+    }
     constructor.
     rewrite -> Forall_forall in Hpsentinv |- *.
     simpl.
-    intros (src0, dst0, msg0, b0) [ Hin | Hin ].
-    + destruct p.
+    intros p0 [ Hin | Hin ].
+    + rewrite Ep in Hin.
       simpl in Hin.
-      injection Ep as ->.
-      injection Hin as ->.
-      subst.
+      subst p0.
       unfold upd.
-      destruct (Address_eqdec dst0 dst0) as [ _ | ? ].
-      2: eqsolve.
+      destruct (Address_eqdec dst dst)...
       destruct (combined_verify v cs) eqn:Everi...
       injection Epm as <-.
       simpl. 
       intuition.
-    + apply in_remove in Hin.
+    + destruct p0 as (src0, dst0, msg0, b0).
+      apply in_remove in Hin.
       destruct Hin as (Hin & _).
       apply Hpsentinv' in Hin.
       simpl in Hin.
@@ -1871,22 +1885,27 @@ Proof with basic_solver.
   - (* critical case 2 *)
     simpl in Epm.
     destruct c as (v, nsigs).
-    assert (ms = nil) as ->
+    assert (ms = nil /\ id st' = dst) as (-> & Hid_intact)
       by (destruct (NoDup_eqdec AddrSigPair_eqdec nsigs),
-        (Nat.leb (N - t0) (length nsigs)), (verify_certificate v nsigs); eqsolve).
+        (Nat.leb (N - t0) (length nsigs)), (verify_certificate v nsigs); injection_pair Epm; eqsolve).
     rewrite -> app_nil_r.
+    split.
+    2:{
+      apply Coh_psent_irrelevant with (psent:=sentMsgs w).
+      apply upd_id_intact_preserve_Coh...
+      - now rewrite Edst.
+      - rewrite_w_expand w in_ Hcoh.
+        assumption.
+    }
     constructor.
     rewrite -> Forall_forall in Hpsentinv |- *.
     simpl.
-    intros (src0, dst0, msg0, b0) [ Hin | Hin ].
-    + destruct p.
+    intros p0 [ Hin | Hin ].
+    + rewrite Ep in Hin.
       simpl in Hin.
-      injection Ep as ->.
-      injection Hin as ->.
-      subst.
+      subst p0.
       unfold upd.
-      destruct (Address_eqdec dst0 dst0) as [ _ | ? ].
-      2: eqsolve.
+      destruct (Address_eqdec dst dst)...
       destruct (NoDup_eqdec AddrSigPair_eqdec nsigs) as [ Hnodup | ],
         (Nat.leb (N - t0) (length nsigs)) eqn:Hlnsigs, 
         (verify_certificate v nsigs) eqn:Everic...
@@ -1896,7 +1915,8 @@ Proof with basic_solver.
       * intros.
         rewrite <- PeanoNat.Nat.leb_le in *.
         eqsolve.
-    + apply in_remove in Hin.
+    + destruct p0 as (src0, dst0, msg0, b0).
+      apply in_remove in Hin.
       destruct Hin as (Hin & _).
       apply Hpsentinv' in Hin.
       simpl in Hin.
