@@ -69,6 +69,10 @@ Fact correct_sign_verify_ok v n :
   verify v (sign v (key_map n)) n.
 Proof. now rewrite <- key_correct. Qed.
 
+Fact correct_sign_verify_ok_light v n :
+  light_verify v (light_sign v (lightkey_map n)) n.
+Proof. now rewrite <- lightkey_correct. Qed.
+
 (* temporarily use list; there should be some notation of finite multisets or ...? *)
 
 Definition AddrSigPair_eqdec : forall (nsig1 nsig2 : Address * Signature), {nsig1 = nsig2} + {nsig1 <> nsig2}.
