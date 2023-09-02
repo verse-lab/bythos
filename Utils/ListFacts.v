@@ -1,4 +1,4 @@
-From Coq Require Import Bool List.
+From Coq Require Import Bool List Permutation.
 
 Definition NoDup_eqdec [A : Type] (A_eqdec : forall (a1 a2 : A), {a1 = a2} + {a1 <> a2}) : 
   forall l : list A, {NoDup l} + {~ NoDup l}.
@@ -90,4 +90,16 @@ Proof.
   - f_equal.
     apply IH.
     now injection H.
+Qed.
+
+Lemma Permutation_split_combine {A : Type} (f : A -> bool) (l : list A) :
+  Permutation l (filter f l ++ filter (fun a => negb (f a)) l).
+Proof.
+  induction l as [ | a l IH ]; auto.
+  simpl.
+  destruct (f a) eqn:E; simpl.
+  - now apply perm_skip.
+  - etransitivity. 
+    1: apply perm_skip, IH.
+    now apply Permutation_middle.
 Qed.

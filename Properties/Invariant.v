@@ -1,4 +1,4 @@
-From Coq Require Import List Bool Lia ssrbool ListSet.
+From Coq Require Import List Bool Lia ssrbool ListSet Permutation.
 From Coq Require ssreflect.
 Import ssreflect.SsrSyntax.
 From ABCProtocol Require Import Types Address Protocol States Network ListFacts.
@@ -2583,6 +2583,87 @@ Proof.
   - pose proof (reachable_inv _ _ H_w_reachable) as Hinv.
     now apply inv_2_step in Hstep.
 Qed.
+
+Section Proof_of_Terminating_Convergence.
+
+  Variable (w : World) (v : Value).
+
+  Definition all_nodes_submitted := forall n, valid_node n -> is_byz n = false ->
+    (localState w n).(submitted_value) = Some v.
+
+  (* there can be different formulations about eventuality here; this one should be really weak *)
+  (* this reads: at least one submit message between any pair of non-Byz nodes is delivered *)
+
+  Definition submit_all_received :=
+    forall n1 n2, valid_node n1 -> valid_node n2 -> 
+      is_byz n1 = false -> is_byz n2 = false -> 
+      exists v ls s, In (mkP n1 n2 (SubmitMsg v ls s) true) (sentMsgs w).
+
+  Hypotheses (Hinv : invariant w) (Hinv2 : invariant_2 w) (H_byz_minor : num_byz <= t0)
+    (H1 : all_nodes_submitted) (H2 : submit_all_received).
+
+  Lemma terminating_convergence : forall n, valid_node n -> is_byz n = false -> (localState w n).(conf).
+  Proof.
+    intros n Hnvalid H_n_nonbyz.
+    pose proof Hinv as (Hcoh, Hnodeinv, Hpsentinv).
+    destruct_localState w n as_ conf ov from lsigs sigs rlcerts rcerts buffer eqn_ En.
+    simpl.
+    destruct conf eqn:Econf.
+    1: reflexivity.
+    (* get to know the size of from *)
+    specialize (Hnodeinv n H_n_nonbyz).
+    unfold holds in Hnodeinv.
+    rewrite -> En in Hnodeinv.
+    destruct Hnodeinv as (_, _, _, _, _, _, (_, Hconf, Hfrom_nodup, _, _, Hcoll_valid, (Hbuffer & _))).
+    simpl_state.
+    simpl in Hconf.
+    (* get to know the value submitted and buffer = nil *)
+    hnf in H1.
+    pose proof H1 as H1n.
+    specialize (H1n _ Hnvalid H_n_nonbyz).
+    rewrite En in H1n.
+    simpl in H1n.
+    subst ov.
+    destruct Hcoll_valid as (Ev & Hcoll_valid).
+    specialize (Hbuffer eq_refl).
+    subst buffer.
+    (* get to know other nodes should be in from *)
+    assert (incl (filter (fun n' => negb (is_byz n')) valid_nodes) from) as Hfrom.
+    {
+      intros n0 (Hn0valid & H_n0_nonbyz%negb_true_iff)%filter_In.
+      (* get to know the message *)
+      hnf in H2.
+      specialize (H2 n0 n Hn0valid Hnvalid H_n0_nonbyz H_n_nonbyz).
+      destruct H2 as (v0 & ls0 & s0 & Hin).
+      (* get to know the value and signatures in the message *)
+      pose proof H1 as H1n0.
+      specialize (H1n0 _ Hn0valid H_n0_nonbyz).
+      hnf in Hpsentinv.
+      rewrite psent_invariant_viewchange in Hpsentinv.
+      specialize (Hpsentinv _ Hin H_n0_nonbyz).
+      rewrite <- key_correct, <- lightkey_correct, -> H1n0 in Hpsentinv.
+      destruct Hpsentinv as (-> & -> & Ev0).
+      injection Ev0 as ->.
+      (* get to know the message should be processed *)
+      destruct Hinv2 as (Hpsentinv2).
+      rewrite Forall_forall in Hpsentinv2.
+      specialize (Hpsentinv2 _ Hin eq_refl H_n_nonbyz).
+      rewrite En in Hpsentinv2.
+      simpl in Hpsentinv2.
+      apply Hpsentinv2; auto with ABCinv.
+    }
+    (* now math *)
+    apply NoDup_incl_length in Hfrom.
+    2: apply NoDup_filter, valid_nodes_NoDup.
+    pose proof (Permutation_split_combine is_byz valid_nodes) as Hperm%Permutation_length.
+    rewrite app_length in Hperm.
+    unfold num_byz in H_byz_minor.
+    pose proof t0_lt_N.
+    unfold N in *.
+    lia.
+  Qed.
+
+End Proof_of_Terminating_Convergence.
 
 (*
 Lemma accountability w (Hinv : invariant w) (Hinv2 : invariant_2 w)
