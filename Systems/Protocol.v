@@ -26,7 +26,7 @@ Qed.
 (* only submit its own value so remember its node id is sufficient *)
 
 Inductive InternalTransition :=
-  | SubmitIntTrans | LightCertCheckIntTrans.
+  | SubmitIntTrans.
 (* TODO 
     If the light certificate conflict check is modelled as an internal transition, 
     then possibly the "eventual Byzantine detection" cannot be expressed easily. 
@@ -154,6 +154,23 @@ Definition zip_from_sigs (st : State) :=
 Definition zip_from_lsigs_sigs (st : State) := 
   List.combine (List.combine st.(from_set) st.(collected_lightsigs)) st.(collected_sigs).
 
+(* there is only one such check, so somewhat ad-hoc *)
+
+Definition routine_check (st : State) : list Packet :=
+  let: Node n conf ov from lsigs sigs rlcerts rcerts buffer := st in
+  match ov with 
+  | Some vthis => 
+    (* actually confirmation implies submission; but we need to use vthis so anyway *)
+    if conf
+    then 
+      (if lightcert_conflict_check rlcerts
+      then broadcast n (ConfirmMsg (vthis, zip_from_sigs st))
+      else nil)
+    else nil
+  | None => nil
+  end
+.
+
 Definition procMsg (st : State) (src : Address) (msg : Message) : State * list Packet :=
   let: Node n conf ov from lsigs sigs rlcerts rcerts buffer := st in
   match msg with
@@ -169,6 +186,7 @@ Definition procMsg (st : State) (src : Address) (msg : Message) : State * list P
           then 
             (* before prepending, add a check to avoid adding a duplicate node-signature pair *)
             (* checking In fst or In pair should be the same, due to the correctness of verify *)
+            (* prevent enlarging from_set after confirmation; TODO need to align this with paper? seems not ... *)
             (* let: in_from := In_dec Address_eqdec src (map fst nsigs) in *)
             let: in_from := In_dec Address_eqdec src from in
             let: from' := if conf || in_from then from else src :: from in
@@ -213,6 +231,16 @@ Definition procMsg (st : State) (src : Address) (msg : Message) : State * list P
     else (st, nil)
   end.
 
+(* a simple wrapper *)
+
+Definition procMsgWithCheck (st : State) (src : Address) (msg : Message) : State * list Packet :=
+  let: (st', ps) := procMsg st src msg in
+  (* a minor optimization? *)
+  match msg with
+  | SubmitMsg _ _ _ | LightConfirmMsg _ => (st', routine_check st' ++ ps)
+  | _ => (st', ps)
+  end.
+
 Definition procInt (st : State) (tr : InternalTransition) :=
   let: Node n conf ov from lsigs sigs rlcerts rcerts buffer := st in
   match tr with
@@ -228,21 +256,7 @@ Definition procInt (st : State) (tr : InternalTransition) :=
         (fun nmsg stps => let: (res1, res2) := procMsg (fst stps) (fst nmsg) (snd nmsg) in
           (res1, res2 ++ snd stps)) 
         (Node n conf (Some vthis) from lsigs sigs rlcerts rcerts nil, nil) buffer in
-    (st', ps' ++ ps)
-  | LightCertCheckIntTrans =>
-    match ov with 
-    | Some vthis => 
-      if conf
-      then 
-        (if lightcert_conflict_check rlcerts
-        then 
-        (* send out full certificates only in this case *)
-          let: ps := broadcast n (ConfirmMsg (vthis, zip_from_sigs st)) in
-          (st, ps)
-        else (st, nil))
-      else (st, nil)
-    | None => (st, nil)
-    end
+    (st', ps' ++ ps)  
   end.
 
 End ACProtocol.

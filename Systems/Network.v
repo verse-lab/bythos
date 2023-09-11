@@ -1,4 +1,4 @@
-From Coq Require Import List.
+From Coq Require Import List Lia.
 From Coq Require ssreflect.
 From Coq Require Import ssrbool.
 Import ssreflect.SsrSyntax.
@@ -96,7 +96,7 @@ Inductive system_step (q : system_step_descriptor) (w w' : World) : Prop :=
       valid_node (src p) &
       valid_node (dst p) &
       is_byz (dst p) = false &
-      let: (st', ms) := procMsg (localState w (dst p)) (src p) (msg p) in
+      let: (st', ms) := procMsgWithCheck (localState w (dst p)) (src p) (msg p) in
       w' = mkW (upd (dst p) st' (localState w))
                ((consume p (sentMsgs w)) ++ ms)
 
@@ -133,5 +133,56 @@ Inductive system_step (q : system_step_descriptor) (w w' : World) : Prop :=
       w' = mkW (localState w)
                ((mkP src dst (ConfirmMsg c) false) :: (sentMsgs w))
 .
+
+Fixpoint system_trace (w : World) (l : list (system_step_descriptor * World)) : Prop :=
+  match l with
+  | nil => True
+  | (q, w') :: l' => system_step q w w' /\ system_trace w' l'
+  end.
+
+(* TODO It seems that with this condition, we then do not need the "tracking" components
+    in the invariant. Is it really so? *)
+
+(* like uniformly continuous, use a single n? *)
+(* try use different n first *)
+(* P provides sanity check *)
+Definition reliable_condition (P : World -> Prop) :=
+  forall p w, P w -> In p (sentMsgs w) ->
+    (* only between honest nodes? *)
+    valid_node (src p) -> valid_node (dst p) ->
+    is_byz (src p) = false -> is_byz (dst p) = false ->
+    exists n, forall l, system_trace w l -> n <= length l ->
+      (* <= and = should be equivalent; may need to prove, though *)
+      In (receive_pkt p) (sentMsgs (snd (last l (Idle, w)))).
+
+Fact reliable_condition_for_pkts P (H : reliable_condition P) :
+  forall pkts w, P w -> incl pkts (sentMsgs w) ->
+    Forall (fun p => valid_node (src p)) pkts -> 
+    Forall (fun p => valid_node (dst p)) pkts -> 
+    Forall (fun p => is_byz (src p) = false) pkts -> 
+    Forall (fun p => is_byz (dst p) = false) pkts -> 
+    exists n, forall l, system_trace w l -> n <= length l ->
+      incl (map receive_pkt pkts) (sentMsgs (snd (last l (Idle, w)))).
+Proof.
+  intros pkts.
+  induction pkts as [ | p pkts IH ]; intros w Hp Hincl Ha Hb Hc Hd.
+  - simpl.
+    now exists 0.
+  - rewrite -> Forall_cons_iff in *.
+    destruct Ha as (Ha' & Ha), Hb as (Hb' & Hb), Hc as (Hc' & Hc), Hd as (Hd' & Hd).
+    hnf in H, Hincl.
+    simpl in Hincl.
+    specialize (H _ _ Hp (Hincl _ (or_introl eq_refl)) Ha' Hb' Hc' Hd').
+    destruct H as (n & H).
+    specialize (IH _ Hp (fun x Hin => (Hincl x (or_intror Hin))) Ha Hb Hc Hd).
+    destruct IH as (n0 & IH).
+    exists (Nat.max n n0).
+    intros.
+    unfold incl.
+    simpl.
+    intros p0 [ <- | Hin ].
+    + apply H; auto; try lia.
+    + apply IH; auto; try lia.
+Qed.
 
 End ACNetwork.
