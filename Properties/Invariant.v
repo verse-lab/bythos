@@ -10,6 +10,8 @@ Module ACInvariant
 Import A T AC Ns ACN.
 
 (* this is somewhat "pure" property (not related to psent) *)
+(* HMM why there is not something like "if confirmed, then submitted"?
+    it is a direct result of t0 < N, but is it good doing so? *)
 Record node_coh (st : State) : Prop := mkNodeCoh {
   inv_set_size: 
     length st.(from_set) = length st.(collected_lightsigs) /\
@@ -40,6 +42,20 @@ Record node_coh (st : State) : Prop := mkNodeCoh {
     Forall (fun nmsg => valid_node (fst nmsg) /\
       (match snd nmsg with SubmitMsg _ _ _ => True | _ => False end)) st.(msg_buffer)
 }.
+
+(* FIXME: I remember somewhere below uses this. where? *)
+Fact confirmed_then_submitted st (H : node_coh st) :
+  st.(conf) -> st.(submitted_value).
+Proof.
+  destruct H as (_, H1, _, _, _, H2, _).
+  intros E.
+  rewrite E in H1.
+  destruct (submitted_value st); auto.
+  rewrite H2 in H1.
+  pose proof t0_lt_N.
+  simpl in H1.
+  lia.
+Qed.
 
 Record node_invariant (psent : PacketSoup) (st : State) : Prop := mkNodeInv {
   inv_nsigs_correct: 
@@ -3304,7 +3320,7 @@ Section Proof_of_Terminating_Convergence.
 
   Hypothesis (Hrc : reliable_condition reachable).
 
-  Variable (w : World) (v : Value).
+  Variables (w : World) (v : Value).
 
   Definition all_honest_nodes_submitted w' := forall n, honest_node_submitted n v w'.
 
@@ -3460,7 +3476,120 @@ Section Proof_of_Terminating_Convergence.
 
 End Proof_of_Terminating_Convergence.
 
-(*
+Section Proof_of_Accountability.
+
+  Hypothesis (Hrc : reliable_condition reachable).
+
+  Variables (w : World) (v : Value) (n1 n2 : Address).
+  Hypotheses (H_w_reachable : reachable w) 
+    (Hnneq : n1 <> n2)
+    (H_n1_nonbyz : is_byz n1 = false) (Hn1valid : valid_node n1)
+    (H_n2_nonbyz : is_byz n2 = false) (Hn2valid : valid_node n2)
+    (Hconf1 : (localState w n1).(conf))
+    (Hconf2 : (localState w n2).(conf))
+    (Hvneq : (localState w n1).(submitted_value) <> (localState w n2).(submitted_value)).
+
+  Local Tactic Notation "get_submitted" hyp(Hinv) "as_" ident(v) ident(EE) :=
+    match type of Hinv with node_invariant _ (localState ?w ?n) =>
+    match goal with HH : is_true (localState w n).(conf) |- _ =>
+      let Hq := fresh "Hq" in
+      pose proof (confirmed_then_submitted _ (inv_node_coh _ _ Hinv) HH) as Hq;
+      destruct (localState w n).(submitted_value) as [ v | ] eqn:EE; try discriminate;
+      clear Hq
+    end end.
+
+  Local Tactic Notation "unify_value_bft" hyp(Hinv) :=
+    match type of Hinv with node_invariant _ (localState ?w ?n) =>
+    match goal with HH1 : (localState w n).(submitted_value) = Some ?v, HH2 : Coh w |- _ =>
+      let Hq := fresh "Hq" in
+      pose proof (inv_submit_mixin _ (inv_node_coh _ _ Hinv)) as Hq;
+      rewrite HH1, (id_coh _ HH2) in Hq;
+      destruct Hq as (Hq & _); 
+      subst v
+    end end.
+
+  Local Tactic Notation "saturate" :=
+    pose proof (reachable_inv _ H_w_reachable) as Hinv;
+    pose proof Hinv as (Hcoh, Hnodeinv, _);
+    pose proof (Hnodeinv _ H_n1_nonbyz) as Hnodeinv1;
+    pose proof (Hnodeinv _ H_n2_nonbyz) as Hnodeinv2;
+    unfold holds in Hnodeinv1, Hnodeinv2;
+    get_submitted Hnodeinv1 as_ v1 E1;
+    get_submitted Hnodeinv2 as_ v2 E2;
+    unify_value_bft Hnodeinv1;
+    unify_value_bft Hnodeinv2.
+
+  (* well, using 4 packets instead of 2 is inevitable. *)
+  Definition mutual_lightcerts b1 b2 b3 b4 := Eval cbn in
+    let f src dst b := (mkP src dst (LightConfirmMsg 
+      (value_bft src, (lightsig_combine (localState w src).(collected_lightsigs)))) b) in
+    (f n1 n1 b1 :: f n1 n2 b2 :: f n2 n1 b3 :: f n2 n2 b4 :: nil). 
+
+  Lemma lightconfirm_msgs_all_sent : exists b1 b2 b3 b4, incl (mutual_lightcerts b1 b2 b3 b4) (sentMsgs w).
+  Proof.
+    saturate.
+    apply inv_conf_lightconfmsg in Hnodeinv1, Hnodeinv2.
+    rewrite E1 in Hnodeinv1.
+    rewrite E2 in Hnodeinv2.
+    pose proof (Hnodeinv1 Hconf1 _ Hn1valid) as (b1 & Hin1).
+    pose proof (Hnodeinv1 Hconf1 _ Hn2valid) as (b2 & Hin2).
+    pose proof (Hnodeinv2 Hconf2 _ Hn1valid) as (b3 & Hin3).
+    pose proof (Hnodeinv2 Hconf2 _ Hn2valid) as (b4 & Hin4).
+    rewrite (id_coh _ Hcoh) in Hin1, Hin2, Hin3, Hin4.
+    exists b1, b2, b3, b4.
+    hnf.
+    simpl.
+    intros ?.
+    eqsolve.
+  Qed.
+
+  Definition mutual_lightcert_received w' :=
+    incl (mutual_lightcerts true true true true) (sentMsgs w').
+
+  Lemma eventually_mutual_lightcert_receive : eventually w mutual_lightcert_received.
+  Proof.
+    pose proof lightconfirm_msgs_all_sent as (b1 & b2 & b3 & b4 & Hincl).
+    epose proof (reliable_condition_for_pkts _ Hrc _ _ H_w_reachable Hincl ?[Aux]) as H.
+    [Aux]:{
+      unfold mutual_lightcerts.
+      now repeat constructor.
+    }
+    exact H.
+  Qed.
+
+  Definition mutual_lightcert_conflict_detected w' :=
+    lightcert_conflict_check (localState w' n1).(received_lightcerts) /\
+    lightcert_conflict_check (localState w' n2).(received_lightcerts).
+
+  Lemma eventually_mutual_lightcert_conflict_detected : eventually w mutual_lightcert_conflict_detected.
+  Proof.
+    pose proof eventually_mutual_lightcert_receive as Htmp.
+    revert Htmp.
+    eapply eventually_mp_by_invariant.
+    1: apply reachable_is_invariant.
+    2: assumption.
+    intros w' Htmp H.
+    (* luckily we do not need to reason about (collected_lightsigs (localState w' n1)) *)
+    saturate.
+
+    apply collected_lightsigs
+    
+    pose proof (reachable_inv_2 _ Htmp) as (Hinv2).
+    eapply incl_Forall in Hinv2.
+    2: apply H.
+    unfold mutual_lightcerts in Hinv2.
+    rewrite ! Forall_cons_iff in Hinv2.
+    simpl in Hinv2.
+
+
+
+    hnf.
+
+
+    
+
+
+
 Lemma accountability w (Hinv : invariant w) (Hinv2 : invariant_2 w)
   n1 (H_n1_nonbyz : is_byz n1 = false) (Hn1valid : valid_node n1)
   n2 (H_n2_nonbyz : is_byz n2 = false) (Hn2valid : valid_node n2)
