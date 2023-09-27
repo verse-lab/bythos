@@ -3232,24 +3232,21 @@ Qed.
 
 (* this is required by terminating convergence ... *)
 (* TODO still, cumbersome! *)
-(* HMM this belongs to a more general category of "persistent state"? *)
-Fact once_submitted_always_submitted w n (Hnvalid : valid_node n) (H_n_nonbyz : is_byz n = false)
-  (Hinv : invariant w)
-  v (Hst : (localState w n).(submitted_value) = Some v) 
-  l (Htrace : system_trace w l) : (localState (final_world w l) n).(submitted_value) = Some v.
+(* HMM this belongs to a more general category of "persistent state"? 
+    or, a more general invariant ... *)
+
+Definition honest_node_submitted n v w :=
+  valid_node n -> is_byz n = false -> (localState w n).(submitted_value) = Some v.
+
+Fact honest_node_submitted_is_invariant n v : is_invariant_step (fun w => invariant w /\ honest_node_submitted n v w).
 Proof.
-  revert l Htrace.
-  induction l as [ | (q, w') l IH ] using rev_ind; intros; auto.
-  unfold final_world.
-  rewrite last_last.
-  simpl.
-  rewrite system_trace_app in Htrace.
-  simpl in Htrace.
-  destruct Htrace as (Htrace & Hstep & _).
-  pose proof (system_trace_preserve_inv _ _ Hinv Htrace) as Hinv_.
-  remember (final_world w l) as w_ eqn:E_.
-  specialize (IH Htrace).
-  clear dependent w; clear l.
+  hnf.
+  intros q w_ w' (Hinv_ & Hst) Hstep.
+  split.
+  1: eapply inv_step; eauto.
+  hnf in Hst |- *.
+  intros Hnvalid H_n_nonbyz.
+  specialize (Hst Hnvalid H_n_nonbyz).
   pose proof (coh _ Hinv_) as Hcoh.
   inversion Hstep as [ 
     | p Hq Hpin Hvalid Hsrcvalid Hnonbyz Heq 
@@ -3292,9 +3289,11 @@ Proof.
     specialize (Hnodeinv_ _ H_n_nonbyz).
     apply inv_node_coh in Hnodeinv_.
     destruct Hnodeinv_ as (_, _, _, _, _, Ha, (Hb & _)).
-    rewrite En, IH in Ha, Hb.
-    specialize (Hb eq_refl).
     simpl_state.
+    subst ov.
+    rewrite En in Ha, Hb.
+    simpl_state.
+    specialize (Hb eq_refl).
     destruct Ha as (Ha & _).
     subst buffer v.
     simpl in Epm.
@@ -3307,8 +3306,7 @@ Section Proof_of_Terminating_Convergence.
 
   Variable (w : World) (v : Value).
 
-  Definition all_honest_nodes_submitted w' := forall n, valid_node n -> is_byz n = false ->
-    (localState w' n).(submitted_value) = Some v.
+  Definition all_honest_nodes_submitted w' := forall n, honest_node_submitted n v w'.
 
   Hypotheses (H_w_reachable : reachable w) (H1 : all_honest_nodes_submitted w).
 
@@ -3381,18 +3379,23 @@ Section Proof_of_Terminating_Convergence.
   Proof.
     pose proof eventually_honest_submit_all_received as Htmp.
     revert Htmp.
-    eapply eventually_mp_by_invariant.
-    1: apply reachable_is_invariant.
-    2: assumption.
-    intros w' Htmp H2.
+    apply eventually_mp_by_invariant with (Inv:=fun w => reachable w /\ all_honest_nodes_submitted w).
+    3: tauto.
+    1:{
+      hnf.
+      unfold all_honest_nodes_submitted.
+      intros q ww ww' (Ha & Hb) Hstep.
+      split.
+      1: eapply ReachableStep; eauto.
+      intros n.
+      pose proof (honest_node_submitted_is_invariant n v) as Htmp.
+      eapply Htmp; eauto.
+      split; [ now apply reachable_inv | now apply Hb ].
+    }
+    clear H_w_reachable H1 w.
+    intros w' (Htmp & H1) H2.
     pose proof (reachable_inv _ Htmp) as Hinv.
     pose proof (reachable_inv_2 _ Htmp) as Hinv2.
-    
-
-    once_submitted_always_submitted
-    
-    clear H_w_reachable H1 w.
-
     rename w' into w.
     clear Htmp.
     hnf in H2 |- *.
