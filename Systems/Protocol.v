@@ -122,6 +122,28 @@ Definition valid_addr_lsig_pair v nlsig : Prop :=
 Definition light_signatures_valid v nlsigs : Prop :=
   Forall (valid_addr_lsig_pair v) nlsigs.
 
+Fact light_signatures_valid_for_combine v ns lsigs
+  (Hlen : length ns = length lsigs) (H : light_signatures_valid v (combine ns lsigs)) :
+  incl ns valid_nodes /\ lsigs = map (fun n => light_sign v (lightkey_map n)) ns.
+Proof.
+  revert lsigs Hlen H.
+  induction ns as [ | n ns IH ]; intros.
+  - destruct lsigs; simpl in Hlen; try discriminate.
+    unfold incl.
+    simpl.
+    firstorder.
+  - destruct lsigs as [ | ls lsigs ]; simpl in Hlen; try discriminate.
+    injection Hlen as Hlen.
+    simpl in H.
+    apply Forall_cons_iff in H.
+    destruct H as ((Hvalid & ->%lightkey_correct) & H).
+    specialize (IH _ Hlen H).
+    destruct IH as (Hincl & ->).
+    split; auto.
+    hnf in Hincl, Hvalid |- *.
+    firstorder congruence.
+Qed.
+
 (*
 Definition verify_certificate v nsigs :=
   (* add an additional check that the nodes in nsigs are valid *)

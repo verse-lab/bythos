@@ -229,6 +229,18 @@ Qed.
 
 (* somewhat calculus of invariant? *)
 
+(* bad *)
+Fact eventually_mp_by_app (P Q : World -> Prop) w (Hp : eventually w P)
+  (Hpq : forall l (Htrace : system_trace w l) w' (Efw : w' = final_world w l)
+    (H : P w'), eventually w' Q) : eventually w (fun w' => eventually w' Q).
+Proof.
+  destruct Hp as (n & Hp).
+  exists n.
+  intros l Htrace Hle.
+  specialize (Hp _ Htrace Hle).
+  now specialize (Hpq _ Htrace _ eq_refl Hp).
+Qed.
+
 Fact is_invariant_implconj (P Q : World -> Prop) (Hisinv : is_invariant_step P) 
   (Hpq : forall w, P w -> Q w) : is_invariant_step (fun w => P w /\ Q w).
 Proof.
