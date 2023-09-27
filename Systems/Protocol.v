@@ -155,7 +155,8 @@ Definition zip_from_lsigs_sigs (st : State) :=
   List.combine (List.combine st.(from_set) st.(collected_lightsigs)) st.(collected_sigs).
 
 (* there is only one such check, so somewhat ad-hoc *)
-
+(* TODO remove the let binding here? *)
+(* FIXME: possibly make sure this would be triggered only once *)
 Definition routine_check (st : State) : list Packet :=
   let: Node n conf ov from lsigs sigs rlcerts rcerts buffer := st in
   match ov with 
@@ -253,7 +254,7 @@ Definition procInt (st : State) (tr : InternalTransition) :=
     (* not putting ps into the initial value of fold should be easier? *)
     let: (st', ps') := 
       fold_right
-        (fun nmsg stps => let: (res1, res2) := procMsg (fst stps) (fst nmsg) (snd nmsg) in
+        (fun nmsg stps => let: (res1, res2) := procMsgWithCheck (fst stps) (fst nmsg) (snd nmsg) in
           (res1, res2 ++ snd stps)) 
         (Node n conf (Some vthis) from lsigs sigs rlcerts rcerts nil, nil) buffer in
     (st', ps' ++ ps)  
