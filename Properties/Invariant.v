@@ -100,6 +100,15 @@ Record node_invariant (psent : PacketSoup) (st : State) : Prop := mkNodeInv {
   inv_node_coh: node_coh st
 }.
 
+Fact valid_cert_valid_senders v nsigs
+  (Hcert_valid : certificate_valid v nsigs) : incl (map fst nsigs) valid_nodes.
+Proof.
+  hnf in Hcert_valid.
+  induction Hcert_valid as [ | (n, sig) nsigs (Hv & _) HH IH ]; hnf; simpl; auto.
+  1: intros ? [].
+  intros n' [ <- | Hin ]; auto.
+Qed.
+
 Fact valid_cert_valid_sig v nsigs
   (Hcert_valid : certificate_valid v nsigs) 
   n sig (Hin : In (n, sig) nsigs) : sig = sign v (key_map n).
@@ -3043,69 +3052,50 @@ Proof.
   eqsolve.
 Qed.
 
-Lemma conflicting_cert_quorum_size v1 v2 nsigs1 nsigs2 
-  (Hcert_valid1 : certificate_valid v1 nsigs1)
-  (Hnsigs_nodup1 : NoDup nsigs1)
-  (Hsize1 : N - t0 <= (length nsigs1))
-  (Hcert_valid2 : certificate_valid v2 nsigs2)
-  (Hnsigs_nodup2 : NoDup nsigs2)
-  (Hsize2 : N - t0 <= (length nsigs2)) :
-  (N - (t0 + t0)) <= length (filter (fun nsig => In_dec Address_eqdec (fst nsig) (map fst nsigs1)) nsigs2). 
+Lemma quorum_intersection ns1 ns2 
+  (Hvalid1 : incl ns1 valid_nodes)
+  (Hnsigs_nodup1 : NoDup ns1)
+  (Hsize1 : N - t0 <= (length ns1))
+  (Hvalid2 : incl ns2 valid_nodes)
+  (Hnsigs_nodup2 : NoDup ns2)
+  (Hsize2 : N - t0 <= (length ns2)) :
+  (N - (t0 + t0)) <= length (filter (fun n => In_dec Address_eqdec n ns1) ns2). 
 Proof.
   (* now show that: at least (2t0-N) distinct nodes are in culprit proof *)
   (* should partition only by the address since signs can be different for different values *)
-  destruct (partition (fun nsig => In_dec Address_eqdec (fst nsig) (map fst nsigs1)) nsigs2) as (nsigs12, nsigs2') eqn:Epar.
-  epose proof (partition_filter _ nsigs2) as Htmp.
+  destruct (partition (fun n => In_dec Address_eqdec n ns1) ns2) as (ns12, ns2') eqn:Epar.
+  epose proof (partition_filter _ ns2) as Htmp.
   rewrite -> Epar in Htmp.
   match type of Htmp with (?a, ?b) = (?c, ?d) => 
-    assert (a = c) as Ensigs12 by eqsolve; 
-    assert (b = d) as Ensigs2' by eqsolve
+    assert (a = c) as Ens12 by eqsolve; 
+    assert (b = d) as Ens2' by eqsolve
   end.
   clear Htmp.
-  rewrite <- Ensigs12.
-  assert (certificate_valid v2 nsigs2') as Hcert_valid2' by (subst nsigs2'; now apply Forall_filter).
-  - (* maybe this part has been well formalized in other Coq libraries ... *)
-    cut (((length nsigs2) - (length nsigs12)) + (length nsigs1) <= N).
+  rewrite <- Ens12.
+  assert (incl ns2' valid_nodes) as Hvalid2'.
+  {
+    hnf.
+    intros a Htmp.
+    apply Hvalid2.
+    revert a Htmp.
+    subst ns2'. 
+    apply incl_filter.
+  }
+  (* maybe this part has been well formalized in other Coq libraries ... *)
+    cut (((length ns2) - (length ns12)) + (length ns1) <= N).
     1: lia.
     pose proof Epar as Elengthpar.
     apply partition_length in Elengthpar.
-    replace ((length nsigs2) - (length nsigs12)) with (length nsigs2') by lia.
+    replace ((length ns2) - (length ns12)) with (length ns2') by lia.
     unfold N.
     rewrite <- app_length.
-    transitivity (length (map fst (nsigs2' ++ nsigs1))).
-    1: now rewrite -> map_length.
     apply NoDup_incl_length.
-    + rewrite -> map_app.
-      apply NoDup_app.
-      * subst nsigs2'.
-        apply valid_cert_nodup_implies_sender_nodup with (v:=v2).
-        --now apply Forall_filter.
-        --now apply NoDup_filter.
-      * now apply valid_cert_nodup_implies_sender_nodup with (v:=v1).
-      * (* show disjoint of nsigs1 and nsigs2' *)
-        intros nn ? Hin1' Hin2' <-.
-        rewrite -> in_map_iff in Hin1'.
-        destruct Hin1' as ((nn', signn) & Htmp & Hin1').
-        simpl in Htmp.
-        subst nn' nsigs2'.
-        apply filter_In in Hin1'.
-        simpl in Hin1'.
-        now destruct (in_dec Address_eqdec nn (map fst nsigs1)).
-    + hnf.
-      intros nb' Hin'.
-      rewrite -> map_app, in_app_iff in Hin'.
-      unfold certificate_valid in Hcert_valid1, Hcert_valid2.
-      rewrite -> Forall_forall in Hcert_valid1, Hcert_valid2.
-      destruct Hin' as [ Hin' | Hin' ].
-      1: subst nsigs2'.
-      all: apply in_map_iff in Hin'.
-      all: destruct Hin' as ((nb'', sigb') & Htmp & Hin').
-      all: simpl in Htmp.
-      all: subst nb''.
-      * apply filter_In, proj1, Hcert_valid2 in Hin'.
-        now simpl in Hin'.
-      * apply Hcert_valid1 in Hin'.
-        now simpl in Hin'.
+    + subst ns2'.
+      apply NoDup_app; auto.
+      * now apply NoDup_filter.
+      * intros x y (Hin1' & HH)%filter_In Hin2' <-.
+        now destruct (in_dec Address_eqdec x ns1).
+    + now apply incl_app.
 Qed.
 
 Section Proof_of_Agreement.
@@ -3143,7 +3133,7 @@ Section Proof_of_Agreement.
     simpl_state.
     destruct conf1, conf2; try eqsolve.
     subst ov1 ov2.
-    (* get to know the size of sigs *)
+    (* get to know the size of froms *)
     pose proof Hinv as (_, Hnodeinv, _).
     pose proof (Hnodeinv n1 H_n1_nonbyz) as Hnodeinv1.
     pose proof (Hnodeinv n2 H_n2_nonbyz) as Hnodeinv2.
@@ -3158,6 +3148,13 @@ Section Proof_of_Agreement.
     destruct Hcoll_valid1 as (Ev1 & _ & Hcert_valid1), Hcoll_valid2 as (Ev2 & _ & Hcert_valid2).
     unfold zip_from_sigs in Hcert_valid1, Hcert_valid2.
     simpl_state.
+    (* FIXME: this is awkward! can we know the validity of from set only in this way? *)
+    pose proof (valid_cert_valid_senders _ _ Hcert_valid1) as Hvalid1.
+    pose proof (valid_cert_valid_senders _ _ Hcert_valid2) as Hvalid2.
+    rewrite combine_map_fst in Hvalid1, Hvalid2; auto.
+    assert ((N - (t0 + t0)) <= length (filter (fun n' : Address => in_dec Address_eqdec n' from1) from2)) as Hsize
+      by (apply quorum_intersection; auto; try lia).
+    (*
     epose proof (conflicting_cert_quorum_size v1 v2 (combine from1 sigs1) (combine from2 sigs2)
       Hcert_valid1 (NoDup_combine_l from1 sigs1 Hfrom_nodup1) ?[Goalq1] 
       Hcert_valid2 (NoDup_combine_l from2 sigs2 Hfrom_nodup2) ?[Goalq2]) as Hsize.
@@ -3170,6 +3167,7 @@ Section Proof_of_Agreement.
     rewrite <- Htmp, -> combine_map_fst in Hsize.
     2: assumption.
     clear Htmp.
+    *)
     assert (Forall is_byz (filter (fun n' => in_dec Address_eqdec n' from1) from2)) as Hbyz.
     {
       (* trace back *)
@@ -3206,7 +3204,69 @@ Section Proof_of_Agreement.
   Qed.
 
 End Proof_of_Agreement.
+(*
+Section Proof_of_Phase_Distinction.
 
+  Hypothesis (H_byz_minor : num_byz < N - (t0 + t0)).
+
+  (* FIXME: this check should be not defined again! now just for convenience *)
+  Definition ready_to_broadcast_fullcerts (st : State) : bool :=
+    let: Node n conf ov from lsigs sigs rlcerts rcerts buffer := st in
+    match ov with 
+    | Some vthis => 
+      (* actually confirmation implies submission; but we need to use vthis so anyway *)
+      if conf
+      then lightcert_conflict_check rlcerts
+      else false
+    | None => false
+    end
+  .
+
+  Lemma phase_distinct w (Hinv : invariant w) n (Hnvalid : valid_node n) (H_n_nonbyz : is_byz n = false) :
+    ready_to_broadcast_fullcerts (localState w n) -> False.
+  Proof.
+    intros H.
+    unfold ready_to_broadcast_fullcerts in H.
+    pose proof Hinv as (Hcoh, Hnodeinv, Hpsentinv).
+    destruct_localState w n as_ conf ov from lsigs sigs rlcerts rcerts buffer eqn_ En.
+    destruct ov, conf, (lightcert_conflict_check rlcerts) eqn:E; try discriminate.
+    apply lightcert_conflict_check_correct in E.
+    destruct E as (v1 & v2 & cs1 & cs2 & Hvneq & Hin1 & Hin2).
+    pose proof (Hnodeinv _ H_n_nonbyz) as Htmp.
+    hnf in Htmp.
+    rewrite En in Htmp.
+    destruct Htmp as (_, Hrlcerts_trace, _, _, _, _, _, (_, _, _, Hrlcerts, _, _, _)).
+    simpl_state.
+    (* directly prove that they must come from many *)
+    pose proof (Hrlcerts_trace _ Hin1) as (n1 & Hsent1).
+    pose proof (Hrlcerts_trace _ Hin2) as (n2 & Hsent2).
+    hnf in Hpsentinv.
+    rewrite psent_invariant_viewchange in Hpsentinv.
+    pose proof (Hpsentinv _ Hsent1) as Hq1.
+    pose proof (Hpsentinv _ Hsent2) as Hq2.
+    simpl in Hq1, Hq2.
+    unfold lcert_correct_threshold, lcert_correct, lightsig_seen_in_history in Hq1, Hq2.
+    pose proof (Hrlcerts _ _ Hin1) as Hlcc1.
+    pose proof Hlcc1 as (ns1 & Hnoudp1 & Hvalid1 & Hlen1 & E1)%combine_correct.
+    pose proof (Hrlcerts _ _ Hin2) as Hlcc2.
+    pose proof Hlcc2 as (ns2 & Hnoudp2 & Hvalid2 & Hlen2 & E2)%combine_correct.
+    assert ((N - (t0 + t0)) <= length (filter (fun n' : Address => in_dec Address_eqdec n' ns1) ns2)) as Hsize
+      by (apply quorum_intersection; auto; try lia).
+    
+
+    collected_lightsigs
+    (* first know  *)
+
+    combined_verify
+    node_invariant
+    lcert_correct
+    lightsig_seen_in_history
+
+
+
+
+End Proof_of_Phase_Distinction.
+*)
 Lemma conflicting_cert_quorum_in_proof rcerts v1 v2 nsigs1 nsigs2
   (Hvneq : v1 <> v2)
   (Hin1 : In (v1, nsigs1) rcerts)

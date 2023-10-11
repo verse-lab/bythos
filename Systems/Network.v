@@ -134,6 +134,37 @@ Inductive system_step (q : system_step_descriptor) (w w' : World) : Prop :=
                ((mkP src dst (ConfirmMsg c) false) :: (sentMsgs w))
 .
 
+(* put the two properties here, since they are only related to the packet soup
+  (i.e., irrelevant with concrete network transitions) and the notion of packet 
+  (i.e., irrelevant with concrete messages); 
+  so the two properties should hold on all modelling based on packet soup and packet 
+*)
+
+Corollary consume_norevert p p' psent (Hin : In (receive_pkt p) psent) :
+  In (receive_pkt p) (consume p' psent).
+Proof.
+  destruct (Packet_eqdec (receive_pkt p) p') as [ <- | ]; simpl.
+  - destruct p; simpl; tauto.
+  - right.
+    now apply in_in_remove.
+Qed.
+
+Fact system_step_psent_norevert p w w' q : 
+  In (receive_pkt p) (sentMsgs w) -> system_step q w w' -> In (receive_pkt p) (sentMsgs w').
+Proof.
+  intros H Hstep.
+  inversion Hstep; subst; auto.
+  3-5: simpl; now right.
+  1: destruct (procMsgWithCheck _ _ _) in *.
+  2: destruct (procInt _ _) in *.
+  all: subst w'.
+  all: cbn delta -[consume] beta iota.
+  all: rewrite ! in_app_iff.
+  - left.
+    now apply consume_norevert.
+  - now right.
+Qed.
+
 (* two multistep propositions *)
 
 Fixpoint system_trace (w : World) (l : list (system_step_descriptor * World)) : Prop :=
@@ -165,6 +196,23 @@ Proof.
     now rewrite -> app_assoc, ! last_last.
 Qed.
 
+Fact system_trace_psent_norevert p : forall w (H : In (receive_pkt p) (sentMsgs w)) 
+  l (Htrace : system_trace w l), In (receive_pkt p) (sentMsgs (final_world w l)).
+Proof.
+  intros w H l.
+  revert w H.
+  induction l as [ | (q, w_) l IH ] using rev_ind; intros; simpl; auto.
+  rewrite <- final_world_app.
+  unfold final_world.
+  simpl.
+  rewrite system_trace_app in Htrace.
+  simpl in Htrace.
+  destruct Htrace as (Htrace & Hstep & _).
+  eapply system_step_psent_norevert.
+  2: apply Hstep.
+  now apply IH.
+Qed.
+
 Inductive reachable : World -> Prop :=
   | ReachableInit : reachable initWorld
   | ReachableStep q (w w' : World) (Hstep : system_step q w w')
@@ -193,6 +241,65 @@ Proof.
     tauto.
 Qed.
 
+(* this should be close enough *)
+(* making P decidable should be good; we typically make P be a finite subset here *)
+(* somewhat, a weird "coinduction" *)
+Inductive rel_com (P : Packet -> bool) : World -> list (system_step_descriptor * World) -> Prop :=
+  | RC_Done : forall w l, 
+    Forall (fun p => ~~ P p) (sentMsgs w) -> 
+    system_trace w l -> (* is this truly needed? add it for now *)
+    rel_com P w l
+  | RC_Go : forall p w l w' l', 
+    P p ->
+    In p (sentMsgs w) ->
+    system_trace w l -> 
+    system_trace w' l' -> 
+    w' = final_world w l ->
+    In (receive_pkt p) (sentMsgs w') ->
+    rel_com P w' l' ->
+    rel_com P w (l ++ l').
+
+Definition rel_com_finset pkts w l := rel_com (fun p => in_dec Packet_eqdec p pkts) w l.
+
+Fact rel_com_finset_extendable w l pkts (H : rel_com_finset pkts w l) :
+  forall l', system_trace (final_world w l) l' -> rel_com_finset pkts w (l ++ l').
+Proof.
+  induction H; subst; intros; unfold rel_com_finset in *.
+  - apply RC_Done; try assumption.
+    now apply system_trace_app.
+  - rewrite <- app_assoc.
+    rewrite <- final_world_app in *.
+    eapply RC_Go; eauto.
+    now apply system_trace_app. 
+Qed.
+
+(* justifying that this definition is not a bogus *)
+Fact rel_com_finset_inhabitant w pkts : exists l, rel_com_finset pkts w l.
+Proof.
+  induction pkts as [ | p pkts (l & H) ]; intros; unfold rel_com_finset in *.
+  - exists nil.
+    apply RC_Done.
+    2: simpl; auto.
+    now apply Forall_forall.
+  - pose proof ().
+    exists (l ++ ()).
+
+Fact rel_com_extendable w l pkts (H : system_trace w l) :
+  exists l', rel_com (fun p => in_dec Packet_eqdec p pkts) w (l ++ l').
+Proof.
+  *)
+
+(*
+Inductive eventually (P : World -> Prop) : World -> list (system_step_descriptor * World) -> nat -> Prop :=
+  | EV_O : forall w l, eventually P w l O
+  | EV_S : forall w l m n, 
+    system_trace w l -> 
+    P (final_world w (firstn m l)) ->
+    eventually P (final_world w (firstn m l)) (skipn m l) n ->
+    eventually P w l (S n).
+*)
+
+(* THIS IMPLIES FALSE! *)
 Definition eventually w (P : World -> Prop) : Prop :=
   (* <= and = should be equivalent; may need to prove, though *)
   exists n, forall l, system_trace w l -> n <= length l -> P (final_world w l).
