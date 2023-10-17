@@ -241,17 +241,30 @@ Proof.
     tauto.
 Qed.
 
+Definition good_packet p := 
+  valid_node (src p) /\ valid_node (dst p) /\
+  is_byz (src p) = false /\ is_byz (dst p) = false.
+
+Fact good_packet_dec p : {good_packet p} + {~ good_packet p}.
+Proof.
+  unfold good_packet, valid_node.
+  destruct (in_dec Address_eqdec (src p) valid_nodes), 
+    (in_dec Address_eqdec (dst p) valid_nodes), 
+    (is_byz (src p)), (is_byz (dst p)); auto.
+  all: now right.
+Qed.
+
 (* this should be close enough *)
-(* making P decidable should be good; we typically make P be a finite subset here *)
+(* making P decidable should be good; we typically make P be (modulo) a finite subset here *)
 (* somewhat, a weird "coinduction" *)
 Inductive rel_com (P : Packet -> bool) : World -> list (system_step_descriptor * World) -> Prop :=
   | RC_Done : forall w l, 
-    Forall (fun p => ~~ P p) (sentMsgs w) -> 
+    (* all must delivered; though we can make something else, but not do that for now *)
+    (forall p, good_packet p -> P p -> In (receive_pkt p) (sentMsgs w)) ->
     system_trace w l -> (* is this truly needed? add it for now *)
     rel_com P w l
   | RC_Go : forall p w l w' l', 
-    P p ->
-    In p (sentMsgs w) ->
+    good_packet p -> P p -> In p (sentMsgs w) ->
     system_trace w l -> 
     system_trace w' l' -> 
     w' = final_world w l ->
@@ -260,6 +273,16 @@ Inductive rel_com (P : Packet -> bool) : World -> list (system_step_descriptor *
     rel_com P w (l ++ l').
 
 Definition rel_com_finset pkts w l := rel_com (fun p => in_dec Packet_eqdec p pkts) w l.
+
+Definition modulo_is_fin [A : Type] (P : A -> Prop) :=
+  exists (rep : list A) (B : Type) (f : A -> B), 
+    forall a, P a <-> (exists a', P a' /\ In a' rep /\ f a = f a').
+
+(* TODO comm complexity? *)
+(*
+Definition rel_com_fin P w l := 
+  modulo_is_fin (fun p => is_true (P p)) -> rel_com P w l.
+*)
 
 Fact rel_com_finset_extendable w l pkts (H : rel_com_finset pkts w l) :
   forall l', system_trace (final_world w l) l' -> rel_com_finset pkts w (l ++ l').
@@ -415,19 +438,6 @@ Qed.
 
 (* TODO It seems that with this condition, we then do not need the "tracking" components
     in the invariant. Is it really so? *)
-
-Definition good_packet p := 
-  valid_node (src p) /\ valid_node (dst p) /\
-  is_byz (src p) = false /\ is_byz (dst p) = false.
-
-Fact good_packet_dec p : {good_packet p} + {~ good_packet p}.
-Proof.
-  unfold good_packet, valid_node.
-  destruct (in_dec Address_eqdec (src p) valid_nodes), 
-    (in_dec Address_eqdec (dst p) valid_nodes), 
-    (is_byz (src p)), (is_byz (dst p)); auto.
-  all: now right.
-Qed.
 
 (* like uniformly continuous, use a single n? *)
 (* try use different n first *)

@@ -131,10 +131,63 @@ Record genproof_spec (genproof : list Certificate -> list Address) : Prop := {
 
 Axiom genproof_correct : genproof_spec genproof.
 
-(* should give a concrete genproof which does not depend on knowing
+(* should give concrete checkers which does not depend on knowing
     key_map so that it is not vacuous
-  TODO for now simply keep it here
+  TODO for now simply keep them here
 *)
+
+Fixpoint lcc_simple_aux (v : Value) (certs : list LightCertificate) : bool :=
+  match certs with 
+  | nil => false 
+  | (v', _) :: certs' => if Value_eqdec v v' then lcc_simple_aux v certs' else true 
+  end.
+
+Fixpoint lcc_simple (certs : list LightCertificate) : bool :=
+  match certs with
+  | nil => false
+  | (v, _) :: certs' => (lcc_simple_aux v certs') || (lcc_simple certs')
+  end.
+
+Lemma lcc_simple_aux_can_detect v certs : 
+  lcc_simple_aux v certs <-> exists v' cs', v <> v' /\ In (v', cs') certs.
+Proof with (first [ intuition congruence; fail | firstorder; fail | idtac ]).
+  induction certs as [ | (v', cs') certs IH ]; simpl.
+  - split...
+  - destruct (Value_eqdec v v') as [ <- | Hvneq ]...
+    + rewrite IH.
+      firstorder.
+      congruence...
+    + split...
+      intros _.
+      eauto.
+Qed.
+
+Lemma lcc_simple_correct : lightcert_conflict_check_spec lcc_simple.
+Proof with (first [ intuition congruence; fail | firstorder; fail | idtac ]).
+  hnf.
+  intros.
+  induction lcerts as [ | (v, cs) lcerts IH ]; simpl.
+  - split...
+  - destruct (lcc_simple_aux v lcerts) eqn:E.
+    + split...
+      intros _.
+      apply lcc_simple_aux_can_detect in E.
+      destruct E as (v' & cs' & Hvneq & Hin).
+      exists v, v', cs, cs'...
+    + simpl.
+      pose proof (lcc_simple_aux_can_detect v lcerts) as HH.
+      unfold is_true in HH.
+      rewrite <- Bool.not_true_iff_false, -> HH in E.
+      rewrite IH.
+      split.
+      * intros (v1 & v2 & cs1 & cs2 & Hvneq & Hin1 & Hin2).
+        exists v1, v2, cs1, cs2...
+      * intros (v1 & v2 & cs1 & cs2 & Hvneq & [ E1 | Hin1 ] & [ E2 | Hin2 ]).
+        1: idtac...
+        1-2: try inversion E1; try inversion E2; subst.
+        1-2: exfalso; apply E; eauto.
+        exists v1, v2, cs1, cs2...
+Qed.
 
 Definition genproof_simple_aux_aux (c : Certificate) (certs : list Certificate) :=
   (List.flat_map 
