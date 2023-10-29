@@ -253,7 +253,7 @@ Proof.
     (is_byz (src p)), (is_byz (dst p)); auto.
   all: now right.
 Qed.
-
+(*
 (* this should be close enough *)
 (* making P decidable should be good; we typically make P be (modulo) a finite subset here *)
 (* somewhat, a weird "coinduction" *)
@@ -323,10 +323,11 @@ Inductive eventually (P : World -> Prop) : World -> list (system_step_descriptor
 *)
 
 (* THIS IMPLIES FALSE! *)
+(*
 Definition eventually w (P : World -> Prop) : Prop :=
   (* <= and = should be equivalent; may need to prove, though *)
   exists n, forall l, system_trace w l -> n <= length l -> P (final_world w l).
-
+*)
 (* going more generic *)
 (* HMM probably, make this typeclass *)
 
@@ -360,6 +361,7 @@ Qed.
 (* somewhat calculus of invariant? *)
 
 (* bad *)
+(*
 Fact eventually_mp_by_app (P Q : World -> Prop) w (Hp : eventually w P)
   (Hpq : forall l (Htrace : system_trace w l) w' (Efw : w' = final_world w l)
     (H : P w'), eventually w' Q) : eventually w (fun w' => eventually w' Q).
@@ -370,7 +372,7 @@ Proof.
   specialize (Hp _ Htrace Hle).
   now specialize (Hpq _ Htrace _ eq_refl Hp).
 Qed.
-
+*)
 Fact is_invariant_implconj (P Q : World -> Prop) (Hisinv : is_invariant_step P) 
   (Hpq : forall w, P w -> Q w) : is_invariant_step (fun w => P w /\ Q w).
 Proof.
@@ -381,7 +383,7 @@ Proof.
   1: eapply Hisinv; eauto.
   eapply Hpq, Hisinv; eauto.
 Qed.
-
+(*
 Fact eventually_mp_by_invariant (P Q Inv : World -> Prop) (Hisinv : is_invariant_step Inv) :
   (forall w, Inv w -> P w -> Q w) -> forall w, Inv w -> eventually w P -> eventually w Q.
 Proof.
@@ -396,7 +398,7 @@ Proof.
   apply is_invariant_step_trace in Hisinv.
   now apply Hisinv.
 Qed.
-
+*)
 Fact true_is_invariant : is_invariant_step (fun _ => True).
 Proof. now hnf. Qed.
 
@@ -442,6 +444,7 @@ Qed.
 (* like uniformly continuous, use a single n? *)
 (* try use different n first *)
 (* P provides sanity check *)
+(*
 Definition reliable_condition (P : World -> Prop) :=
   forall p w, P w -> In p (sentMsgs w) -> good_packet p ->
     (* only between honest nodes? *)
@@ -479,5 +482,5 @@ Proof.
     + apply H; auto; try lia.
     + apply IH; auto; try lia.
 Qed.
-
+*)
 End ACNetwork.
