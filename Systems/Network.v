@@ -195,7 +195,7 @@ Proof.
   - unfold final_world.
     now rewrite -> app_assoc, ! last_last.
 Qed.
-
+(*
 Fact system_trace_psent_norevert p : forall w (H : In (receive_pkt p) (sentMsgs w)) 
   l (Htrace : system_trace w l), In (receive_pkt p) (sentMsgs (final_world w l)).
 Proof.
@@ -212,7 +212,7 @@ Proof.
   2: apply Hstep.
   now apply IH.
 Qed.
-
+*)
 Inductive reachable : World -> Prop :=
   | ReachableInit : reachable initWorld
   | ReachableStep q (w w' : World) (Hstep : system_step q w w')
@@ -356,6 +356,20 @@ Proof.
     clear Hp.
     specialize (IH Htrace).
     eapply H; eauto.
+Qed.
+
+Corollary psent_norevert_is_invariant p : is_invariant_step (fun w => In (receive_pkt p) (sentMsgs w)).
+Proof. hnf. intros ???. apply system_step_psent_norevert. Qed.
+
+Corollary psent_norevert_pkts_is_invariant pkts : is_invariant_step (fun w => incl (map receive_pkt pkts) (sentMsgs w)).
+Proof.
+  induction pkts as [ | p pkts IH ]; hnf; unfold incl; simpl; intros.
+  1: contradiction.
+  destruct H1 as [ <- | H1 ].
+  - eapply system_step_psent_norevert; eauto.
+  - eapply IH; eauto.
+    hnf.
+    intros; eapply H; eauto.
 Qed.
 
 (* somewhat calculus of invariant? *)

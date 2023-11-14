@@ -3,7 +3,7 @@ From Coq Require ssreflect.
 Import ssreflect.SsrSyntax.
 From ABCProtocol Require Import Types Address Protocol States Network ListFacts.
 
-Module ACInvariant 
+Module Type ACInvariant 
   (A : NetAddr) (T : Types A) (AC : ACProtocol A T) (Ns : NetState A T AC)
   (ACN : ACNetwork A T AC Ns).
 
@@ -3498,10 +3498,9 @@ Section Proof_of_Terminating_Convergence.
       (* TODO elaborate v ls s? this should be possible due to submit_msgs_all_sent *)
       exists v ls s, In (mkP n1 n2 (SubmitMsg v ls s) true) (sentMsgs w').
 
-  Goal forall w', incl (map receive_pkt (projT1 submit_msgs_all_sent)) (sentMsgs w') ->
+  Fact honest_submit_all_received_suffcond w' (H2 : incl (map receive_pkt (projT1 submit_msgs_all_sent)) (sentMsgs w')) :
     honest_submit_all_received w'.
   Proof.
-    intros w' H2.
     destruct submit_msgs_all_sent as (pkts & HH).
     simpl in H2.
     destruct HH as (_ & _ & HH).

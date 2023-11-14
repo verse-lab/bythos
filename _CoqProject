@@ -15,3 +15,4 @@ Systems/States.v
 Systems/Network.v
 Properties/Invariant.v
 Utils/ListFacts.v
+Utils/InfSeqAdaptor.v
