@@ -1,20 +1,11 @@
-From Coq Require Import List Bool Lia ssrbool ListSet Permutation PeanoNat.
+From Coq Require Import List Bool Lia ssrbool ListSet Permutation PeanoNat RelationClasses.
 From Coq Require ssreflect.
 Import ssreflect.SsrSyntax.
-From InfSeqExt Require Export infseq exteq.
+From InfSeqExt Require Export infseq exteq map.
+
+(* extensions of Stream library *)
 
 Section Stream_Ext.
-
-Fact EqSt_inversion [T : Type] (x1 : T) (s1 : Stream T) (x2 : T) (s2 : Stream T) :
-  EqSt (Cons x1 s1) (Cons x2 s2) -> x1 = x2 /\ EqSt s1 s2.
-Proof. intros H. inversion H; subst. simpl in *. auto. Qed.
-
-(* the map of Streams cannot evaluate easily, while the map of InfSeqExt unfolds too easily ... *)
-
-Lemma map_Cons [A B : Type] (f : A -> B) x s : map f (Cons x s) = Cons (f x) (map f s).
-Proof.
-  intros. pattern (map f (Cons x s)). rewrite <- recons. simpl. reflexivity.
-Qed.
 
 (* taking a finite prefix would also be useful *)
 
@@ -65,13 +56,13 @@ Definition stepmap (T : Type) : Type := nat -> T.
 Definition infseq2stepmap [T : Type] (s : infseq T) : stepmap T := 
   fun n => Str_nth n s.
 *)
-Definition always_n [T : Type] (P : infseq T -> Prop) : infseq T -> Prop :=
+Definition always_n [T : Type] (P : Stream T -> Prop) : Stream T -> Prop :=
   fun l => forall n : nat, P (Str_nth_tl n l).
 
-Definition always_n1 [T : Type] (P : T -> Prop) : infseq T -> Prop :=
+Definition always_n1 [T : Type] (P : T -> Prop) : Stream T -> Prop :=
   fun l => forall n : nat, P (Str_nth n l).
 
-Fact always_n_always [T : Type] (P : infseq T -> Prop) l :
+Fact always_n_always [T : Type] (P : Stream T -> Prop) l :
   always_n P l <-> always P l.
 Proof.
   unfold always_n.
@@ -87,13 +78,13 @@ Proof.
       simpl. apply IHn. apply always_tl in H. simpl in H. assumption.
 Qed.
 
-Definition eventually_n [T : Type] (P : infseq T -> Prop) : infseq T -> Prop :=
+Definition eventually_n [T : Type] (P : Stream T -> Prop) : Stream T -> Prop :=
   fun l => exists n : nat, P (Str_nth_tl n l).
 
-Definition eventually_n1 [T : Type] (P : T -> Prop) : infseq T -> Prop :=
+Definition eventually_n1 [T : Type] (P : T -> Prop) : Stream T -> Prop :=
   fun l => exists n : nat, P (Str_nth n l).
 
-Fact eventually_n_eventually [T : Type] (P : infseq T -> Prop) l :
+Fact eventually_n_eventually [T : Type] (P : Stream T -> Prop) l :
   eventually_n P l <-> eventually P l.
 Proof.
   unfold eventually_n.
@@ -108,30 +99,18 @@ Proof.
     + destruct IHeventually as (n & ?). now exists (S n).
 Qed.
 
-Fact EqSt_exteq [T : Type] (l1 l2 : Stream T) : exteq l1 l2 <-> EqSt l1 l2.
-Proof.
-  split; intros H.
-  - revert l1 l2 H. cofix IH. intros.
-    destruct l1 as (x1, l1), l2 as (x2, l2). apply exteq_inversion in H.
-    destruct H as (-> & HH%IH). now constructor.
-  - revert l1 l2 H. cofix IH. intros.
-    destruct l1 as (x1, l1), l2 as (x2, l2). apply EqSt_inversion in H.
-    destruct H as (-> & HH%IH). now constructor.
-    (* HMM it is worth investigating why inversion tactic does not help and thus must use EqSt_inversion *)
-Qed.
-
 End Adaptor.
 
 Section Temporal_Ext.
 
-Definition leadsto [T : Type] (P Q : infseq T -> Prop) : infseq T -> Prop :=
+Definition leadsto [T : Type] (P Q : Stream T -> Prop) : Stream T -> Prop :=
   always (P ->_ (eventually Q)).
 
-Definition valid [T : Type] (P : infseq T -> Prop) : Prop := forall l, P l.
+Definition valid [T : Type] (P : Stream T -> Prop) : Prop := forall l, P l.
 
 (* TODO currently, can only do semantic level proof ... *)
 
-Lemma leadsto_trans [T : Type] (P Q R : infseq T -> Prop) :
+Lemma leadsto_trans [T : Type] (P Q R : Stream T -> Prop) :
   valid ((leadsto P Q) ->_ ((leadsto Q R) ->_ (leadsto P R))).
 Proof.
   unfold valid, leadsto, impl_tl.

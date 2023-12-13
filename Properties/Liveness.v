@@ -10,11 +10,20 @@ Module Type ACLiveness
 
 Import A T AC Ns ACN ACInv.
 
+(* For infinite sequences, there should be better ways to do ... *)
+(*
 CoInductive system_trace_coind : World -> infseq (system_step_descriptor * World) -> Prop :=
   STCintro : forall w q w' l, 
     system_step q w w' ->
     system_trace_coind w' l ->
     system_trace_coind w (Cons (q, w') l).
+*)
+
+CoInductive system_trace_coind : World -> Stream system_step_descriptor -> Stream World -> Prop :=
+  STCintro : forall w q w' l1 l2, 
+    system_step q w w' ->
+    system_trace_coind w' l1 l2 ->
+    system_trace_coind w (Cons q l1) (Cons w' l2).
 
 Fact system_trace_coind_inv w l :
   system_trace_coind w l -> 
@@ -51,6 +60,8 @@ Qed.
 
 (* TODO the map over Stream cannot normalize very well ... is it a "bug"?
     also, the proof of map_Cons is very interesting *)
+
+(* TODO we cannot use "exists" for coinductive type? so using infseq World may lose some information ... *)
 
 Definition world_trace w (l : infseq (system_step_descriptor * World)) : infseq World :=
   Cons w (map snd l).
@@ -131,25 +142,39 @@ Proof.
       hnf in Hq, Hq2 |- *. intros. destruct H2 as [ <- | ]; firstorder.
   (* TODO the other direction *)
 Qed.
-
+(*
 Definition good_world_trace (l : infseq World) : Prop :=
   exists l' : infseq system_step_descriptor, 
     system_trace_coind (hd l) (zipWith pair l' (tl l)).
-
+*)
 (* TODO how to implement the NEXT thing in TLA+? *)
-(**
+
 Section Temp.
 
 From InfSeqExt Require Import map.
 
+Fact map_EqSt [A B : Type] (f : A -> B) (l : Stream A) :
+  EqSt (map f l) (Streams.map f l).
+Proof.
+  revert l.
+  cofix H. intros l. destruct l. rewrite InfSeqAdaptor.map_Cons, map_Cons.
+  constructor; simpl; auto.
+Qed.
+(*
 Definition good_world_trace (l : infseq World) : Prop :=
   exists l' : infseq system_step_descriptor, 
     system_trace_coind (hd l) (zip l' (tl l)).
 
 Fact good_world_trace_recover l :
   good_world_trace l -> 
-  exists ll, system_trace_coind (hd l) ll /\ EqSt (world_trace (hd l) ll).
+  exists ll, system_trace_coind (hd l) ll /\ EqSt l (world_trace (hd l) ll).
+Proof.
+  intros (l' & H). exists (zip l' (tl l)). split; auto.
+  unfold world_trace. rewrite <- recons at 1. constructor; auto.
+  simpl. eapply trans_EqSt. 2: apply map_EqSt. apply sym_EqSt, EqSt_exteq, exteq_snd_zip.
+Qed.
 *)
+End Temp.
 
 (* now, redo the liveness proofs using weak_fairness_delivery *)
 
@@ -177,12 +202,16 @@ Section Proof_of_Terminating_Convergence.
   Proof.
     unfold valid, impl_tl. intros.
     destruct l. unfold now in H. subst w.
+    apply good_world_trace_recover in H0. destruct H0 as (ll & Htrace & Heq).
+    simpl in *. 
+
     destruct H0 as (l' & H0). simpl in H0.
     apply always_n_always. intros n Ha.
     rewrite <- recons in Ha. simpl in Ha.
     pose proof Ha as Ha'. apply submit_msgs_all_sent in Ha'.
     2: admit.
-    
+
+
 
     continuously
 
