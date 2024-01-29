@@ -103,3 +103,19 @@ Proof.
     1: apply perm_skip, IH.
     now apply Permutation_middle.
 Qed.
+
+Lemma list_ind_3 : forall (A : Type) (P : list A -> Prop),
+  P nil ->
+  (forall n, (forall l, length l = n -> P l) -> forall l, length l = S n -> P l) ->
+  forall l : list A, P l.
+Proof.
+  intros. 
+  remember (length l) as n eqn:E. 
+  revert l E.
+  induction n as [ | n IH ]; intros.
+  - destruct l; simpl in E; congruence.
+  - destruct l; try (simpl in E; congruence).
+    eapply H0.
+    2: now rewrite E.
+    auto.
+Qed.

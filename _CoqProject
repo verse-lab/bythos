@@ -3,6 +3,12 @@
 -Q Properties ABCProtocol
 -Q Utils ABCProtocol
 
+# Referring to the submodules
+-Q coqtla/src TLA
+-Q coqtla/external/stdpp/stdpp stdpp
+-Q coqtla/external/stdpp/stdpp_unstable stdpp.unstable
+-Q coqtla/external/coq-record-update RecordUpdate
+
 -arg -w -arg -notation-overridden
 -arg -w -arg -local-declaration
 -arg -w -arg -redundant-canonical-projection
@@ -15,4 +21,4 @@ Systems/States.v
 Systems/Network.v
 Properties/Invariant.v
 Utils/ListFacts.v
-Utils/InfSeqAdaptor.v
+# Utils/InfSeqAdaptor.v

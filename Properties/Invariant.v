@@ -3629,14 +3629,26 @@ Section Proof_of_Accountability.
 
   (* Hypothesis (Hrc : reliable_condition reachable). *)
 
+  Definition confirmed n w : Prop := is_byz n = false /\ valid_node n /\ (localState w n).(conf).
+
+  Definition confirmed_different_values n1 n2 w : Prop :=
+    n1 <> n2 /\ confirmed n1 w /\ confirmed n2 w /\ 
+    (localState w n1).(submitted_value) <> (localState w n2).(submitted_value).
+
   Variables (w : World) (n1 n2 : Address).
-  Hypotheses (H_w_reachable : reachable w) 
+  Hypothesis (H_w_reachable : reachable w) (Hfundamental : confirmed_different_values n1 n2 w).
+
+  Local Tactic Notation "prepare" :=
+    destruct Hfundamental as (Hnneq & (H_n1_nonbyz & Hn1valid & Hconf1)
+      & (H_n2_nonbyz & Hn2valid & Hconf2) & Hvneq); clear Hfundamental.
+  
+  (* Hypotheses 
     (Hnneq : n1 <> n2)
     (H_n1_nonbyz : is_byz n1 = false) (Hn1valid : valid_node n1)
     (H_n2_nonbyz : is_byz n2 = false) (Hn2valid : valid_node n2)
     (Hconf1 : (localState w n1).(conf))
     (Hconf2 : (localState w n2).(conf))
-    (Hvneq : (localState w n1).(submitted_value) <> (localState w n2).(submitted_value)).
+    (Hvneq : (localState w n1).(submitted_value) <> (localState w n2).(submitted_value)). *)
 
   Local Tactic Notation "get_submitted" hyp(Hinv) "as_" ident(v) ident(EE) :=
     match type of Hinv with node_invariant _ (localState ?w ?n) =>
@@ -3660,6 +3672,8 @@ Section Proof_of_Accountability.
   Local Tactic Notation "saturate" :=
     pose proof (reachable_inv _ H_w_reachable) as Hinv;
     pose proof Hinv as (Hcoh, Hnodeinv, _);
+    match goal with 
+    | H_n1_nonbyz : is_byz n1 = false, H_n2_nonbyz : is_byz n2 = false |- _ =>
     pose proof (Hnodeinv _ H_n1_nonbyz) as Hnodeinv1;
     pose proof (Hnodeinv _ H_n2_nonbyz) as Hnodeinv2;
     unfold holds in Hnodeinv1, Hnodeinv2;
@@ -3667,7 +3681,8 @@ Section Proof_of_Accountability.
     get_submitted Hnodeinv2 as_ v2 E2;
     unify_value_bft Hnodeinv1;
     unify_value_bft Hnodeinv2; 
-    assert (value_bft n1 <> value_bft n2) as Hvneq' by eqsolve.
+    assert (value_bft n1 <> value_bft n2) as Hvneq' by eqsolve
+    end.
 
   (* well, using 4 packets instead of 2 is inevitable. *)
   Definition mutual_lightcerts b1 b2 b3 b4 := Eval cbn in
@@ -3677,6 +3692,7 @@ Section Proof_of_Accountability.
 
   Lemma mutual_lightcerts_sent : exists b1 b2 b3 b4, incl (mutual_lightcerts b1 b2 b3 b4) (sentMsgs w).
   Proof.
+    prepare.
     saturate.
     apply inv_conf_lightconfmsg in Hnodeinv1, Hnodeinv2.
     rewrite E1 in Hnodeinv1.
@@ -3717,6 +3733,7 @@ Section Proof_of_Accountability.
 
   Lemma eventually_mutual_lightcert_conflict_detected : mutual_lightcert_conflict_detected w0.
   Proof.
+    prepare.
     pose proof reachable_is_invariant as Hq.
     apply is_invariant_step_trace in Hq.
     apply Hq in Htrace0; auto.
@@ -3775,6 +3792,7 @@ Section Proof_of_Accountability.
           In (mkP n2 n (ConfirmMsg (value_bft n2, nsigs2)) b2) pkts) }.
   Proof.
     pose proof eventually_mutual_lightcert_conflict_detected as H.
+    prepare.
     saturate.
     exists (filter (fun p => if good_packet_dec p 
       then (match msg p with ConfirmMsg _ => true | _ => false end) else false) 
@@ -3836,6 +3854,29 @@ Section Proof_of_Accountability.
       (localState w' n1).(submitted_value) = Some (value_bft n1) /\
       (localState w' n2).(submitted_value) = Some (value_bft n2).
 
+  Fact fullcerts_all_received_suffcond w' (H2 : incl (map receive_pkt (projT1 fullcerts_all_sent)) (sentMsgs w'))
+    (Hinv : invariant w') : fullcerts_all_received w'.
+  Proof.
+    
+    destruct fullcerts_all_sent as (pkts & HH).
+    simpl in H2.
+    destruct HH as (Hincl & Hgood & Haa).
+    intros n Hnvalid H_n_nonbyz.
+    specialize (Haa _ Hnvalid H_n_nonbyz).
+    destruct Haa as (? & ? & ? & ? & Hin1%(in_map receive_pkt) & Hin2%(in_map receive_pkt)).
+    apply H2 in Hin1, Hin2.
+    simpl in Hin1, Hin2.
+    destruct Hinv as (Hcoh0, Hnodeinv0, Hpsentinv0).
+    hnf in Hpsentinv0.
+    rewrite psent_invariant_viewchange in Hpsentinv0.
+    pose proof (Hpsentinv0 _ Hin1) as Ht1.
+    pose proof (Hpsentinv0 _ Hin2) as Ht2.
+    simpl in Ht1, Ht2.
+    prepare.
+    rewrite H_n1_nonbyz in Ht1.
+    rewrite H_n2_nonbyz in Ht2.
+    eqsolve.
+  Qed.
 (*
   Lemma eventually_fullcerts_all_received : eventually w (fun w' => eventually w' fullcerts_all_received).
   Proof.
@@ -3896,6 +3937,7 @@ Section Proof_of_Accountability.
     clear Ew1 Hq l1.
     clear dependent w0.
     clear dependent l0.
+    prepare.
     saturate.
     clear Hconf1 Hconf2 H_w_reachable E1 E2 Hinv Hcoh Hnodeinv Hnodeinv1 Hnodeinv2. (* TODO why clear dependent w does not work here? *)
     clear Hvneq.

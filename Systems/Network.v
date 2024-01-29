@@ -195,6 +195,14 @@ Proof.
   - unfold final_world.
     now rewrite -> app_assoc, ! last_last.
 Qed.
+
+Fact final_world_cons w q w' l : final_world w ((q, w') :: l) = final_world w' l.
+Proof.
+  change (_ :: l) with (((q, w') :: nil) ++ l).
+  rewrite <- final_world_app.
+  reflexivity.
+Qed.
+
 (*
 Fact system_trace_psent_norevert p : forall w (H : In (receive_pkt p) (sentMsgs w)) 
   l (Htrace : system_trace w l), In (receive_pkt p) (sentMsgs (final_world w l)).
@@ -253,6 +261,10 @@ Proof.
     (is_byz (src p)), (is_byz (dst p)); auto.
   all: now right.
 Qed.
+
+Fact pkt_le_good_packet p p' : pkt_le p p' -> good_packet p <-> good_packet p'.
+Proof. intros [ -> | -> ]. all: destruct p; intuition. Qed.
+
 (*
 (* this should be close enough *)
 (* making P decidable should be good; we typically make P be (modulo) a finite subset here *)
@@ -497,4 +509,57 @@ Proof.
     + apply IH; auto; try lia.
 Qed.
 *)
+
+(* simple existence condition; avoiding some vacuous cases *)
+(* ... but does not justify "fairness => liveness" *)
+(* this should be generalizable to any system with the same model *)
+
+Fact list_packets_deliverable pkts w
+  (Hgood : Forall good_packet pkts) (Hincl : incl pkts (sentMsgs w)) :
+  exists l, system_trace w l /\
+    incl (map receive_pkt pkts) (sentMsgs (final_world w l)).
+Proof.
+  revert w Hincl.
+  induction Hgood as [ | p pkts Hg Hgood IH ]; intros.
+  - now exists nil.
+  - destruct (procMsgWithCheck (localState w (dst p)) (src p) (msg p)) as (st', ms) eqn:E.
+    pose (w' := 
+      if (in_dec Packet_eqdec p pkts)
+      then w else (mkW (upd (dst p) st' (localState w)) ((consume p (sentMsgs w)) ++ ms))).
+    assert (incl pkts (sentMsgs w')) as Htmp.
+    { subst w'.
+      destruct (in_dec Packet_eqdec p pkts) as [ Hin | Hnotin ]; simpl; hnf in Hincl |- *.
+      - firstorder.
+      - intros p' Hin'.
+        simpl; rewrite in_app_iff.
+        specialize (Hincl _ (or_intror Hin')).
+        right; left.
+        apply in_in_remove; congruence.
+    }
+    specialize (IH _ Htmp).
+    destruct IH as (l & Htrace & Hres).
+    exists (if (in_dec Packet_eqdec p pkts) then l else ((Deliver p, w') :: l)).
+    destruct (in_dec Packet_eqdec p pkts) as [ Hin | Hnotin ]; subst w'.
+    + split; try assumption.
+      hnf in Hres |- *.
+      simpl.
+      intros p' [ <- | Hin' ].
+      * now apply Hres, in_map.
+      * now apply Hres.
+    + split.
+      * cbn delta [system_trace] iota beta.
+        split; try assumption.
+        hnf in Hg.
+        apply DeliverStep with (p:=p); try reflexivity; try tauto.
+        1: apply (Hincl _ (or_introl eq_refl)).
+        now rewrite E.
+      * rewrite final_world_cons.
+        hnf in Hres |- *.
+        intros p' [ <- | Hin' ]; auto.
+        (* use the invariant *)
+        pose proof (psent_norevert_is_invariant p) as HH%is_invariant_step_trace.
+        apply HH; try assumption.
+        simpl; tauto.
+Qed.
+
 End ACNetwork.

@@ -49,6 +49,14 @@ Record Packet := mkP {src: Address; dst: Address; msg: Message; consumed: bool}.
 Definition receive_pkt p :=
   let: mkP src dst msg _ := p in mkP src dst msg true.
 
+Definition pkt_le p p' : Prop := p' = p \/ p' = receive_pkt p (* may duplicate, but make things simpler? *).
+
+Fact receive_pkt_intact p : consumed p = true <-> receive_pkt p = p.
+Proof. destruct p; simpl; split; congruence. Qed.
+
+Fact receive_pkt_idem p : receive_pkt (receive_pkt p) = receive_pkt p.
+Proof. now destruct p. Qed.
+
 Definition Packet_eqdec : forall (p1 p2 : Packet), {p1 = p2} + {p1 <> p2}.
   intros. decide equality.
   - decide equality.

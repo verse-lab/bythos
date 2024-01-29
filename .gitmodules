@@ -1,0 +1,3 @@
+[submodule "coqtla"]
+	path = coqtla
+	url = https://github.com/tchajed/coq-tla
