@@ -3819,6 +3819,12 @@ Section Proof_of_Accountability.
 
   (* again, start from w' instead of w ... this should still make sense, 
       although we do not know whether collected_sigs have changed or not *)
+  (* from now on, need to forget about w *)
+
+  Hypothesis (H_w0_reachable : reachable w0) (Hfundamental0 : confirmed_different_values n1 n2 w0)
+    (Hdetected : mutual_lightcert_conflict_detected w0).
+
+  Collection coll_w0 := n1 n2 w0 H_w0_reachable Hfundamental0 Hdetected.
 
   Lemma fullcerts_all_sent : 
     { pkts : list Packet &
@@ -3829,19 +3835,19 @@ Section Proof_of_Accountability.
           (* INTENTIONALLY hide such information *)
           In (mkP n1 n (ConfirmMsg (value_bft n1, nsigs1)) b1) pkts /\
           In (mkP n2 n (ConfirmMsg (value_bft n2, nsigs2)) b2) pkts) }.
-  Proof.
-  (* Proof using n1 n2 w0 H_w0_reachable Hfundamental0.
-    clear l0 Htrace0 Ew0 Hfundamental H_w_reachable. clear w. *)
-    pose proof eventually_mutual_lightcert_conflict_detected as H.
-    pose proof (reachable_inv _ H_w_reachable) as Hinv.
+  Proof using coll_w0. clear l0 Htrace0 Ew0 Hfundamental H_w_reachable Hw0 w.
+    (* pose proof (reachable_inv _ H_w_reachable) as Hinv.
     pose proof Hfundamental as Hf2.
     (* essentially, depending on "confirmed_different_values'_is_invariant" *)
     rewrite (confirmed_different_values_strengthen _ _ _ Hinv) in Hf2.
     pose proof (confirmed_different_values'_is_invariant n1 n2) as Hinv'%is_invariant_step_trace.
     specialize (Hinv' _ _ (conj Hinv Hf2) Htrace0).
-    rewrite <- Ew0 in Hinv'.
-    destruct Hinv' as (Htmp & (Hnneq & (H_n1_nonbyz & Hn1valid & Hconf1) & 
-      (H_n2_nonbyz & Hn2valid & Hconf2) & Hv1 & Hv2 & Hvneq)).
+    rewrite <- Ew0 in Hinv'. *)
+    pose proof (reachable_inv _ H_w0_reachable) as Htmp.
+    (* TODO design prepare' *)
+    apply confirmed_different_values_strengthen in Hfundamental0; try assumption.
+    destruct Hfundamental0 as (Hnneq & (H_n1_nonbyz & Hn1valid & Hconf1) & 
+      (H_n2_nonbyz & Hn2valid & Hconf2) & Hv1 & Hv2 & Hvneq).
 
     exists (filter (fun p => if good_packet_dec p 
       then (match msg p with ConfirmMsg _ => true | _ => false end) else false) 
@@ -3858,8 +3864,8 @@ Section Proof_of_Accountability.
     apply inv_conf_confmsg in Hnodeinv1_, Hnodeinv2_.
     rewrite Hconf1, Hv1, (id_coh _ Hcoh_) in Hnodeinv1_.
     rewrite Hconf2, Hv2, (id_coh _ Hcoh_) in Hnodeinv2_.
-    specialize (Hnodeinv1_ eq_refl (proj1 H) n Hnvalid).
-    specialize (Hnodeinv2_ eq_refl (proj2 H) n Hnvalid).
+    specialize (Hnodeinv1_ eq_refl (proj1 Hdetected) n Hnvalid).
+    specialize (Hnodeinv2_ eq_refl (proj2 Hdetected) n Hnvalid).
     destruct Hnodeinv1_ as (b1 & Hin1), Hnodeinv2_ as (b2 & Hin2).
     exists b1, b2, (zip_from_sigs (localState w0 n1)), (zip_from_sigs (localState w0 n2)).
     split.
@@ -3883,7 +3889,7 @@ Section Proof_of_Accountability.
 
   Fact fullcerts_all_received_suffcond w' (H2 : incl (map receive_pkt (projT1 fullcerts_all_sent)) (sentMsgs w'))
     (Hinv : invariant w') : fullcerts_all_received w'.
-  Proof.
+  Proof using coll_w0. clear l0 Htrace0 Ew0 Hfundamental H_w_reachable Hw0 w.
     destruct fullcerts_all_sent as (pkts & HH).
     simpl in H2.
     destruct HH as (Hincl & Hgood & Haa).
@@ -3898,7 +3904,7 @@ Section Proof_of_Accountability.
     pose proof (Hpsentinv0 _ Hin1) as Ht1.
     pose proof (Hpsentinv0 _ Hin2) as Ht2.
     simpl in Ht1, Ht2.
-    prepare Hfundamental.
+    prepare Hfundamental0.
     rewrite H_n1_nonbyz in Ht1.
     rewrite H_n2_nonbyz in Ht2.
     eqsolve.
@@ -3952,22 +3958,29 @@ Section Proof_of_Accountability.
   Hypothesis (Htrace1 : system_trace w0 l1) (Ew1 : w1 = final_world w0 l1)
     (Hw1 : fullcerts_all_received w1).
 
+  Collection coll_w0_w1 := w1 l1 Htrace1 Ew1 Hw1.
+
   Lemma eventually_accountability : accountability w1.
-  Proof.
+  Proof using coll_w0 coll_w0_w1. clear l0 Htrace0 Ew0 Hfundamental H_w_reachable Hw0 w.
     pose proof reachable_is_invariant as Hq.
     apply is_invariant_step_trace in Hq.
     apply Hq in Htrace1.
-    2: subst w0; apply Hq; assumption.
+    (* 2: subst w0; apply Hq; assumption. *)
+    2: assumption.
     rename Htrace1 into Htmp.
     rewrite <- Ew1 in *.
     clear Ew1 Hq l1.
-    clear dependent w0.
-    clear dependent l0.
-    prepare Hfundamental.
-    pose proof (reachable_inv _ H_w_reachable) as Hinv.
-    saturate n1 n2 Hinv.
+    (* clear dependent w0.
+    clear dependent l0. *)
+    (* prepare Hfundamental0. *)
+    apply confirmed_different_values_strengthen in Hfundamental0.
+    2: now apply reachable_inv.
+    destruct Hfundamental0 as (Hnneq & (H_n1_nonbyz & Hn1valid & Hconf1) & 
+      (H_n2_nonbyz & Hn2valid & Hconf2) & Hv1 & Hv2 & Hvneq); clear Hfundamental0.
+    (* pose proof (reachable_inv _ H_w_reachable) as Hinv. *)
+    (* saturate n1 n2 Hinv.
     clear Hconf1 Hconf2 H_w_reachable E1 E2 Hinv Hcoh Hnodeinv Hnodeinv1 Hnodeinv2. (* TODO why clear dependent w does not work here? *)
-    clear Hvneq.
+    clear Hvneq. *)
     pose proof (reachable_inv _ Htmp) as Hinv.
     pose proof Hinv as (Hcoh, Hnodeinv, Hpsentinv).
     pose proof (reachable_inv_2 _ Htmp) as (Hpsentinv2).

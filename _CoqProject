@@ -20,5 +20,6 @@ Systems/Protocol.v
 Systems/States.v
 Systems/Network.v
 Properties/Invariant.v
+Properties/Liveness_tla.v
 Utils/ListFacts.v
 # Utils/InfSeqAdaptor.v

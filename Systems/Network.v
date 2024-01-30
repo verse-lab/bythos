@@ -134,6 +134,21 @@ Inductive system_step (q : system_step_descriptor) (w w' : World) : Prop :=
                ((mkP src dst (ConfirmMsg c) false) :: (sentMsgs w))
 .
 
+(* inversion lemmas *)
+
+Fact DeliverStep_inv p w w' (H : system_step (Deliver p) w w') :
+  In p (sentMsgs w) /\ valid_node (src p) /\ valid_node (dst p) /\ is_byz (dst p) = false /\
+  exists st' ms, procMsgWithCheck (localState w (dst p)) (src p) (msg p) = (st', ms) /\
+    w' = mkW (upd (dst p) st' (localState w)) (consume p (sentMsgs w) ++ ms).
+Proof.
+  inversion H; try discriminate.
+  match goal with HH : Deliver _ = Deliver _ |- _ => injection HH as <- end.
+  rewrite (surjective_pairing (procMsgWithCheck _ _ _)) in *.
+  do 4 (split; try assumption).
+  do 2 eexists.
+  split; [ reflexivity | assumption ].
+Qed.
+
 (* put the two properties here, since they are only related to the packet soup
   (i.e., irrelevant with concrete network transitions) and the notion of packet 
   (i.e., irrelevant with concrete messages); 
