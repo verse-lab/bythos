@@ -3154,20 +3154,6 @@ Section Proof_of_Agreement.
     rewrite combine_map_fst in Hvalid1, Hvalid2; auto.
     assert ((N - (t0 + t0)) <= length (filter (fun n' : Address => in_dec Address_eqdec n' from1) from2)) as Hsize
       by (apply quorum_intersection; auto; try lia).
-    (*
-    epose proof (conflicting_cert_quorum_size v1 v2 (combine from1 sigs1) (combine from2 sigs2)
-      Hcert_valid1 (NoDup_combine_l from1 sigs1 Hfrom_nodup1) ?[Goalq1] 
-      Hcert_valid2 (NoDup_combine_l from2 sigs2 Hfrom_nodup2) ?[Goalq2]) as Hsize.
-    [Goalq1]: rewrite -> combine_length; lia.
-    [Goalq2]: rewrite -> combine_length; lia.
-    rewrite <- map_length with (f:=fst), -> combine_map_fst in Hsize.
-    2: assumption.
-    pose proof (filter_compose fst (fun n' => in_dec Address_eqdec n' from1) (combine from2 sigs2)) as Htmp.
-    simpl in Htmp.
-    rewrite <- Htmp, -> combine_map_fst in Hsize.
-    2: assumption.
-    clear Htmp.
-    *)
     assert (Forall is_byz (filter (fun n' => in_dec Address_eqdec n' from1) from2)) as Hbyz.
     {
       (* trace back *)
@@ -3516,26 +3502,7 @@ Section Proof_of_Terminating_Convergence.
   Variable (w0 : World) (l0 : list (system_step_descriptor * World)).
   Hypothesis (Htrace0 : system_trace w l0) (Ew0 : w0 = final_world w l0)
     (Hw0 : honest_submit_all_received w0).
-(*
-  Lemma eventually_honest_submit_all_received : eventually w honest_submit_all_received.
-  Proof.
-    pose proof (reachable_inv _ H_w_reachable) as Hinv.
-    pose proof submit_msgs_all_sent as (pkts & Hincl & Hgood & Haa).
-    pose proof (reliable_condition_for_pkts _ Hrc _ _ H_w_reachable Hincl Hgood).
-    revert H.
-    eapply eventually_mp_by_invariant.
-    1: apply true_is_invariant.
-    2: exact I.
-    intros w0 _ HH.
-    hnf.
-    intros n1 n2 Ha Hb Hc Hd.
-    specialize (Haa _ _ Ha Hb Hc Hd).
-    destruct Haa as (? & Hin%(in_map receive_pkt)).
-    apply HH in Hin.
-    simpl in Hin.
-    eauto.
-  Qed.
-*)
+
   Definition all_honest_nodes_confirmed w' :=
     forall n, valid_node n -> is_byz n = false -> (localState w' n).(conf).
 
@@ -3713,14 +3680,6 @@ Section Proof_of_Accountability.
     destruct H as (Hnneq & (H_n1_nonbyz & Hn1valid & Hconf1)
       & (H_n2_nonbyz & Hn2valid & Hconf2) & Hvneq); clear H.
 
-  (* Hypotheses 
-    (Hnneq : n1 <> n2)
-    (H_n1_nonbyz : is_byz n1 = false) (Hn1valid : valid_node n1)
-    (H_n2_nonbyz : is_byz n2 = false) (Hn2valid : valid_node n2)
-    (Hconf1 : (localState w n1).(conf))
-    (Hconf2 : (localState w n2).(conf))
-    (Hvneq : (localState w n1).(submitted_value) <> (localState w n2).(submitted_value)). *)
-
   (* well, using 4 packets instead of 2 is inevitable. *)
   Definition mutual_lightcerts b1 b2 b3 b4 := Eval cbn in
     let f src dst b := (mkP src dst (LightConfirmMsg 
@@ -3749,18 +3708,7 @@ Section Proof_of_Accountability.
 
   Definition mutual_lightcert_received w' :=
     incl (mutual_lightcerts true true true true) (sentMsgs w').
-(*
-  Lemma eventually_mutual_lightcert_receive : eventually w mutual_lightcert_received.
-  Proof.
-    pose proof mutual_lightcerts_sent as (b1 & b2 & b3 & b4 & Hincl).
-    epose proof (reliable_condition_for_pkts _ Hrc _ _ H_w_reachable Hincl ?[Aux]) as H.
-    [Aux]:{
-      unfold mutual_lightcerts.
-      now repeat constructor.
-    }
-    exact H.
-  Qed.
-*)
+
   Definition mutual_lightcert_conflict_detected w' :=
     lightcert_conflict_check (localState w' n1).(received_lightcerts) /\
     lightcert_conflict_check (localState w' n2).(received_lightcerts).
@@ -3909,44 +3857,7 @@ Section Proof_of_Accountability.
     rewrite H_n2_nonbyz in Ht2.
     eqsolve.
   Qed.
-(*
-  Lemma eventually_fullcerts_all_received : eventually w (fun w' => eventually w' fullcerts_all_received).
-  Proof.
-    eapply eventually_mp_by_app.
-    1: apply eventually_mutual_lightcert_conflict_detected.
-    intros l Htrace w' Efw H.
-    pose proof (fullcerts_all_sent _ Htrace _ Efw H) as (pkts & Hincl & Hgood & Haa).
-    (* FIXME: extract this *)
-    assert (reachable w') as Htmp.
-    {
-      rewrite reachable_witness in H_w_reachable |- *.
-      destruct H_w_reachable as (l0 & Htrace' & ->).
-      exists (l0 ++ l).
-      now rewrite system_trace_app, <- final_world_app.
-    }
-    pose proof (reliable_condition_for_pkts _ Hrc _ _ Htmp Hincl Hgood) as Hpre.
-    revert Hpre.
-    eapply eventually_mp_by_invariant.
-    1: apply reachable_is_invariant.
-    2: assumption.
-    intros w0 Htmp0 HH.
-    hnf.
-    intros n Hnvalid H_n_nonbyz.
-    specialize (Haa _ Hnvalid H_n_nonbyz).
-    destruct Haa as (? & ? & ? & ? & Hin1%(in_map receive_pkt) & Hin2%(in_map receive_pkt)).
-    apply HH in Hin1, Hin2.
-    simpl in Hin1, Hin2.
-    pose proof (reachable_inv _ Htmp0) as (Hcoh0, Hnodeinv0, Hpsentinv0).
-    hnf in Hpsentinv0.
-    rewrite psent_invariant_viewchange in Hpsentinv0.
-    pose proof (Hpsentinv0 _ Hin1) as Ht1.
-    pose proof (Hpsentinv0 _ Hin2) as Ht2.
-    simpl in Ht1, Ht2.
-    rewrite H_n1_nonbyz in Ht1.
-    rewrite H_n2_nonbyz in Ht2.
-    eqsolve.
-  Qed.
-*)
+
   Definition accountability w' :=
     exists byzs : list Address, 
       NoDup byzs /\

@@ -218,24 +218,6 @@ Proof.
   reflexivity.
 Qed.
 
-(*
-Fact system_trace_psent_norevert p : forall w (H : In (receive_pkt p) (sentMsgs w)) 
-  l (Htrace : system_trace w l), In (receive_pkt p) (sentMsgs (final_world w l)).
-Proof.
-  intros w H l.
-  revert w H.
-  induction l as [ | (q, w_) l IH ] using rev_ind; intros; simpl; auto.
-  rewrite <- final_world_app.
-  unfold final_world.
-  simpl.
-  rewrite system_trace_app in Htrace.
-  simpl in Htrace.
-  destruct Htrace as (Htrace & Hstep & _).
-  eapply system_step_psent_norevert.
-  2: apply Hstep.
-  now apply IH.
-Qed.
-*)
 Inductive reachable : World -> Prop :=
   | ReachableInit : reachable initWorld
   | ReachableStep q (w w' : World) (Hstep : system_step q w w')
@@ -280,84 +262,6 @@ Qed.
 Fact pkt_le_good_packet p p' : pkt_le p p' -> good_packet p <-> good_packet p'.
 Proof. intros [ -> | -> ]. all: destruct p; intuition. Qed.
 
-(*
-(* this should be close enough *)
-(* making P decidable should be good; we typically make P be (modulo) a finite subset here *)
-(* somewhat, a weird "coinduction" *)
-Inductive rel_com (P : Packet -> bool) : World -> list (system_step_descriptor * World) -> Prop :=
-  | RC_Done : forall w l, 
-    (* all must delivered; though we can make something else, but not do that for now *)
-    (forall p, good_packet p -> P p -> In (receive_pkt p) (sentMsgs w)) ->
-    system_trace w l -> (* is this truly needed? add it for now *)
-    rel_com P w l
-  | RC_Go : forall p w l w' l', 
-    good_packet p -> P p -> In p (sentMsgs w) ->
-    system_trace w l -> 
-    system_trace w' l' -> 
-    w' = final_world w l ->
-    In (receive_pkt p) (sentMsgs w') ->
-    rel_com P w' l' ->
-    rel_com P w (l ++ l').
-
-Definition rel_com_finset pkts w l := rel_com (fun p => in_dec Packet_eqdec p pkts) w l.
-
-Definition modulo_is_fin [A : Type] (P : A -> Prop) :=
-  exists (rep : list A) (B : Type) (f : A -> B), 
-    forall a, P a <-> (exists a', P a' /\ In a' rep /\ f a = f a').
-
-(* TODO comm complexity? *)
-(*
-Definition rel_com_fin P w l := 
-  modulo_is_fin (fun p => is_true (P p)) -> rel_com P w l.
-*)
-
-Fact rel_com_finset_extendable w l pkts (H : rel_com_finset pkts w l) :
-  forall l', system_trace (final_world w l) l' -> rel_com_finset pkts w (l ++ l').
-Proof.
-  induction H; subst; intros; unfold rel_com_finset in *.
-  - apply RC_Done; try assumption.
-    now apply system_trace_app.
-  - rewrite <- app_assoc.
-    rewrite <- final_world_app in *.
-    eapply RC_Go; eauto.
-    now apply system_trace_app. 
-Qed.
-
-(* justifying that this definition is not a bogus *)
-Fact rel_com_finset_inhabitant w pkts : exists l, rel_com_finset pkts w l.
-Proof.
-  induction pkts as [ | p pkts (l & H) ]; intros; unfold rel_com_finset in *.
-  - exists nil.
-    apply RC_Done.
-    2: simpl; auto.
-    now apply Forall_forall.
-  - pose proof ().
-    exists (l ++ ()).
-
-Fact rel_com_extendable w l pkts (H : system_trace w l) :
-  exists l', rel_com (fun p => in_dec Packet_eqdec p pkts) w (l ++ l').
-Proof.
-  *)
-
-(*
-Inductive eventually (P : World -> Prop) : World -> list (system_step_descriptor * World) -> nat -> Prop :=
-  | EV_O : forall w l, eventually P w l O
-  | EV_S : forall w l m n, 
-    system_trace w l -> 
-    P (final_world w (firstn m l)) ->
-    eventually P (final_world w (firstn m l)) (skipn m l) n ->
-    eventually P w l (S n).
-*)
-
-(* THIS IMPLIES FALSE! *)
-(*
-Definition eventually w (P : World -> Prop) : Prop :=
-  (* <= and = should be equivalent; may need to prove, though *)
-  exists n, forall l, system_trace w l -> n <= length l -> P (final_world w l).
-*)
-(* going more generic *)
-(* HMM probably, make this typeclass *)
-
 Definition is_invariant_trace (P : World -> Prop) : Prop :=
   forall w l, P w -> system_trace w l -> P (final_world w l).
 
@@ -401,19 +305,6 @@ Qed.
 
 (* somewhat calculus of invariant? *)
 
-(* bad *)
-(*
-Fact eventually_mp_by_app (P Q : World -> Prop) w (Hp : eventually w P)
-  (Hpq : forall l (Htrace : system_trace w l) w' (Efw : w' = final_world w l)
-    (H : P w'), eventually w' Q) : eventually w (fun w' => eventually w' Q).
-Proof.
-  destruct Hp as (n & Hp).
-  exists n.
-  intros l Htrace Hle.
-  specialize (Hp _ Htrace Hle).
-  now specialize (Hpq _ Htrace _ eq_refl Hp).
-Qed.
-*)
 Fact is_invariant_implconj (P Q : World -> Prop) (Hisinv : is_invariant_step P) 
   (Hpq : forall w, P w -> Q w) : is_invariant_step (fun w => P w /\ Q w).
 Proof.
@@ -424,106 +315,12 @@ Proof.
   1: eapply Hisinv; eauto.
   eapply Hpq, Hisinv; eauto.
 Qed.
-(*
-Fact eventually_mp_by_invariant (P Q Inv : World -> Prop) (Hisinv : is_invariant_step Inv) :
-  (forall w, Inv w -> P w -> Q w) -> forall w, Inv w -> eventually w P -> eventually w Q.
-Proof.
-  intros.
-  hnf in H1 |- *.
-  destruct H1 as (n & H1).
-  exists n.
-  intros.
-  specialize (H1 _ H2 H3).
-  revert H1.
-  apply H.
-  apply is_invariant_step_trace in Hisinv.
-  now apply Hisinv.
-Qed.
-*)
+
 Fact true_is_invariant : is_invariant_step (fun _ => True).
 Proof. now hnf. Qed.
 
 Fact reachable_is_invariant : is_invariant_step reachable.
 Proof. intros ? ? ? ? ?. eapply ReachableStep; eauto. Qed.
-
-(*
-Fact eventually_mp_ (P Q : World -> Prop) : (forall w, P w -> Q w) -> forall w, eventually w P -> eventually w Q.
-Proof.
-  intros.
-  hnf in H0 |- *.
-  destruct H0 as (n & H0).
-  exists n.
-  intros.
-  specialize (H0 _ H1 H2).
-  revert H0.
-  apply H.
-Qed.
-
-Fact eventually_mp_reachable (P Q : World -> Prop) : 
-  (forall w, reachable w -> P w -> Q w) -> forall w, reachable w -> eventually w P -> eventually w Q.
-Proof.
-  intros.
-  hnf in H1 |- *.
-  destruct H1 as (n & H1).
-  exists n.
-  intros.
-  specialize (H1 _ H2 H3).
-  revert H1.
-  apply H.
-  rewrite reachable_witness in H0 |- *.
-  destruct H0 as (l0 & Ha & ->).
-  exists (l0 ++ l).
-  rewrite system_trace_app.
-  split; try tauto.
-  apply final_world_app.
-Qed.
-*)
-
-(* TODO It seems that with this condition, we then do not need the "tracking" components
-    in the invariant. Is it really so? *)
-
-(* like uniformly continuous, use a single n? *)
-(* try use different n first *)
-(* P provides sanity check *)
-(*
-Definition reliable_condition (P : World -> Prop) :=
-  forall p w, P w -> In p (sentMsgs w) -> good_packet p ->
-    (* only between honest nodes? *)
-    eventually w (fun w' => In (receive_pkt p) (sentMsgs w')).
-
-(* lists: decided subset *)
-Fact reliable_condition_for_pkts P (H : reliable_condition P) :
-  forall pkts w, P w -> incl pkts (sentMsgs w) ->
-    (* Forall (fun p => valid_node (src p)) pkts -> 
-    Forall (fun p => valid_node (dst p)) pkts -> 
-    Forall (fun p => is_byz (src p) = false) pkts -> 
-    Forall (fun p => is_byz (dst p) = false) pkts ->  *)
-    Forall good_packet pkts ->
-    eventually w (fun w' => incl (map receive_pkt pkts) (sentMsgs w')).
-    (* exists n, forall l, system_trace w l -> n <= length l ->
-      incl (map receive_pkt pkts) (sentMsgs (final_world w l)). *)
-Proof.
-  intros pkts.
-  induction pkts as [ | p pkts IH ]; intros w Hp Hincl HH.
-  - simpl.
-    now exists 0.
-  - rewrite -> Forall_cons_iff in *.
-    destruct HH as (HH' & HH).
-    hnf in H, Hincl.
-    simpl in Hincl.
-    specialize (H _ _ Hp (Hincl _ (or_introl eq_refl)) HH').
-    destruct H as (n & H).
-    specialize (IH _ Hp (fun x Hin => (Hincl x (or_intror Hin))) HH).
-    destruct IH as (n0 & IH).
-    exists (Nat.max n n0).
-    intros.
-    unfold incl.
-    simpl.
-    intros p0 [ <- | Hin ].
-    + apply H; auto; try lia.
-    + apply IH; auto; try lia.
-Qed.
-*)
 
 (* simple existence condition; avoiding some vacuous cases *)
 (* ... but does not justify "fairness => liveness" *)
