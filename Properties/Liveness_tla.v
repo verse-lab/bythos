@@ -1,88 +1,11 @@
 From Coq Require Import List Bool Lia ssrbool ListSet Permutation PeanoNat.
 From Coq Require ssreflect.
 Import ssreflect.SsrSyntax.
-From ABCProtocol Require Import Types Address Protocol States Network ListFacts Invariant.
+From ABCProtocol Require Import Types Address Protocol States Network ListFacts Invariant. 
 
-From TLA Require Export logic.
-
-From stdpp Require list.
-
-Fact foo2 [Σ : Type] (Γ p1 q1 p2 q2 : predicate Σ) (next : action Σ)
-  (H1 : □ ⟨ next ⟩ ∧ Γ ⊢ p1 ~~> q1) (H2 : □ ⟨ next ⟩ ∧ Γ ⊢ p2 ~~> q2)
-  (* q1 and q2 have to be persistent *)
-  (* writing H1' and H2' in this way would align with the form of invariant *)
-  (H1' : q1 ∧ □ ⟨ next ⟩ ⊢ □ q1) (H2' : q2 ∧ □ ⟨ next ⟩ ⊢ □ q2) : 
-  □ ⟨ next ⟩ ∧ Γ ⊢ (p1 ∧ p2) ~~> (q1 ∧ q2).
-Proof.
-  autounfold with tla in *.
-  intros.
-  destruct H0.
-  specialize (H1 _ H k H0).
-  specialize (H2 _ H k H3).
-  destruct H1 as (k1 & H1), H2 as (k2 & H2).
-  rewrite ! drop_drop in H1, H2.
-  destruct H.
-  assert (∀ (k k0 : nat), next (drop k (drop k0 e) 0) (drop k (drop k0 e) 1)) as H' 
-    by (intros; now rewrite drop_drop).
-  specialize (H1' _ (conj H1 (fun k => H' k _)) (Nat.max k1 k2 - k1)).
-  specialize (H2' _ (conj H2 (fun k => H' k _)) (Nat.max k1 k2 - k2)).
-  rewrite ! drop_drop in H1', H2'.
-  replace (drop _ e) with (drop (Nat.max k1 k2 + k) e) in H1' by (f_equal; lia).
-  replace (drop _ e) with (drop (Nat.max k1 k2 + k) e) in H2' by (f_equal; lia).
-  repeat setoid_rewrite drop_drop.
-  eauto.
-Qed.
-
-Fact foo2' [A Σ : Type] (Γ : predicate Σ) (p q : A → predicate Σ) (next : action Σ)
-  (* TODO the validity condition is cumbersome! *)
-  (valid : A → Prop)
-  (H : forall (a : A), valid a → (□ ⟨ next ⟩ ∧ Γ ⊢ (p a) ~~> (q a))%L)
-  (H' : forall (a : A), valid a → ((q a) ∧ □ ⟨ next ⟩ ⊢ □ (q a))%L)
-  (l : list A) (Hv : Forall valid l) :
-    (□ ⟨ next ⟩ ∧ Γ ⊢ (fold_right tla_and tla_true (map p l)) ~~> 
-      (fold_right tla_and tla_true (map q l)))%L ∧
-    (* the following needs to be proved together *)
-    ((fold_right tla_and tla_true (map q l)) ∧ □ ⟨next⟩ ⊢
-      (□ fold_right tla_and tla_true (map q l)))%L.
-Proof.
-  induction Hv as [ | a l Ha Hv (IH1 & IH2) ]; simpl.
-  - split.
-    + now apply impl_drop_hyp, impl_to_leads_to.
-    + unseal.
-  - split.
-    + apply foo2; auto.
-    + specialize (H' a).
-      rewrite always_and.
-      tla_split.
-      * etransitivity.
-        2: apply H'; try assumption.
-        tla_assumption.
-      * etransitivity.
-        2: apply IH2.
-        tla_assumption.
-Qed.
-
-Fact foo2'' [A Σ : Type] (Γ : predicate Σ) (p q : A → Σ → Prop) (next : action Σ)
-  (valid : A → Prop)
-  (H : forall (a : A), valid a → (□ ⟨ next ⟩ ∧ Γ ⊢ ⌜ p a ⌝ ~~> ⌜ q a ⌝)%L) 
-  (H' : forall (a : A), valid a → (⌜ q a ⌝ ∧ □ ⟨ next ⟩ ⊢ □ ⌜ q a ⌝)%L)
-  (l : list A) (Hv : Forall valid l) :
-    □ ⟨ next ⟩ ∧ Γ ⊢ 
-      ⌜ λ w, (∀ a, In a l → p a w) ⌝ ~~> ⌜ λ w, (∀ a, In a l → q a w) ⌝.
-Proof.
-  etransitivity.
-  1: apply (proj1 (foo2' _ _ _ _ valid H H' l Hv)).
-  clear Hv.
-  eapply leads_to_weaken.
-  - unseal.
-    rewrite <- Forall_forall in H0.
-    induction H0; simpl; auto.
-  - unseal.
-    revert a H1.
-    rewrite <- Forall_forall.
-    induction l; simpl in H0; auto.
-    constructor; intuition.
-Qed.
+(* avoid warning about coercion *)
+From ABCProtocol Require TLAmore. 
+Import -(coercions) TLAmore. (* need to separate Require and Import; otherwise Coqdep will complain *)
 
 Module Type ACLiveness 
   (A : NetAddr) (T : Types A) (AC : ACProtocol A T) (Ns : NetState A T AC)
@@ -90,28 +13,11 @@ Module Type ACLiveness
 
 Import A T AC Ns ACN ACInv.
 
-(* Definition good_deliver_action w w' :=
-  exists p, is_byz (src p) = false /\ In p (sentMsgs w) /\
-    (consumed p = false) /\ (* ? *)
-    system_step (Deliver p) w w'. *)
-(*
-Definition good_deliver_action w w' :=
-  forall p, is_byz (src p) = false -> In p (sentMsgs w) ->
-    (consumed p = false) -> (* ? *)
-    system_step (Deliver p) w w'. 
-*)
-
-Definition satisfies {Σ : Type} (p : predicate Σ) (e : exec Σ) := p e.
-
-#[local] Hint Unfold satisfies : tla.
-
-Notation "e ⊨ p" := (satisfies p%L e) (at level 100).
+Section Preliminaries.
 
 Definition init w := w = initWorld.
 
 Definition next w w' := ∃ q, system_step q w w'.
-
-#[local] Hint Unfold init next : tla.
 
 Fact is_invariant_in_tla P (H : is_invariant_step P) :
   ⌜ P ⌝ ∧ □ ⟨next⟩ ⊢ □ ⌜ P ⌝.
@@ -130,81 +36,37 @@ Proof.
     constructor.
   - intros ??? (q & Hstep).
     econstructor; eauto.
-  (*
-  autounfold with tla.
-  unfold init, next.
-  intros e (E & H) n.
-  induction n as [ | n IH ].
-  - rewrite drop_0 E.
-    constructor.
-  - specialize (H n).
-    destruct H as (q & H).
-    rewrite ! drop_n in H.
-    simpl in H.
-    econstructor; eauto.
-  *)
 Qed.
 
-(* TODO any pure predicate in the formalism of TLA? *)
+(* connecting finite trace with infinite trace *)
 
-Definition pure_pred {Σ : Type} (P : Prop) : predicate Σ :=
-  ⌜ λ _, P ⌝.
+Lemma exec_segment e (H : e ⊨ □ ⟨ next ⟩) k o :
+  ∃ l, system_trace (e k) l ∧ (e (o + k) = final_world (e k) l).
+Proof.
+  autounfold with tla in H.
+  try unfold next in H.
+  induction o as [ | o IH ].
+  - now exists nil.
+  - destruct IH as (l & Htrace & Ew0).
+    specialize (H (o + k)).
+    destruct H as (q & Hstep).
+    rewrite ! drop_n in Hstep.
+    simpl in Hstep.
+    exists (l ++ (q, e (S (o + k))) :: nil).
+    rewrite system_trace_app -final_world_app final_world_cons -Ew0 /=.
+    split; auto.
+Qed.
 
-Notation "⌞  P  ⌟" := (pure_pred P%type).
+End Preliminaries.
 
-#[local] Hint Unfold pure_pred : tla.
+#[export] Hint Unfold init next : tla.
 
-(*
-Definition deliver_action_p p w w' :=
-  system_step (Deliver p) w w'.
-*)
-
-(*
-Definition good_deliver_action_p p w w' :=
-  is_byz (src p) = false /\ In p (sentMsgs w) /\
-    (consumed p = false) /\ (* ? *)
-    system_step (Deliver p) w w'.
-*)
-
-(*
-Definition fairness : predicate World :=
-  ∀ p : Packet, 
-    □ (⌜ λ w : World, is_byz (src p) = false ∧ (consumed p = false) ∧ In p (sentMsgs w) ⌝ →
-      weak_fairness (deliver_action_p p)).
-*)
-(*
-(* too strict? *)
-Definition good_deliver_action_p p w w' :=
-  is_byz (src p) = false /\ In p (sentMsgs w) /\
-    (consumed p = false) /\ (* ? *)
-    system_step (Deliver p) w w'.
-*)
-(*
-Definition good_deliver_action_p p w w' :=
-  is_byz (src p) = false ∧ In p (sentMsgs w) ∧
-    (* if p is already received then underspecify this transition *)
-    (* may state something weaker, but eventually should be able to prove that DeliverStep happens *)
-    (if consumed p then True else system_step (Deliver p) w w').
-
-Definition fairness : predicate World :=
-  ∀ p : Packet, weak_fairness (good_deliver_action_p p).
-*)
-(*
-(* cannot pass the check ... *)
-Definition good_deliver_action_p p w w' :=
-  if consumed p 
-  then True 
-  else system_step (Deliver p) w w'.
-*)
-      (* (if in_dec Packet_eqdec p (sentMsgs w)
-        then system_step (Deliver p) w w'
-        else True). *)
+Section Fairness.
 
 Definition good_deliver_action_p p w w' :=
   if consumed p 
   then True 
   else In p (sentMsgs w) → system_step (Deliver p) w w'.
-  (* equivalent to the if-then-else one, though *)
 
 Definition fairness : predicate World :=
   (∀ p : Packet, ⌞ good_packet p ⌟ → weak_fairness (good_deliver_action_p p))%L.
@@ -228,240 +90,92 @@ Proof.
   reflexivity.
 Qed.
 
-(* FIXME: consider prove this outside the TLA environment? *)
-Fact psent_persistent_single p :
-  ⌜ λ w, In p (sentMsgs w) ⌝ ∧ □ ⟨ next ⟩ ⊢
-    □ (⌜ λ w, ∃ p', pkt_le p p' ∧ In p' (sentMsgs w) ⌝).
+(* certainly, we would like to check whether this is actually what we want! *)
+(* semantically, what we want is ...? *)
+
+Definition reliable_condition (e : exec World) :=
+  ∀ p, good_packet p → consumed p = false → ∀ n, In p (sentMsgs (e n)) →
+    ∃ k, system_step (Deliver p) (e (k + n)) (e (S (k + n))).
+
+(* a lemma which will be used below, stating that the existence of
+    an undelivered message will only be changed by an delivery action
+  hope this would work for different network models ... *)
+(* TODO how to force this requirement for different systems? *)
+
+Fact consumed_is_changed_by_delivery (e : exec World) (Hrc : e ⊨ □ ⟨ next ⟩) 
+  p n (E : consumed p = false) (Hin : In p (e n).(sentMsgs)) 
+  k (Hnotin : ¬ In p (e (k + n)).(sentMsgs)) :
+  ∃ k' : nat, k' < k ∧ system_step (Deliver p) (e (k' + n)) (e (S (k' + n))).
 Proof.
-  unfold pkt_le.
-  apply init_invariant.
-  - intros w Hin.
-    exists p.
-    split; try tauto.
-  - intros w w' (p' & Ep' & Hin) (q & Hstep).
-    (* TODO extract this out? even more troublesome than below! *)
-    inversion Hstep; subst.
-    1,3-6: exists p'; split; try assumption; simpl; auto.
-    1: destruct (procInt _ _) in *; subst; simpl; rewrite in_app_iff; tauto.
-    destruct (procMsgWithCheck _ _ _) in *.
-    subst; cbn delta [sentMsgs] beta iota.
-    destruct (Packet_eqdec p p0) as [ <- | Hneq ].
-    + exists (receive_pkt p).
-      simpl.
-      split; try tauto.
-    + destruct (if Packet_eqdec (receive_pkt p) p0 then (negb (consumed p)) else false) eqn:E0.
-      * destruct (Packet_eqdec (receive_pkt p) p0) as [ <- | ]; try discriminate.
-        apply negb_true_iff in E0.
-        exists (receive_pkt p).
-        split; try tauto.
-        simpl.
-        left; apply receive_pkt_idem.
-      * exists p'.
-        split; try assumption.
-        simpl; rewrite in_app_iff.
-        right; left.
-        apply in_in_remove; try assumption.
-        destruct Ep' as [ <- | Ep' ]; try congruence.
-        subst p'.
-        intros <-.
-        destruct (Packet_eqdec _ _) in E0; try contradiction.
-        apply negb_false_iff, receive_pkt_intact in E0.
-        congruence.
+  induction k as [ | k IH ]; intros; simpl in Hnotin.
+  1: contradiction.
+  destruct (in_dec Packet_eqdec p (sentMsgs (e (k + n)))) as [ Hin' | Hnotin' ].
+  2: specialize (IH Hnotin'); destruct IH as (k' & Hlt & Hstep).
+  2: exists k'; split; [ lia | assumption ].
+  clear IH Hin.
+  (* system-dependent proof *)
+  specialize (Hrc (k + n)).
+  hnf in Hrc.
+  destruct Hrc as (q & Hstep).
+  rewrite ! drop_n /= in Hstep.
+  inversion Hstep as [
+    | p0 -> _ Hnvalid Hsrcvalid Hnonbyz Heq 
+    | n0 t -> Hnvalid H_n_nonbyz Heq 
+    | n0 dst v ls s -> H_n_byz Heq 
+    | n0 dst lc -> H_n_byz Hcc Heq
+    | n0 dst c -> H_n_byz Hcc Heq ].
+  3: rewrite (surjective_pairing (procInt _ _)) in Heq.
+  3-6: rewrite Heq /= ?in_app_iff in Hnotin.
+  3-6: now apply Decidable.not_or in Hnotin.
+  - congruence.
+  - destruct (procMsgWithCheck _ _ _) as (st', ms) in Heq.
+    rewrite Heq in Hnotin |- *.
+    simpl in Hnotin.
+    rewrite in_app_iff in_remove_iff in Hnotin.
+    apply Decidable.not_or in Hnotin.
+    destruct Hnotin as (Hneq1 & (Hnotin1 & Hnotin2)%Decidable.not_or).
+    destruct (Packet_eqdec p p0) as [ <- | Hneq2 ].
+    2: intuition.
+    exists k.
+    split; [ constructor | assumption ].
 Qed.
 
-(* certainly, we would like to check whether this is actually what we want! *)
-(* semantically, what we want is ... *)
-
-(* NO! not this, since this does not guarantee that a newly coming message will be delivered *)
-Definition reliable_condition (e : exec World) :=
-  ∀ p, good_packet p → ∀ n, In p (sentMsgs (e n)) →
-    ∃ k, In (receive_pkt p) (sentMsgs (e (k + n))).
-
-(* TODO it might make things easier to give a timestamp to each message?
-    in ABC, we only need to know whether a message has been delivered; 
-    not sure if in another protocol, the timing of delivery matters or not *)
-
-(* FIXME: unfortunately, since the current network model 
-  (1) removes all duplicate messages when some has been delivered and
-  (2) allows re-delivery (i.e., delivering a received message), 
-  any attempt to achieve a finer-grained argument seems impossible. 
-*)
-
-(*
-Definition reliable_condition' (e : exec World) :=
-  ∀ p, good_packet p → consumed p = false → ∀ n, In p (sentMsgs (e n)) →
-    ∃ k, count_occ Packet_eqdec (sentMsgs (e n)) (receive_pkt p) <
-      count_occ Packet_eqdec (sentMsgs (e (k + n))) (receive_pkt p).
-
 Fact fairness_adequate (e : exec World) (Hrc : e ⊨ ⌜ init ⌝ ∧ □ ⟨ next ⟩) :
-  (e ⊨ fairness)%L ↔ reliable_condition' e.
-Proof.
-  unfold reliable_condition'.
-  autounfold with tla in *.
-  split; intros H. 
-  - intros p Hg Hnot n Hin.
-    specialize (H _ Hg n (fairness_is_always_enabled _ Hg _)).
-    rewrite Hnot in H.
-    destruct H as (k & H).
-    rewrite ! drop_drop ! drop_n /= in H.
-    (* ...? *)
-    destruct k as [ | k ].
-    + simpl in H.
-      specialize (H Hin).
-      exists 1.
-      simpl.
-      apply DeliverStep_inv in H.
-      destruct H as (_ & _ & _ & _ & (st' & ms & E1 & E2)).
-      simpl in E2.
-*)
-
-(* just prove a weak one *)
-
-Fact fairness_sound (e : exec World) (Hrc : e ⊨ ⌜ init ⌝ ∧ □ ⟨ next ⟩) :
-  (e ⊨ fairness)%L → reliable_condition e.
+  (e ⊨ fairness)%L ↔ reliable_condition e.
 Proof.
   unfold reliable_condition.
   autounfold with tla in *.
-  intros H p Hg n Hin.
-  specialize (H _ Hg n (fairness_is_always_enabled _ Hg _)).
-  destruct H as (k & H).
-  rewrite ! drop_drop ! drop_n /= in H.
-  destruct (consumed p) eqn:E.
-  - exists 0.
-    now rewrite (proj1 (receive_pkt_intact p) E).
-  - (* use persistent *)
-    unshelve epose proof (psent_persistent_single p (drop n e) (conj Hin _)) as HH.
-    1: unseal. (* ! *)
-    specialize (HH k).
-    rewrite drop_drop in HH.
-    hnf in HH.
-    destruct HH as (p' & Hple & Hin').
-    rewrite drop_n /= in Hin'.
-    destruct Hple as [ -> | -> ].
-    + specialize (H Hin').
-      exists (S k).
-      simpl.
-      apply DeliverStep_inv in H.
-      destruct H as (_ & _ & _ & _ & (st' & ms & E1 & E2)).
-      simpl in E2.
-      rewrite E2.
-      simpl; tauto.
-    + now exists k.
+  split; intros H.
+  - intros p Hg E n Hin.
+    specialize (H _ Hg n (fairness_is_always_enabled _ Hg _)).
+    rewrite E in H.
+    destruct H as (k & H).
+    rewrite ! drop_drop ! drop_n /= in H.
+    destruct (in_dec Packet_eqdec p (sentMsgs (e (k + n)))) as [ Hin' | Hnotin' ].
+    1: exists k; intuition.
+    apply consumed_is_changed_by_delivery in Hnotin'; auto.
+    2: now hnf.
+    destruct Hnotin' as (? & ? & ?).
+    eauto.
+  - intros p Hg k _.
+    destruct (consumed p) eqn:E.
+    1: now exists 0.
+    specialize (H _ Hg E).
+    (* have to go classic *)
+    destruct (Classical_Prop.classic (∃ n : nat, In p (sentMsgs (e (n + k))))).
+    + destruct H0 as (n & Hin).
+      specialize (H _ Hin).
+      destruct H as (k0 & Hstep).
+      rewrite !Nat.add_assoc in Hstep.
+      exists (k0 + n).
+      now rewrite !drop_drop !drop_n /=.
+    + rewrite classical.classical.not_exists in H0.
+      exists 0.
+      rewrite !drop_drop !drop_n /=.
+      specialize (H0 0).
+      now intros.
 Qed.
 
-(*
-Lemma eventual_delivery_single p (Hgood : good_packet p) :
-  □ ⟨ next ⟩ ∧ weak_fairness good_deliver_action ⊢
-  □ ⟨ next ⟩ ∧ weak_fairness (good_deliver_action_p p).
-Proof.
-
-  unseal.
-  destruct H. split; auto.
-  intros. unfold good_deliver_action, good_deliver_action_p in *.
-  specialize (H0 k).
-*)
-
-(* TODO can we do these only at the level of proof modes? this is too ... *)
-(*
-Fact foo1 [Σ : Type] (p1 q1 p2 q2 : predicate Σ)
-  (H1 : p1 ⊢ q1) (H2 : p2 ⊢ q2) : ((p1 ∧ p2) ⊢ (q1 ∧ q2)).
-Proof. autounfold with tla in *. intuition. Qed.
-*)
-(*
-(* not really useful ... *)
-Fact foo2 [Σ : Type] (Γ p1 q1 p2 q2 : predicate Σ)
-  (H1 : Γ ⊢ p1 ~~> □ q1) (H2 : Γ ⊢ p2 ~~> □ q2) : 
-  Γ ⊢ (p1 ∧ p2) ~~> □ (q1 ∧ q2).
-Proof.
-  hnf in H1, H2.
-  unfold leads_to, always, eventually, tla_implies in H1, H2.
-  unseal.
-  destruct H0.
-  specialize (H1 _ H k H0).
-  specialize (H2 _ H k H3).
-  destruct H1 as (k1 & H1), H2 as (k2 & H2).
-  repeat setoid_rewrite drop_drop in H1.
-  repeat setoid_rewrite drop_drop in H2.
-  exists (Nat.max k1 k2).
-  intros kk.
-  split.
-  - now replace (kk + Nat.max k1 k2 + k) with ((kk + Nat.max k1 k2 - k1) + k1 + k) by lia.
-  - now replace (kk + Nat.max k1 k2 + k) with ((kk + Nat.max k1 k2 - k2) + k2 + k) by lia.
-Qed.
-*)
-
-(* Fact foo2 [Σ : Type] (Γ p1 q1 p2 q2 : predicate Σ) (next : action Σ)
-  (H1 : □ ⟨ next ⟩ ∧ Γ ⊢ p1 ~~> q1) (H2 : □ ⟨ next ⟩ ∧ Γ ⊢ p2 ~~> q2)
-  (* q1 and q2 have to be persistent *)
-  (* writing H1' and H2' in this way would align with the form of invariant *)
-  (H1' : q1 ∧ □ ⟨ next ⟩ ⊢ □ q1) (H2' : q2 ∧ □ ⟨ next ⟩ ⊢ □ q2) : 
-  □ ⟨ next ⟩ ∧ Γ ⊢ (p1 ∧ p2) ~~> (q1 ∧ q2). *)
-
-(*
-Fact foo3 [Σ : Type] (Γ p q r : predicate Σ) (H : Γ ⊢ q ~~> r) :
-  Γ ⊢ (□ p ∧ q) ~~> (□ p ∧ r).
-Proof.
-  hnf in H.
-  unfold leads_to, always, eventually, tla_implies in H.
-  unseal.
-  destruct H1.
-  specialize (H _ H0 k H2).
-  destruct H as (k1 & H).
-  rewrite drop_drop in H.
-  exists k1.
-  split; auto.
-Qed.
-*)
-(* modus ponens? but with the same hypotheses *)
-(*
-Fact foo4 [Σ : Type] (Γ p q : predicate Σ)
-  (Hp : Γ ⊢ p) (Hpq : Γ ⊢ p → q) : Γ ⊢ q.
-Proof. firstorder. Qed.
-*)
-(* like leads_to_weaken, but with hypotheses *)
-(*
-Fact foo5 [Σ : Type] (Γ p1 p2 q1 q2 : predicate Σ)
-  (H : Γ ⊢ p1 ~~> q1) (Hpre : Γ ⊢ p2 → p1) (Hpost : Γ ⊢ q1 → q2) : 
-  Γ ⊢ p2 ~~> q2.
-Proof. 
-  autounfold with tla in *.
-  intros.
-  apply Hpre in H1.
-*)
-
-(* TODO cannot see better way for now *)
-(*
-Fact psent_persistent pkts :
-  ⌜λ w, incl pkts (sentMsgs w)⌝ ∧ □ ⟨ next ⟩ ⊢
-    □ (⌜λ w, ∃ pkts', Forall2 pkt_le pkts pkts' ∧ incl pkts' (sentMsgs w)⌝).
-Proof.
-  induction pkts as [ | p pkts IH ].
-  - apply impl_drop_hyp.
-    unseal.
-    now exists nil.
-  - pose proof (psent_persistent_single p) as H.
-    match type of IH with pred_impl ?a _ => 
-      match type of H with pred_impl ?b _ => 
-        transitivity (a ∧ b)%L end end.
-    + tla_simp.
-      repeat (tla_split; try tla_assumption).
-      all: apply impl_drop_one, state_pred_impl; intros w.
-      all: unfold incl; simpl; intuition.
-    + etransitivity.
-      1: apply foo1; eassumption.
-      (* degrade *)
-      rewrite <- always_and.
-      apply impl_under_always.
-      rewrite combine_state_preds.
-      apply state_pred_impl.
-      intros w ((pkts' & Ha1 & Ha2) & (p' & Hb1 & Hb2)).
-      exists (p' :: pkts').
-      split.
-      * now constructor.
-      * hnf in Ha2 |- *; simpl. 
-        intros p0 [ <- | Hin ]; intuition.
-Qed.
-*)
 Lemma eventual_delivery_single p (Hgood : good_packet p) :
   □ ⟨ next ⟩ ∧ fairness ⊢
   ⌜λ w, In p (sentMsgs w)⌝ ~~> ⌜λ w, In (receive_pkt p) (sentMsgs w)⌝.
@@ -502,161 +216,21 @@ Proof.
       subst; cbn; now left.
   - intros.
     apply (fairness_is_always_enabled _ Hgood (fun _ => s) 0). (* trick *)
-    (*
-    intros w Hin.
-    hnf in Hgood |- *.
-    destruct Hgood as (? & ? & ? & ?).
-    eexists.
-    split_and ?; try assumption.
-    destruct (consumed p) eqn:EE; try exact I.
-    eapply DeliverStep; eauto.
-    (* ...? *)
-    rewrite (surjective_pairing (procMsgWithCheck _ _ _)).
-    reflexivity.
-    *)
 Qed.
-(*
-Lemma leads_to_fork' {Σ A: Type} (h: A → Σ → Prop) (h': A → Prop)
-  (f: predicate Σ) (p q: Σ → Prop) :
-  (f ⊢ ⌜p⌝ ~~> ⌜λ s, ∃ x, h' x ∧ h x s⌝) →
-  (∀ (x: A), h' x → (f ⊢ ⌜h x⌝ ~~> ⌜q⌝)) →
-  (f ⊢ ⌜p⌝ ~~> ⌜q⌝).
-Proof.
-  intros Hph Hhq.
-  erewrite <- leads_to_trans; tla_split; [ apply Hph | ].
-  apply leads_to_exist_intro.
-  intros x. unseal. destruct H0. eapply Hhq; try eassumption.
-Qed.
-*)
+
 Corollary eventual_delivery pkts (Hgood : Forall good_packet pkts) :
   □ ⟨ next ⟩ ∧ fairness ⊢
   ⌜λ w, incl pkts (sentMsgs w)⌝ ~~> 
   ⌜λ w, ∀ p, In p pkts → In (receive_pkt p) (sentMsgs w)⌝. (* need some detour if not to write in this way *)
 Proof.
-  apply foo2'' with (valid:=good_packet); try assumption.
+  apply leads_to_combine_batch' with (valid:=good_packet); try assumption.
   - intros; now apply eventual_delivery_single.
   - intros p _.
     apply is_invariant_in_tla, psent_norevert_is_invariant.
 Qed.
 
-  (*
-
-  induction pkts as [ | n IH [ | p pkts ] Elen ] using list_ind_3; try discriminate.
-  - simpl.
-    apply impl_drop_hyp, leads_to_refl.
-  - cbn delta [map] beta iota.
-    simpl in Elen.
-    injection Elen as <-.
-    apply Forall_cons_iff in Hgood.
-    destruct Hgood as (Hg & Hgood).
-    (* this is nice *)
-    apply leads_to_fork' with (h':=fun pkts' => Forall2 pkt_le pkts pkts')
-      (h:=fun pkts' w => incl (receive_pkt p :: pkts') (sentMsgs w)).
-    + admit.
-    + intros pkts' Hf.
-      assert (Forall good_packet pkts') as Htmp.
-      { eapply list.Forall2_Forall_r; try eassumption.
-        revert Hgood.
-        apply Forall_impl.
-        intros; rewrite <- pkt_le_good_packet; eauto.
-      }
-      specialize (IH _ (eq_sym (list.Forall2_length _ _ _ Hf)) Htmp).
-      
-
-      (* eapply foo4.
-      1: apply IH. *)
-
-
-      etransitivity.
-      2: apply leads_to_weaken with 
-        (p1:=((□ ⌜ λ w : World, In (receive_pkt p) (sentMsgs w) ⌝) ∧ ⌜ λ w : World, incl pkts' (sentMsgs w) ⌝)%L)
-        (q1:=((□ ⌜ λ w : World, In (receive_pkt p) (sentMsgs w) ⌝) ∧ ⌜ λ w : World, incl (map receive_pkt pkts') (sentMsgs w) ⌝)%L).
-      * now apply foo3.
-      * always state_pred
-      leads_to 
-
-
-    etransitivity.
-    2: apply leads_to_trans with (q:=⌜λ w, ∃ pkts', Forall2 pkt_le pkts pkts' ∧ incl (receive_pkt p :: pkts') (sentMsgs w)⌝).
-    tla_split.
-    + admit.
-    + (* ex elim *)
-      eapply leads_to_fork.
-      rewrite <- exist_state_pred.
-      apply leads_to_exist_intro.
-      intros pkts'.
-      leads_to state_pred tla_and
-      
-  
-    etransitivity.
-    1: apply IH.
-
-
-    leads_to "refl"
-  
-
-
-
-
-Lemma eventual_delivery_single p (Hgood : good_packet p) :
-  □ ⟨ next ⟩ ∧ weak_fairness good_deliver_action ⊢
-  ⌜λ w, In p (sentMsgs w)⌝ ~~> ⌜λ w, In (receive_pkt p) (sentMsgs w)⌝.
-Proof.
-  unfold next.
-  apply wf1.
-  - intros w w' Hin (q & Hstep).
-    (* TODO extract this out? *)
-    inversion Hstep; subst.
-    1,3-6: left; simpl; auto.
-    1: destruct (procInt _ _) in *; subst; simpl; rewrite in_app_iff; tauto.
-    destruct (procMsgWithCheck _ _ _) in *.
-    subst; cbn delta [sentMsgs] beta iota.
-    destruct (Packet_eqdec p p0) as [ <- | Hneq ].
-    + right.
-      simpl; now left.
-    + left.
-      simpl; rewrite in_app_iff.
-      right; left.
-      now apply in_in_remove.
-  - intros w w' Hin _ (p' & H_src_nonbyz & Hin' & Hstep).
-    hnf in Hdl.
-      
-
-
-    1-5: auto.
-    inversion Hstep.
-
-
-Lemma eventual_delivery pkts (Hgood : Forall good_packet pkts) :
-  □ ⟨ next ⟩ ∧ weak_fairness good_deliver_action ⊢
-  ⌜λ w, incl pkts (sentMsgs w)⌝ ~~> ⌜λ w, incl (map receive_pkt pkts) (sentMsgs w)⌝.
-Proof.
-  unfold next.
-  apply wf1.
-  - 
-*)
-
-(* connecting finite trace with infinite trace *)
-
-Lemma bar1 e (H : (□ ⟨ next ⟩)%L e) k o :
-  ∃ l, system_trace (e k) l ∧ (e (o + k) = final_world (e k) l).
-Proof.
-  autounfold with tla in H.
-  unfold next in H.
-  induction o as [ | o IH ].
-  - now exists nil.
-  - destruct IH as (l & Htrace & Ew0).
-    specialize (H (o + k)).
-    destruct H as (q & Hstep).
-    rewrite ! drop_n in Hstep.
-    simpl in Hstep.
-    exists (l ++ (q, e (S (o + k))) :: nil).
-    rewrite system_trace_app -final_world_app final_world_cons -Ew0 /=.
-    split; auto.
-Qed.
-
 (* one-hop *)
-Lemma bar (P Q : World → Prop)
+Lemma leads_to_by_eventual_delivery (P Q : World → Prop)
   (H : ∀ w (Hw : reachable w),
     (* message-driven *)
     P w → ∃ pkts, Forall good_packet pkts ∧ incl pkts (sentMsgs w) ∧
@@ -674,12 +248,14 @@ Proof.
   exists k0.
   hnf in Htmp.
   rewrite drop_drop drop_n /= in Htmp.
-  pose proof (bar1 e Hnext k k0) as (l & Htrace & Ew0).
+  pose proof (exec_segment e Hnext k k0) as (l & Htrace & Ew0).
   specialize (H _ _ Htrace Ew0).
   apply H.
   intros ? (p & <- & ?)%in_map_iff.
   now apply Htmp.
 Qed.
+
+End Fairness.
 
 (* now, really nice things *)
 
@@ -687,7 +263,7 @@ Lemma terminating_convergence_in_tla v (H_byz_minor : num_byz ≤ t0) :
   ⌜ init ⌝ ∧ □ ⟨ next ⟩ ∧ fairness ⊢
   ⌜ all_honest_nodes_submitted v ⌝ ~~> ⌜ all_honest_nodes_confirmed ⌝.
 Proof.
-  apply bar.
+  apply leads_to_by_eventual_delivery.
   intros.
   pose proof (honest_submit_all_received_suffcond _ _ Hw H) as Hsuffcond.
   destruct (submit_msgs_all_sent w v Hw H) as (pkts & Hincl & Hgood & Htmp).
@@ -707,7 +283,7 @@ Proof.
   tla_apply (leads_to_trans _ 
     (⌜ λ w, confirmed_different_values' n1 n2 w ∧ mutual_lightcert_conflict_detected n1 n2 w ⌝)).
   tla_split.
-  - apply bar.
+  - apply leads_to_by_eventual_delivery.
     intros.
     pose proof (mutual_lightcerts_sent _ _ _ Hw H) as (b1 & b2 & b3 & b4 & Hsuffcond).
     exists (mutual_lightcerts w n1 n2 b1 b2 b3 b4).
@@ -725,7 +301,7 @@ Proof.
       split; try assumption.
       now apply confirmed_different_values_strengthen.
     + eapply eventually_mutual_lightcert_conflict_detected; try eassumption; eauto.
-  - apply bar.
+  - apply leads_to_by_eventual_delivery.
     intros.
     pose proof (reachable_inv _ Hw) as Hinv.
     destruct H as (Hfundamental%confirmed_different_values_strengthen & H); try assumption.

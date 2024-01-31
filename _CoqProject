@@ -22,4 +22,5 @@ Systems/Network.v
 Properties/Invariant.v
 Properties/Liveness_tla.v
 Utils/ListFacts.v
+Utils/TLAmore.v
 # Utils/InfSeqAdaptor.v

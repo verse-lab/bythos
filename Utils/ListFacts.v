@@ -119,3 +119,13 @@ Proof.
     2: now rewrite E.
     auto.
 Qed.
+
+Fact in_remove_iff [A : Type] (eq_dec : forall x y : A, {x = y} + {x <> y})
+  (l : list A) (x y : A) : In x (remove eq_dec y l) <-> In x l /\ x <> y.
+Proof.
+  split.
+  - apply in_remove.
+  - intros (H & H0).
+    revert H0 H.
+    apply in_in_remove.
+Qed.
