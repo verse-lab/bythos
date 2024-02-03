@@ -1,5 +1,6 @@
-From Coq Require Import Bool List ssrbool.
-From Coq Require ssreflect.
+From Coq Require Import Bool List.
+From Coq Require ssrbool ssreflect.
+Import (coercions) ssrbool.
 Import ssreflect.SsrSyntax.
 From ABCProtocol Require Import Types Address ListFacts.
 
@@ -105,75 +106,36 @@ Definition broadcast (src : Address) (m : Message) :=
   (map (fun x => mkP src x m false) valid_nodes).
 
 Fact In_broadcast src m p :
-  In p (broadcast src m) <-> exists dst, valid_node dst /\ p = mkP src dst m false.
-Proof. unfold broadcast. rewrite -> in_map_iff. firstorder. Qed.
-
-Definition valid_addr_sig_pair v nsig : Prop :=
-  let: (n, sig) := nsig in valid_node n /\ verify v sig n.
+  In p (broadcast src m) <-> exists dst, p = mkP src dst m false.
+Proof. unfold broadcast. rewrite -> in_map_iff. pose proof Address_is_finite. firstorder; eauto. Qed.
 
 Definition certificate_valid v nsigs : Prop :=
-  Forall (valid_addr_sig_pair v) nsigs.
+  Forall (fun '(n, sig) => verify v sig n) nsigs.
 
 Definition verify_certificate v nsigs : {certificate_valid v nsigs} + {~ certificate_valid v nsigs}.
   unfold certificate_valid.
   apply Forall_dec. (* there is no existing Forall2_dec *)
   intros (n, sig).
-  simpl.
-  unfold valid_node.
-  destruct (In_dec Address_eqdec n valid_nodes) as [ ? | ? ], (verify v sig n) eqn:?.
-  all: intuition.
+  apply bool_dec.
 Qed.
 
-Definition valid_addr_lsig_pair v nlsig : Prop :=
-  let: (n, lsig) := nlsig in valid_node n /\ light_verify v lsig n.
-
 Definition light_signatures_valid v nlsigs : Prop :=
-  Forall (valid_addr_lsig_pair v) nlsigs.
+  Forall (fun '(n, lsig) => light_verify v lsig n) nlsigs.
 
 Fact light_signatures_valid_for_combine v ns lsigs
   (Hlen : length ns = length lsigs) (H : light_signatures_valid v (combine ns lsigs)) :
-  incl ns valid_nodes /\ lsigs = map (fun n => light_sign v (lightkey_map n)) ns.
+  lsigs = map (fun n => light_sign v (lightkey_map n)) ns.
 Proof.
-  revert lsigs Hlen H.
-  induction ns as [ | n ns IH ]; intros.
-  - destruct lsigs; simpl in Hlen; try discriminate.
-    unfold incl.
-    simpl.
-    firstorder.
-  - destruct lsigs as [ | ls lsigs ]; simpl in Hlen; try discriminate.
-    injection Hlen as Hlen.
-    simpl in H.
+  apply length_eq_Forall2_True in Hlen.
+  induction Hlen as [ | n ls ns lsigs _ _ IH ].
+  - reflexivity.
+  - simpl in H.
     apply Forall_cons_iff in H.
-    destruct H as ((Hvalid & ->%lightkey_correct) & H).
-    specialize (IH _ Hlen H).
-    destruct IH as (Hincl & ->).
+    destruct H as (->%lightkey_correct & H).
+    specialize (IH H).
+    subst lsigs.
     split; auto.
-    hnf in Hincl, Hvalid |- *.
-    firstorder congruence.
 Qed.
-
-(*
-Definition verify_certificate v nsigs :=
-  (* add an additional check that the nodes in nsigs are valid *)
-  List.fold_right (fun nsig b => let: (n, sig) := nsig in b && (is_valid_node n) && (verify v sig n))
-    true nsigs.
-
-Definition certificate_valid v nsigs :=
-  Forall (fun nsig => valid_node (fst nsig) /\ verify v (snd nsig) (fst nsig)) nsigs.
-
-Fact verify_certificateP v nsigs :
-  verify_certificate v nsigs <-> certificate_valid v nsigs.
-Proof.
-  unfold verify_certificate.
-  induction nsigs as [ | (n, sig) nsigs IH ].
-  - simpl. 
-    intuition constructor.
-  - simpl.
-    unfold certificate_valid, is_valid_node, is_true.
-    rewrite -> ! andb_true_iff, Forall_cons_iff, IH.
-    now destruct (in_dec Address_eqdec n valid_nodes) as [ Hin | Hnotin ].
-Qed.
-*)
 
 Definition zip_from_lsigs (st : State) := 
   List.combine st.(from_set) st.(collected_lightsigs).

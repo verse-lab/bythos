@@ -39,8 +39,8 @@ Record node_coh (st : State) : Prop := mkNodeCoh {
     | None => st.(from_set) = nil
     end;
   inv_buffer_mixin: (st.(submitted_value) -> st.(msg_buffer) = nil) /\
-    Forall (fun nmsg => valid_node (fst nmsg) /\
-      (match snd nmsg with SubmitMsg _ _ _ => True | _ => False end)) st.(msg_buffer)
+    Forall (fun nmsg =>
+      match snd nmsg with SubmitMsg _ _ _ => True | _ => False end) st.(msg_buffer)
 }.
 
 (* FIXME: I remember somewhere below uses this. where? *)
@@ -75,7 +75,7 @@ Record node_invariant (psent : PacketSoup) (st : State) : Prop := mkNodeInv {
       (or, packets cannot disappear from the packet soup for no reason) *)
   inv_submitted_broadcast: 
     match st.(submitted_value) with
-    | Some v => forall n, valid_node n -> 
+    | Some v => forall n,
       exists used, In (mkP st.(id) n 
         (SubmitMsg v (light_sign v (lightkey_map st.(id))) (sign v (key_map st.(id)))) 
         used) psent
@@ -83,14 +83,14 @@ Record node_invariant (psent : PacketSoup) (st : State) : Prop := mkNodeInv {
     end;
   inv_conf_lightconfmsg: 
     match st.(submitted_value) with
-    | Some v => st.(conf) -> forall n, valid_node n -> 
+    | Some v => st.(conf) -> forall n,
       exists used, In (mkP st.(id) n (LightConfirmMsg (v, lightsig_combine st.(collected_lightsigs))) used) psent
     | None => True
     end;
   inv_conf_confmsg: 
     match st.(submitted_value) with
     | Some v => st.(conf) -> lightcert_conflict_check st.(received_lightcerts) ->
-      forall n, valid_node n -> 
+      forall n,
         exists used, In (mkP st.(id) n (ConfirmMsg (v, zip_from_sigs st)) used) psent
     | None => True
     end;
@@ -100,22 +100,13 @@ Record node_invariant (psent : PacketSoup) (st : State) : Prop := mkNodeInv {
   inv_node_coh: node_coh st
 }.
 
-Fact valid_cert_valid_senders v nsigs
-  (Hcert_valid : certificate_valid v nsigs) : incl (map fst nsigs) valid_nodes.
-Proof.
-  hnf in Hcert_valid.
-  induction Hcert_valid as [ | (n, sig) nsigs (Hv & _) HH IH ]; hnf; simpl; auto.
-  1: intros ? [].
-  intros n' [ <- | Hin ]; auto.
-Qed.
-
 Fact valid_cert_valid_sig v nsigs
   (Hcert_valid : certificate_valid v nsigs) 
   n sig (Hin : In (n, sig) nsigs) : sig = sign v (key_map n).
 Proof.
   unfold certificate_valid in Hcert_valid.
   rewrite -> Forall_forall in Hcert_valid.
-  now apply Hcert_valid, proj2, key_correct in Hin.
+  now apply Hcert_valid, key_correct in Hin.
 Qed. 
 
 Fact valid_cert_sender_in v nsigs
@@ -141,7 +132,7 @@ Proof.
   - inversion_clear Hcert_nodup as [ | ? ? Hnotin Hcert_nodup' ].
     apply Forall_cons_iff in Hcert_valid.
     simpl in Hcert_valid.
-    destruct Hcert_valid as ((Hnvalid & Hveri) & Hcert_valid).
+    destruct Hcert_valid as (Hveri & Hcert_valid).
     rewrite <- key_correct in Hveri.
     subst sig.
     constructor.
@@ -284,7 +275,7 @@ Record invariant (w : World) : Prop := mkInv {
   coh: Coh w;
   node_inv: forall n, is_byz n = false -> 
     (* TODO maybe also require valid_node n to make things look better *)
-    holds n w (node_invariant (sentMsgs w));
+    node_invariant (sentMsgs w) (localState w n);
     (* node_invariant (localState w n) (sentMsgs w); *)
   psent_inv: psent_invariant (localState w) (sentMsgs w)
 }.
@@ -532,36 +523,27 @@ Fact stmap_pointwise_eq_preserve_Coh stmap stmap' psent
   (Hpeq : forall x, stmap x = stmap' x)
   (Hcoh : Coh (mkW stmap psent)) : Coh (mkW stmap' psent).
 Proof.
-  destruct Hcoh as (Hcoh1, Hcoh2).
-  unfold holds in Hcoh1, Hcoh2.
-  simpl in Hcoh1, Hcoh2.
+  destruct Hcoh as (Hcoh1).
+  simpl in Hcoh1.
   setoid_rewrite -> Hpeq in Hcoh1.
-  setoid_rewrite -> Hpeq in Hcoh2.
   now constructor.
 Qed.
 
 Lemma upd_id_intact_preserve_Coh stmap n st' psent 
-  (Hnvalid : valid_node n)
   (Hsmnt : (stmap n).(id) = st'.(id))
   (Hcoh : Coh (mkW stmap psent)) :
   Coh (mkW (upd n st' stmap) psent).
 Proof.
   constructor.
   - intros n0.
-    unfold holds, upd.
+    unfold upd.
     simpl. 
     destruct (Address_eqdec n n0) as [ -> | Hneq ].
     1: rewrite <- Hsmnt.
     all: apply Hcoh.
-  - intros n0 Hninvalid.
-    unfold holds, upd. 
-    simpl.
-    destruct (Address_eqdec n n0); try eqsolve.
-    now apply Hcoh in Hninvalid.
 Qed.
 
 Corollary state_mnt_preserve_Coh ob stmap n st' psent 
-  (Hnvalid : valid_node n)
   (Hsmnt : state_mnt ob (stmap n) st')
   (Hcoh : Coh (mkW stmap psent)) :
   Coh (mkW (upd n st' stmap) psent).
@@ -655,24 +637,24 @@ Proof.
     destruct Hnodeinv as (_, _, _, Hnodeinv, _, _, _, _).
     simpl_state.
     simpl in Hnodeinv.
-    intros n0 Hn0valid.
-    specialize (Hnodeinv _ Hn0valid).
+    intros n0.
+    specialize (Hnodeinv n0).
     destruct Hnodeinv as (used & H).
     eapply In_psent_mnt in H; eauto.
     firstorder.
   - destruct ov as [ v | ]; auto.
     destruct Hnodeinv as (_, _, _, _, Hnodeinv, _, _, _).
     simpl_state.
-    intros -> n0 Hn0valid.
-    specialize (Hnodeinv eq_refl _ Hn0valid).
+    intros -> n0.
+    specialize (Hnodeinv eq_refl n0).
     destruct Hnodeinv as (used & H).
     eapply In_psent_mnt in H; eauto.
     firstorder.
   - destruct ov as [ v | ]; auto.
     destruct Hnodeinv as (_, _, _, _, _, Hnodeinv, _, _).
     simpl_state.
-    intros -> Hcheck n0 Hn0valid.
-    specialize (Hnodeinv eq_refl Hcheck _ Hn0valid).
+    intros -> Hcheck n0.
+    specialize (Hnodeinv eq_refl Hcheck n0).
     destruct Hnodeinv as (used & H).
     eapply In_psent_mnt in H; eauto.
     firstorder.
@@ -847,7 +829,6 @@ Qed.
 (* Hstcond, Hpsentcond: sufficient conditions for proving new properties from old state *)
 
 Corollary inv_preserve_10 n stmap st'
-  (Hnvalid : valid_node n)
   (Hsmnt : state_mnt true (stmap n) st')
   psent 
   (Hstcond : node_invariant psent st')
@@ -858,7 +839,7 @@ Proof.
   constructor.
   - eapply state_mnt_preserve_Coh; eauto.
   - intros n0 H_n0_nonbyz.
-    unfold holds, upd. 
+    unfold upd. 
     simpl.
     destruct (Address_eqdec n n0) as [ <- | ].
     1: assumption.
@@ -948,9 +929,8 @@ Lemma inv_init : invariant initWorld.
 Proof with basic_solver.
   constructor.
   - constructor.
-    all: intros; unfold holds; simpl...
+    all: intros; simpl...
   - intros n H_n_nonbyz.
-    unfold holds.
     simpl.
     unfold initState.
     constructor; simpl...
@@ -981,7 +961,7 @@ Qed.
 (* generic reestablishment *)
 
 Lemma inv_preserve_routine_check w (H : invariant w)
-  n (H_n_nonbyz : is_byz n = false) (Hvalid : valid_node n) :
+  n (H_n_nonbyz : is_byz n = false) :
   invariant (mkW (localState w) (routine_check (localState w n) ++ sentMsgs w)).
 Proof with basic_solver.
   pose proof H as (Hcoh, _, _).
@@ -1000,7 +980,7 @@ Proof with basic_solver.
   simpl_state.
   destruct ov as [ vthis | ], conf, (lightcert_conflict_check rlcerts) eqn:EE; simpl in Hin...
   apply In_broadcast in Hin.
-  destruct Hin as (dst0 & HH & ->).
+  destruct Hin as (dst0 & ->).
   simpl.
   rewrite H_n_nonbyz, En.
   now simpl_state.
@@ -1020,7 +1000,7 @@ Lemma inv_deliver_step_submit_pre w (H : invariant w)
   w' (Hstep : system_step (Deliver p) w w') : invariant w'.
 Proof with basic_solver.
   inversion Hstep as [ 
-    | p' Hq Hpin Hnvalid Hsrcvalid Hnonbyz Heq
+    | p' Hq Hpin Hnonbyz Heq
     | | | | ]; try discriminate.
   injection Hq as <-.
   destruct p as (src, dst, msg, used) eqn:Ep.
@@ -1070,7 +1050,7 @@ Proof with basic_solver.
     epose proof (procMsg_SubmitMsg_mixin _ _ _ _ _) as Hit.
     rewrite Epm in Hit.
     apply proj1 in Hit.
-    unfold holds, upd in Hnodeinv, Hnodeinv_ori |- *.
+    unfold upd in Hnodeinv, Hnodeinv_ori |- *.
     cbn delta -[consume] iota beta in Hnodeinv |- *.
     destruct (Address_eqdec dst n) as [ -> | Hnneq ] eqn:Edec.
     2:{
@@ -1110,22 +1090,22 @@ Proof with basic_solver.
       rewrite Htmp.
       now left.
     + destruct ov_dst as [ vthis | ]...
-      intros n0 Hn0valid.
-      specialize (Hsubmit_sent n0 Hn0valid).
+      intros n0.
+      specialize (Hsubmit_sent n0).
       destruct Hsubmit_sent as (used0 & HH).
       exists used0.
       rewrite Htmp.
       now left.
     + destruct ov_dst as [ vthis | ]...
-      intros -> n0 Hn0valid .
-      specialize (Hlcert_sent eq_refl n0 Hn0valid).
+      intros -> n0 .
+      specialize (Hlcert_sent eq_refl n0).
       destruct Hlcert_sent as (used0 & HH).
       exists used0.
       rewrite Htmp.
       now left.
     + (* interesting case *)
       destruct ov_dst as [ vthis | ]...
-      intros -> Hcheck n0 Hn0valid.
+      intros -> Hcheck n0.
       exists false.
       rewrite ! in_app_iff.
       right; left.
@@ -1155,7 +1135,7 @@ Proof with basic_solver.
       destruct ov_dst as [ vthis | ], conf_dst, (lightcert_conflict_check rlcerts_dst) eqn:?.
       all: simpl in Hin...
       apply In_broadcast in Hin.
-      destruct Hin as (dst0 & HH & ->).
+      destruct Hin as (dst0 & ->).
       simpl.
       rewrite Hnonbyz, Es.
       unfold upd.
@@ -1187,7 +1167,7 @@ Lemma inv_deliver_step_lightconfirm_pre w (H : invariant w)
 Proof with basic_solver.
   pose proof H as (Hcoh, _, _).
   inversion Hstep as [ 
-    | p' Hq Hpin Hnvalid Hsrcvalid Hnonbyz Heq
+    | p' Hq Hpin Hnonbyz Heq
     | | | | ]; try discriminate.
   injection Hq as <-.
   destruct p as (src, dst, msg, used) eqn:Ep.
@@ -1217,7 +1197,7 @@ Proof with basic_solver.
   - intros n H_n_nonbyz.
     pose proof H_ as (_, Hnodeinv, _).
     specialize (Hnodeinv _ Hnonbyz).
-    unfold holds, upd in Hnodeinv |- *.
+    unfold upd in Hnodeinv |- *.
     cbn delta -[consume] iota beta in Hnodeinv |- *.
     destruct (Address_eqdec dst n) as [ -> | Hnneq ] eqn:Edec.
     2:{
@@ -1248,18 +1228,18 @@ Proof with basic_solver.
       destruct Hrcerts_trace as (src0 & HH).
       exists src0.
       rewrite in_app_iff...
-    + intros n0 Hn0valid.
-      specialize (Hsubmit_sent n0 Hn0valid).
+    + intros n0.
+      specialize (Hsubmit_sent n0).
       destruct Hsubmit_sent as (used0 & HH).
       exists used0.
       rewrite in_app_iff...
-    + intros _ n0 Hn0valid .
-      specialize (Hlcert_sent eq_refl n0 Hn0valid).
+    + intros _ n0 .
+      specialize (Hlcert_sent eq_refl n0).
       destruct Hlcert_sent as (used0 & HH).
       exists used0.
       rewrite in_app_iff...
     + (* interesting case *)
-      intros _ _ n0 Hn0valid.
+      intros _ _ n0.
       exists false.
       rewrite in_app_iff.
       right.
@@ -1281,7 +1261,7 @@ Proof with basic_solver.
     hnf in Hpsentinv |- *.
     rewrite psent_invariant_viewchange in Hpsentinv |- *.
     setoid_rewrite in_app_iff.
-    intros p0 [ Hin | (dst0 & HH & ->)%In_broadcast ].
+    intros p0 [ Hin | (dst0 & ->)%In_broadcast ].
     + specialize (Hpsentinv _ Hin).
       destruct p0 as (src0, dst0, msg0, used0).
       destruct msg0 as [ vv lsig0 sig0 | lc0 | c0 ].
@@ -1306,8 +1286,7 @@ Proof with basic_solver.
 Qed.
 
 Lemma inv_deliver_step_pre w p (H : invariant w)
-  (Hpin : In p (sentMsgs w)) (Hsrcvalid : valid_node (src p))
-  (Hnvalid : valid_node (dst p)) (Hnonbyz : is_byz (dst p) = false)
+  (Hpin : In p (sentMsgs w)) (Hnonbyz : is_byz (dst p) = false)
   w' (E : let: st := localState w (dst p) in
     let: (st', ms) := procMsg (localState w (dst p)) (src p) (msg p) in
       w' = mkW (upd (dst p) 
@@ -1356,7 +1335,6 @@ Proof with basic_solver.
     pose proof H as Hconf.
     destruct Hconf as (_, Hconf, _).
     specialize (Hconf dst Hnonbyz).
-    unfold holds in Hconf.
     rewrite -> Edst in Hconf.
     destruct Hconf as (Hcoll_trace, Hrlcerts_trace, Hrcerts_trace, Hsubmit_sent, Hlcert_sent, Hcert_sent, Hbuffer_recv,
       ((Hsize1 & Hsize2), Hconf, Hfrom_nodup, Hrlcerts, Hrcerts, Hcoll_valid, Hbuffer)).
@@ -1411,7 +1389,7 @@ Proof with basic_solver.
             rewrite_w_expand w in_ H.
             now apply H.
         --intros n H_n_nonbyz.
-          unfold holds, upd.
+          unfold upd.
           cbn delta -[consume] iota beta.
           destruct (Address_eqdec dst n) as [ -> | Hnneq ].
           2:{
@@ -1444,8 +1422,8 @@ Proof with basic_solver.
             exists src0.
             eapply In_psent_mnt'; eauto.
           ++simpl.
-            intros n0 Hn0valid.
-            specialize (Hsubmit_sent n0 Hn0valid).
+            intros n0.
+            specialize (Hsubmit_sent n0).
             destruct Hsubmit_sent as (used0 & HH).
             match goal with |- context[broadcast n ?mm] =>
               eapply In_psent_mnt with (psent':=(consume p (sentMsgs w)) ++ broadcast n mm) in HH end.
@@ -1457,7 +1435,7 @@ Proof with basic_solver.
             simpl in HH.
             destruct HH as (used' & _ & HH).
             eauto.
-          ++intros _ n0 Hn0valid.
+          ++intros _ n0.
             exists false.
             rewrite -> in_app_iff.
             right.
@@ -1465,7 +1443,7 @@ Proof with basic_solver.
             eauto.
           ++(* making dilemma? *)
             cbn match.
-            intros _ Hcheck n0 Hn0valid.
+            intros _ Hcheck n0.
             destruct (lightcert_conflict_check rlcerts_dst) eqn:?...
             apply lightcert_conflict_check_correct in Hcheck.
             now destruct Hcheck as (? & ? & ? & ? & ? & ? & ?).
@@ -1487,7 +1465,7 @@ Proof with basic_solver.
             rewrite -> in_app_iff in Hp0in.
             destruct Hp0in as [ Hp0in | Hp0in ]...
             rewrite -> In_broadcast in Hp0in.
-            destruct Hp0in as (n0 & Hn0valid & ->).
+            destruct Hp0in as (n0 & ->).
             simpl.
             rewrite -> Hnonbyz.
             unfold upd.
@@ -1597,7 +1575,7 @@ Proof with basic_solver.
         rewrite -> in_app_iff in Hin_app.
         destruct Hin_app as [ | Hin_ms ]...
         rewrite -> In_broadcast in Hin_ms.
-        destruct Hin_ms as (dst' & H_dst'_valid & ->).
+        destruct Hin_ms as (dst' & ->).
         simpl.
         rewrite -> Hnonbyz.
         now rewrite -> Edst.
@@ -1628,7 +1606,7 @@ Proof with basic_solver.
           rewrite_w_expand w in_ H.
           now apply H.
       * intros n H_n_nonbyz.
-        unfold holds, upd.
+        unfold upd.
         cbn delta -[consume] iota beta.
         destruct (Address_eqdec dst n) as [ -> | Hnneq ].
         2:{
@@ -1745,10 +1723,10 @@ Proof with basic_solver.
           ++apply Hnodeinv'.
           ++apply Hnodeinv'.
           ++destruct ov_dst as [ vthis | ]...
-            intros -> Hcheck' n Hvalid.
+            intros -> Hcheck' n.
             rewrite Hcheck' in Edecide2.
             destruct (lightcert_conflict_check rlcerts_dst) eqn:Hcheck...
-            specialize (Hlcert_sent eq_refl eq_refl _ Hvalid).
+            specialize (Hlcert_sent eq_refl eq_refl n).
             destruct Hlcert_sent as (used0 & HH).
             exists used0.
             rewrite <- In_consume_iff_by_msgdiff...
@@ -1839,10 +1817,10 @@ Lemma inv_deliver_step w p (H : invariant w)
 Proof with basic_solver.
   pose proof (coh _ H) as Hcoh.
   inversion Hstep as [ 
-    | p' Hq Hpin Hsrcvalid Hnvalid Hnonbyz Heq 
+    | p' Hq Hpin Hnonbyz Heq 
     | | | | ]; try discriminate.
   injection Hq as <-.
-  pose proof (inv_deliver_step_pre w p H Hpin Hsrcvalid Hnvalid Hnonbyz) as H_.
+  pose proof (inv_deliver_step_pre w p H Hpin Hnonbyz) as H_.
   destruct p as (src, dst, msg, used) eqn:Ep.
   simpl_pkt.
   rewrite <- Ep in *.
@@ -1883,7 +1861,7 @@ Proof with basic_solver.
       rewrite -> ! in_app_iff in Hnotin.
       destruct Hin_app as [ Hin | [ Hin | Hin ] ]...
       apply In_broadcast in Hin.
-      destruct Hin as (dst0 & HH & ->).
+      destruct Hin as (dst0 & ->).
       simpl.
       rewrite Hnonbyz.
       unfold upd.
@@ -1927,7 +1905,7 @@ Proof with basic_solver.
       rewrite -> ! in_app_iff in Hnotin.
       destruct Hin_app as [ Hin | [ Hin | Hin ] ]...
       apply In_broadcast in Hin.
-      destruct Hin as (dst0 & HH & ->).
+      destruct Hin as (dst0 & ->).
       simpl.
       rewrite Hnonbyz.
       unfold upd.
@@ -1950,7 +1928,7 @@ Proof with basic_solver.
       rewrite -> ! in_app_iff in Hnotin.
       destruct Hin_app as [ Hin | [ Hin | Hin ] ]...
       apply In_broadcast in Hin.
-      destruct Hin as (dst0 & HH & ->).
+      destruct Hin as (dst0 & ->).
       assert (n' = dst) as -> by congruence.
       simpl.
       rewrite Hnonbyz.
@@ -1978,7 +1956,7 @@ Proof with basic_solver.
   intros H Hstep. 
   pose proof (coh _ H) as Hcoh.
   inversion Hstep as [ |
-    | n' t Hq Hnvalid H_n_nonbyz Heq 
+    | n' t Hq H_n_nonbyz Heq 
     | | | ]; try discriminate.
   injection Hq as <-.
   subst t.
@@ -1991,7 +1969,6 @@ Proof with basic_solver.
     pose proof H as Hv.
     destruct Hv as (_, Hv, _).
     specialize (Hv n H_n_nonbyz).
-    unfold holds in Hv.
     rewrite -> En in Hv.
     destruct Hv as (_, _, _, _, _, _, _, (_, _, _, _, _, Hv, (Hbuffer1 & Hbuffer2))).
     simpl in Hbuffer1.
@@ -2013,7 +1990,7 @@ Proof with basic_solver.
     rewrite -> in_app_iff in Hin_app.
     destruct Hin_app as [ Hin_ms | ]...
     rewrite -> In_broadcast in Hin_ms.
-    destruct Hin_ms as (dst & H_dst_valid & ->).
+    destruct Hin_ms as (dst & ->).
     simpl.
     intros _.
     split; [ | split ].
@@ -2031,7 +2008,6 @@ Proof with basic_solver.
     pose proof H as Hnodeinv.
     destruct Hnodeinv as (_, Hnodeinv, _).
     specialize (Hnodeinv n H_n_nonbyz).
-    unfold holds in Hnodeinv.
     rewrite -> En in Hnodeinv.
     destruct Hnodeinv as (Hcoll_trace, Hrlcerts_trace, Hrcerts_trace, _, _, _, Hbuffer_recv,
       ((Hsize1 & Hsize2), Hconf, _, Hrlcerts, Hrcerts, Hcoll_valid, (_ & Hbuffer))).
@@ -2059,7 +2035,7 @@ Proof with basic_solver.
         + now rewrite En.
         + now rewrite_w_expand w in_ Hcoh.
       - intros n0 H_n0_nonbyz.
-        unfold holds, upd.
+        unfold upd.
         cbn delta -[consume] iota beta.
         destruct (Address_eqdec n n0) as [ <- | Hnneq ].
         2:{
@@ -2079,7 +2055,7 @@ Proof with basic_solver.
           destruct Hrcerts_trace as (src0 & HH).
           exists src0.
           apply in_app_iff...
-        + intros n0 Hn0valid.
+        + intros n0.
           exists false.
           rewrite -> in_app_iff.
           left.
@@ -2099,7 +2075,7 @@ Proof with basic_solver.
           rewrite -> in_app_iff in Hp0in.
           destruct Hp0in as [ Hp0in | Hp0in ]...
           rewrite -> In_broadcast in Hp0in.
-          destruct Hp0in as (n0 & Hn0valid & ->).
+          destruct Hp0in as (n0 & ->).
           simpl.
           unfold upd.
           destruct (Address_eqdec n n)...
@@ -2156,7 +2132,7 @@ Proof with basic_solver.
       specialize (IH (proj2 Hbuffer) (proj2 Hbuffer_recv) _ _ eq_refl).
       apply proj1 in Hbuffer, Hbuffer_recv.
       destruct nmsg as (src, [ v ls s | lc | c ]).
-      all: simpl in Hbuffer; destruct Hbuffer as (H_src_valid & Htmp); try contradiction.
+      all: simpl in Hbuffer; try contradiction.
       simpl in Efr, Hbuffer_recv.
       destruct (procMsgWithCheck st_' src (SubmitMsg v ls s)) as (res1, res2) eqn:Eproc.
       injection_pair Efr.
@@ -2206,8 +2182,8 @@ Proof with basic_solver.
   intros H Hstep. 
   pose proof (coh _ H) as Hcoh.
   inversion Hstep as [ 
-    | p Hq Hpin Hnvalid Hsrcvalid Hnonbyz Heq 
-    | n t Hq Hnvalid H_n_nonbyz Heq 
+    | p Hq Hpin Hnonbyz Heq 
+    | n t Hq H_n_nonbyz Heq 
     | n dst v ls s Hq H_n_byz Heq 
     | n dst lc Hq H_n_byz Hcc Heq
     | n dst c Hq H_n_byz Hcc Heq ].
@@ -2308,16 +2284,16 @@ Proof with basic_solver.
     1:{
       injection_pair Epm.
       apply In_broadcast in Hin.
-      now destruct Hin as (? & ? & ->).
+      now destruct Hin as (? & ->).
     }
     destruct (in_dec Address_eqdec src from); simpl in Epm.
     + destruct (Nat.leb (N - t0) (length from)); injection_pair Epm.
       * apply In_broadcast in Hin.
-        now destruct Hin as (? & ? & ->).
+        now destruct Hin as (? & ->).
       * simpl in Hin...
     + destruct (Nat.leb (N - t0) (S (length from))); injection_pair Epm.
       * apply In_broadcast in Hin.
-        now destruct Hin as (? & ? & ->).
+        now destruct Hin as (? & ->).
       * simpl in Hin...
   - destruct (combined_verify v cs).
     all: now injection_pair Epm.
@@ -2337,7 +2313,7 @@ Proof with basic_solver.
   all: destruct msg; simpl in *...
   all: destruct ov, conf, (lightcert_conflict_check rlcerts)...
   all: rewrite in_app_iff in Hin; destruct Hin as [ Hin | Hin ]...
-  all: apply In_broadcast in Hin; now destruct Hin as (? & ? & ->).
+  all: apply In_broadcast in Hin; now destruct Hin as (? & ->).
 Qed.
 
 (* TODO is this necessary or useful? *)
@@ -2369,7 +2345,7 @@ Proof with basic_solver.
         simpl in H.
         now apply H.
     + apply In_broadcast in Hin.
-      now destruct Hin as (? & ? & ->).
+      now destruct Hin as (? & ->).
 Qed.
 
 Lemma inv_2_init : invariant_2 initWorld.
@@ -2378,8 +2354,7 @@ Proof with basic_solver.
 Qed.
 
 Lemma inv_2_deliver_step_pre w p (Hinv2 : invariant_2 w) (Hcoh : Coh w) 
-  (Hpin : In p (sentMsgs w)) (Hsrcvalid : valid_node (src p))
-  (Hnvalid : valid_node (dst p)) (Hnonbyz : is_byz (dst p) = false)
+  (Hpin : In p (sentMsgs w)) (Hnonbyz : is_byz (dst p) = false)
   w' (E : let: st := localState w (dst p) in
     let: (st', ms) := procMsg (localState w (dst p)) (src p) (msg p) in
       w' = mkW (upd (dst p) st' (localState w))
@@ -2611,10 +2586,10 @@ Lemma inv_2_deliver_step w w' p
   (Hstep : system_step (Deliver p) w w') : invariant_2 w' /\ Coh w'. (* there is inevitably repetition for Coh proof *)
 Proof.
   inversion Hstep as [ 
-    | p' Hq Hpin Hsrcvalid Hnvalid Hnonbyz Heq 
+    | p' Hq Hpin Hnonbyz Heq 
     | | | | ]; try discriminate.
   injection Hq as <-.
-  pose proof (inv_2_deliver_step_pre w p Hinv2 Hcoh Hpin Hsrcvalid Hnvalid Hnonbyz) as H_.
+  pose proof (inv_2_deliver_step_pre w p Hinv2 Hcoh Hpin Hnonbyz) as H_.
   destruct p as (src, dst, msg, used) eqn:Ep.
   simpl_pkt.
   rewrite <- Ep in *.
@@ -2628,7 +2603,7 @@ Proof.
     destruct st' as (n', conf', ov', from', lsigs', sigs', rlcerts', rcerts', buffer') eqn:Est'.
     (* TODO trick here *)
     pose proof (id_coh _ (proj2 H_) dst) as Htmp.
-    unfold holds, upd in Htmp.
+    unfold upd in Htmp.
     simpl in Htmp.
     destruct (Address_eqdec dst dst); try eqsolve.
     simpl in Htmp.
@@ -2649,7 +2624,7 @@ Proof.
     intros p0.
     rewrite ! in_app_iff.
     intros [ Hin | [ Hin%In_broadcast | Hin ] ]; auto.
-    destruct Hin as (? & ? & ->); auto.
+    destruct Hin as (? & ->); auto.
   - eapply Coh_psent_irrelevant, H_.
 Qed.
 
@@ -2661,7 +2636,7 @@ Proof with basic_solver.
   pose proof Hinv2 as (Hpsentinv').
   rewrite -> Forall_forall in Hpsentinv'.
   inversion Hstep as [ |
-    | n' t Hq Hnvalid H_n_nonbyz Heq 
+    | n' t Hq H_n_nonbyz Heq 
     | | | ]; try discriminate.
   injection Hq as <-.
   subst t.
@@ -2672,7 +2647,6 @@ Proof with basic_solver.
   simpl in Hfresh, Epm.
   destruct Hinv as (_, Hv, _).
   specialize (Hv n H_n_nonbyz).
-  unfold holds in Hv.
   rewrite -> En in Hv.
   destruct Hv as (_, _, _, _, _, _, Hbuffer_recv, (_, _, _, _, _, Hv, (Hbuffer1 & Hbuffer2))).
   simpl in Hbuffer_recv, Hbuffer1, Hbuffer2, Hv.
@@ -2772,7 +2746,7 @@ Proof with basic_solver.
         destruct IH as (IHinv2 & IHcoh).
         apply proj1 in Hbuffer2, Hbuffer_recv.
         destruct nmsg as (src, [ v ls s | lc | c ]).
-        all: simpl in Hbuffer2; destruct Hbuffer2 as (H_src_valid & Htmp); try contradiction.
+        all: simpl in Hbuffer2; try contradiction.
         simpl in Efr, Hbuffer_recv |- *.
         destruct (procMsgWithCheck st_' src (SubmitMsg v ls s)) as (res1, res2) eqn:Eproc.
         injection_pair Efr.
@@ -2784,7 +2758,7 @@ Proof with basic_solver.
         [Goalq]:{
           eapply DeliverStep.
           1: reflexivity.
-          2-4: auto.
+          2-3: auto.
           1: simpl; auto.
           cbn delta [sentMsgs localState dst AC.src msg] beta iota.
           unfold upd at 1.
@@ -2858,8 +2832,8 @@ Proof with basic_solver.
   pose proof Hpsentinv as Hpsentinv'.
   rewrite -> Forall_forall in Hpsentinv'.
   inversion Hstep as [ 
-    | p Hq Hpin Hnvalid Hsrcvalid Hnonbyz Heq 
-    | n t Hq Hnvalid H_n_nonbyz Heq 
+    | p Hq Hpin Hnonbyz Heq 
+    | n t Hq H_n_nonbyz Heq 
     | n dst v ls s Hq H_n_byz Heq 
     | n dst lc Hq H_n_byz Hcc Heq
     | n dst c Hq H_n_byz Hcc Heq ].
@@ -2971,7 +2945,6 @@ Proof.
   (* cert in rcerts --> Confirm msg *)
   destruct Hinv as (Hcoh, Hnodeinv, Hpsentinv).
   pose proof (Hnodeinv n H_n_nonbyz) as Hnodeinv_n.
-  unfold holds in Hnodeinv_n.
   destruct Hnodeinv_n as (_, _, Hrcerts_trace, _, _, _, _, ((_ & Hsize2), _, _, _, Hrcerts, _, _)).
   (* sig1, sig2 must be valid *)
   pose proof (Hrcerts _ _ Hin1) as (Hnsigs_valid1 & _ & _).
@@ -3004,7 +2977,6 @@ Proof.
     - destruct Hin as (_ & _ & Ev0 & Hcert).
       (* instantiate another nodeinv *)
       specialize (Hnodeinv src0 Ebyz0).
-      unfold holds in Hnodeinv.
       destruct Hnodeinv as (Hcoll_trace, _, _, _, _, _, _, ((Hsize1' & Hsize2'), _, _, _, _, _, _)).
       rewrite <- Ev0, -> (id_coh _ Hcoh src0) in Hcoll_trace.
       (* TODO here it actually indicates some inconvenience of not saving the complete submit message *)
@@ -3053,10 +3025,8 @@ Proof.
 Qed.
 
 Lemma quorum_intersection ns1 ns2 
-  (Hvalid1 : incl ns1 valid_nodes)
   (Hnsigs_nodup1 : NoDup ns1)
   (Hsize1 : N - t0 <= (length ns1))
-  (Hvalid2 : incl ns2 valid_nodes)
   (Hnsigs_nodup2 : NoDup ns2)
   (Hsize2 : N - t0 <= (length ns2)) :
   (N - (t0 + t0)) <= length (filter (fun n => In_dec Address_eqdec n ns1) ns2). 
@@ -3072,15 +3042,6 @@ Proof.
   end.
   clear Htmp.
   rewrite <- Ens12.
-  assert (incl ns2' valid_nodes) as Hvalid2'.
-  {
-    hnf.
-    intros a Htmp.
-    apply Hvalid2.
-    revert a Htmp.
-    subst ns2'. 
-    apply incl_filter.
-  }
   (* maybe this part has been well formalized in other Coq libraries ... *)
     cut (((length ns2) - (length ns12)) + (length ns1) <= N).
     1: lia.
@@ -3095,7 +3056,8 @@ Proof.
       * now apply NoDup_filter.
       * intros x y (Hin1' & HH)%filter_In Hin2' <-.
         now destruct (in_dec Address_eqdec x ns1).
-    + now apply incl_app.
+    + intros a _.
+      now apply Address_is_finite.
 Qed.
 
 Section Proof_of_Agreement.
@@ -3109,8 +3071,6 @@ Section Proof_of_Agreement.
   Definition consensus_broken (stmap : StateMap) :=
     exists n1 n2 v1 v2, 
       n1 <> n2 /\
-      valid_node n1 /\
-      valid_node n2 /\
       is_byz n1 = false /\
       is_byz n2 = false /\
       v1 <> v2 /\
@@ -3125,7 +3085,7 @@ Section Proof_of_Agreement.
   Lemma agreement w (Hinv : invariant w) (H_byz_minor : num_byz < N - (t0 + t0)) :
     consensus_broken (localState w) -> False.
   Proof.
-    intros (n1 & n2 & v1 & v2 & Hnneq & Hn1valid & Hn2valid & H_n1_nonbyz & H_n2_nonbyz &
+    intros (n1 & n2 & v1 & v2 & Hnneq & H_n1_nonbyz & H_n2_nonbyz &
       Hvneq & Hn1v1 & Hn2v2 & Hn1conf & Hn2conf).
     pose proof (coh _ Hinv) as Hcoh.
     destruct_localState w n1 as_ conf1 ov1 from1 lsigs1 sigs1 rlcerts1 rcerts1 buffer1 eqn_ En1.
@@ -3137,7 +3097,6 @@ Section Proof_of_Agreement.
     pose proof Hinv as (_, Hnodeinv, _).
     pose proof (Hnodeinv n1 H_n1_nonbyz) as Hnodeinv1.
     pose proof (Hnodeinv n2 H_n2_nonbyz) as Hnodeinv2.
-    unfold holds in Hnodeinv1, Hnodeinv2.
     rewrite -> En1 in Hnodeinv1.
     rewrite -> En2 in Hnodeinv2.
     destruct Hnodeinv1 as (Hcoll_trace1, _, _, _, _, _, _, ((Hsize1 & Hsize1'), Hconf_size1, Hfrom_nodup1, _, _, Hcoll_valid1, _)).
@@ -3148,10 +3107,6 @@ Section Proof_of_Agreement.
     destruct Hcoll_valid1 as (Ev1 & _ & Hcert_valid1), Hcoll_valid2 as (Ev2 & _ & Hcert_valid2).
     unfold zip_from_sigs in Hcert_valid1, Hcert_valid2.
     simpl_state.
-    (* FIXME: this is awkward! can we know the validity of from set only in this way? *)
-    pose proof (valid_cert_valid_senders _ _ Hcert_valid1) as Hvalid1.
-    pose proof (valid_cert_valid_senders _ _ Hcert_valid2) as Hvalid2.
-    rewrite combine_map_fst in Hvalid1, Hvalid2; auto.
     assert ((N - (t0 + t0)) <= length (filter (fun n' : Address => in_dec Address_eqdec n' from1) from2)) as Hsize
       by (apply quorum_intersection; auto; try lia).
     assert (Forall is_byz (filter (fun n' => in_dec Address_eqdec n' from1) from2)) as Hbyz.
@@ -3182,8 +3137,7 @@ Section Proof_of_Agreement.
       - now apply NoDup_filter.
       - intros n Hin.
         eapply Forall_forall with (x:=n) in Hbyz; try assumption.
-        pose proof (byz_is_valid _ Hbyz) as Hvalid.
-        now apply filter_In.
+        apply filter_In; split; auto using Address_is_finite.
     }
     (* now simple math *)
     lia.
@@ -3289,7 +3243,7 @@ Qed.
     or, a more general invariant ... *)
 
 Definition honest_node_submitted n v w :=
-  valid_node n -> is_byz n = false -> (localState w n).(submitted_value) = Some v.
+  is_byz n = false -> (localState w n).(submitted_value) = Some v.
 
 (* FIXME: explain why need an accompanying (invariant w) *)
 Fact honest_node_submitted_is_invariant n v : is_invariant_step (fun w => invariant w /\ honest_node_submitted n v w).
@@ -3299,12 +3253,12 @@ Proof.
   split.
   1: eapply inv_step; eauto.
   hnf in Hst |- *.
-  intros Hnvalid H_n_nonbyz.
-  specialize (Hst Hnvalid H_n_nonbyz).
+  intros H_n_nonbyz.
+  specialize (Hst H_n_nonbyz).
   pose proof (coh _ Hinv_) as Hcoh.
   inversion Hstep as [ 
-    | p Hq Hpin Hvalid Hsrcvalid Hnonbyz Heq 
-    | n0 t Hq Hvalid H_n0_nonbyz Heq 
+    | p Hq Hpin Hnonbyz Heq 
+    | n0 t Hq H_n0_nonbyz Heq 
     | n0 dst v0 ls s Hq H_n_byz Heq 
     | n0 dst lc Hq H_n_byz Hcc Heq
     | n0 dst c Hq H_n_byz Hcc Heq ].
@@ -3369,7 +3323,7 @@ Qed.
 (* fine, another one! *)
 
 Definition honest_node_confirmed n w :=
-  valid_node n -> is_byz n = false -> (localState w n).(conf).
+  is_byz n = false -> (localState w n).(conf).
 
 Fact honest_node_confirmed_is_invariant n : is_invariant_step (fun w => invariant w /\ honest_node_confirmed n w).
 Proof.
@@ -3378,12 +3332,12 @@ Proof.
   split.
   1: eapply inv_step; eauto.
   hnf in Hst |- *.
-  intros Hnvalid H_n_nonbyz.
-  specialize (Hst Hnvalid H_n_nonbyz).
+  intros H_n_nonbyz.
+  specialize (Hst H_n_nonbyz).
   pose proof (coh _ Hinv_) as Hcoh.
   inversion Hstep as [ 
-    | p Hq Hpin Hvalid Hsrcvalid Hnonbyz Heq 
-    | n0 t Hq Hvalid H_n0_nonbyz Heq 
+    | p Hq Hpin Hnonbyz Heq 
+    | n0 t Hq H_n0_nonbyz Heq 
     | n0 dst v0 ls s Hq H_n_byz Heq 
     | n0 dst lc Hq H_n_byz Hcc Heq
     | n0 dst c Hq H_n_byz Hcc Heq ].
@@ -3445,7 +3399,7 @@ Section Proof_of_Terminating_Convergence.
       incl pkts (sentMsgs w) /\ 
       (* possibly add condition for all packets containing SubmitMsg? *)
       Forall good_packet pkts /\
-      (forall n1 n2, valid_node n1 -> valid_node n2 -> 
+      (forall n1 n2, 
         is_byz n1 = false -> is_byz n2 = false ->
         (* FIXME: unify v with value_bft? *)
         exists b, In (mkP n1 n2 (SubmitMsg (value_bft n1) 
@@ -3460,15 +3414,15 @@ Section Proof_of_Terminating_Convergence.
     split.
     1: rewrite Forall_forall; setoid_rewrite filter_In.
     1: intros p (? & ?); destruct (good_packet_dec p); eqsolve.
-    intros n1 n2 Hn1valid Hn2valid H_n1_nonbyz H_n2_nonbyz.
+    intros n1 n2 H_n1_nonbyz H_n2_nonbyz.
     pose proof (reachable_inv _ H_w_reachable) as (Hcoh, Hnodeinv, _).
     specialize (Hnodeinv _ H_n1_nonbyz).
     unfold all_honest_nodes_submitted in H1.
-    specialize (H1 _ Hn1valid H_n1_nonbyz).
+    specialize (H1 _ H_n1_nonbyz).
     destruct Hnodeinv as (_, _, _, Hs, _, _, _, (_, _, _, _, _, Hs2, _)).
     rewrite (id_coh _ Hcoh), H1 in Hs, Hs2.
     destruct Hs2 as (-> & _).
-    specialize (Hs _ Hn2valid).
+    specialize (Hs n2).
     destruct Hs as (b & Hs).
     exists b.
     apply filter_In.
@@ -3479,7 +3433,7 @@ Section Proof_of_Terminating_Convergence.
   Qed.
 
   Definition honest_submit_all_received w' :=
-    forall n1 n2, valid_node n1 -> valid_node n2 -> 
+    forall n1 n2, 
       is_byz n1 = false -> is_byz n2 = false -> 
       (* TODO elaborate v ls s? this should be possible due to submit_msgs_all_sent *)
       exists v ls s, In (mkP n1 n2 (SubmitMsg v ls s) true) (sentMsgs w').
@@ -3491,8 +3445,8 @@ Section Proof_of_Terminating_Convergence.
     simpl in H2.
     destruct HH as (_ & _ & HH).
     hnf in H2 |- *.
-    intros n0 n Hn0valid Hnvalid H_n0_nonbyz H_n_nonbyz.
-    specialize (HH _ _ Hn0valid Hnvalid H_n0_nonbyz H_n_nonbyz).
+    intros n0 n H_n0_nonbyz H_n_nonbyz.
+    specialize (HH _ _ H_n0_nonbyz H_n_nonbyz).
     destruct HH as (b & HH%(in_map receive_pkt)).
     simpl in HH.
     apply H2 in HH.
@@ -3504,7 +3458,7 @@ Section Proof_of_Terminating_Convergence.
     (Hw0 : honest_submit_all_received w0).
 
   Definition all_honest_nodes_confirmed w' :=
-    forall n, valid_node n -> is_byz n = false -> (localState w' n).(conf).
+    forall n, is_byz n = false -> (localState w' n).(conf).
 
   Hypothesis (H_byz_minor : num_byz <= t0).
 
@@ -3532,7 +3486,7 @@ Section Proof_of_Terminating_Convergence.
     clear Ew0 Htmp Htrace0 Hq w l0.
     rename w0 into w.
     hnf in H1, Hw0 |- *.
-    intros n Hnvalid H_n_nonbyz.
+    intros n H_n_nonbyz.
     pose proof Hinv as (Hcoh, Hnodeinv, Hpsentinv).
     destruct_localState w n as_ conf ov from lsigs sigs rlcerts rcerts buffer eqn_ En.
     simpl.
@@ -3540,7 +3494,6 @@ Section Proof_of_Terminating_Convergence.
     1: reflexivity.
     (* get to know the size of from *)
     specialize (Hnodeinv n H_n_nonbyz).
-    unfold holds in Hnodeinv.
     rewrite -> En in Hnodeinv.
     destruct Hnodeinv as (_, _, _, _, _, _, _, (_, Hconf, Hfrom_nodup, _, _, Hcoll_valid, (Hbuffer & _))).
     simpl_state.
@@ -3548,7 +3501,7 @@ Section Proof_of_Terminating_Convergence.
     (* get to know the value submitted and buffer = nil *)
     hnf in H1.
     pose proof H1 as H1n.
-    specialize (H1n _ Hnvalid H_n_nonbyz).
+    specialize (H1n _ H_n_nonbyz).
     rewrite En in H1n.
     simpl in H1n.
     subst ov.
@@ -3560,11 +3513,11 @@ Section Proof_of_Terminating_Convergence.
     {
       intros n0 (Hn0valid & H_n0_nonbyz%negb_true_iff)%filter_In.
       (* get to know the message *)
-      specialize (Hw0 n0 n Hn0valid Hnvalid H_n0_nonbyz H_n_nonbyz).
+      specialize (Hw0 n0 n H_n0_nonbyz H_n_nonbyz).
       destruct Hw0 as (v0 & ls0 & s0 & Hin).
       (* get to know the value and signatures in the message *)
       pose proof H1 as H1n0.
-      specialize (H1n0 _ Hn0valid H_n0_nonbyz).
+      specialize (H1n0 _ H_n0_nonbyz).
       hnf in Hpsentinv.
       rewrite psent_invariant_viewchange in Hpsentinv.
       specialize (Hpsentinv _ Hin H_n0_nonbyz).
@@ -3596,7 +3549,7 @@ Section Proof_of_Accountability.
 
   (* Hypothesis (Hrc : reliable_condition reachable). *)
 
-  Definition confirmed n w : Prop := is_byz n = false /\ valid_node n /\ (localState w n).(conf).
+  Definition confirmed n w : Prop := is_byz n = false /\ (localState w n).(conf).
 
   Definition confirmed_different_values n1 n2 w : Prop :=
     n1 <> n2 /\ confirmed n1 w /\ confirmed n2 w /\ 
@@ -3634,7 +3587,6 @@ Section Proof_of_Accountability.
     | H_n1_nonbyz : is_byz n1 = false, H_n2_nonbyz : is_byz n2 = false |- _ =>
     pose proof (Hnodeinv _ H_n1_nonbyz) as Hnodeinv1;
     pose proof (Hnodeinv _ H_n2_nonbyz) as Hnodeinv2;
-    unfold holds in Hnodeinv1, Hnodeinv2;
     get_submitted Hnodeinv1 as_ v1 E1;
     get_submitted Hnodeinv2 as_ v2 E2;
     unify_value_bft Hnodeinv1;
@@ -3646,7 +3598,7 @@ Section Proof_of_Accountability.
     confirmed_different_values n1 n2 w <-> confirmed_different_values' n1 n2 w.
   Proof.
     split.
-    - intros (Hnneq & (H_n1_nonbyz & Hn1valid & Hconf1) & (H_n2_nonbyz & Hn2valid & Hconf2) & Hvneq).
+    - intros (Hnneq & (H_n1_nonbyz & Hconf1) & (H_n2_nonbyz & Hconf2) & Hvneq).
       saturate n1 n2 Hinv.
       now hnf.
     - intros H.
@@ -3658,14 +3610,13 @@ Section Proof_of_Accountability.
     is_invariant_step (fun w => invariant w /\ confirmed_different_values' n1 n2 w).
   Proof.
     hnf.
-    intros q w w' (Hinv & (Hnneq & (H_n1_nonbyz & Hn1valid & Hconf1) & 
-      (H_n2_nonbyz & Hn2valid & Hconf2) & Hv1 & Hv2 & Hvneq)) Hstep.
+    intros q w w' (Hinv & (Hnneq & (H_n1_nonbyz & Hconf1) & (H_n2_nonbyz & Hconf2) & Hv1 & Hv2 & Hvneq)) Hstep.
     split.
     1: eapply inv_step; eauto.
     hnf.
     split; try assumption.
     split; [ | split ].
-    1-2: hnf; do 2 (split; try assumption).
+    1-2: hnf; do 1 (split; try assumption).
     1-2: eapply honest_node_confirmed_is_invariant; eauto.
     1-2: split; [ assumption | hnf; auto ].
     split; [ | split; try assumption ].
@@ -3677,8 +3628,7 @@ Section Proof_of_Accountability.
   Hypothesis (H_w_reachable : reachable w) (Hfundamental : confirmed_different_values n1 n2 w).
 
   Local Tactic Notation "prepare" hyp(H) :=
-    destruct H as (Hnneq & (H_n1_nonbyz & Hn1valid & Hconf1)
-      & (H_n2_nonbyz & Hn2valid & Hconf2) & Hvneq); clear H.
+    destruct H as (Hnneq & (H_n1_nonbyz & Hconf1) & (H_n2_nonbyz & Hconf2) & Hvneq); clear H.
 
   (* well, using 4 packets instead of 2 is inevitable. *)
   Definition mutual_lightcerts b1 b2 b3 b4 := Eval cbn in
@@ -3694,10 +3644,10 @@ Section Proof_of_Accountability.
     apply inv_conf_lightconfmsg in Hnodeinv1, Hnodeinv2.
     rewrite E1 in Hnodeinv1.
     rewrite E2 in Hnodeinv2.
-    pose proof (Hnodeinv1 Hconf1 _ Hn1valid) as (b1 & Hin1).
-    pose proof (Hnodeinv1 Hconf1 _ Hn2valid) as (b2 & Hin2).
-    pose proof (Hnodeinv2 Hconf2 _ Hn1valid) as (b3 & Hin3).
-    pose proof (Hnodeinv2 Hconf2 _ Hn2valid) as (b4 & Hin4).
+    pose proof (Hnodeinv1 Hconf1 n1) as (b1 & Hin1).
+    pose proof (Hnodeinv1 Hconf1 n2) as (b2 & Hin2).
+    pose proof (Hnodeinv2 Hconf2 n1) as (b3 & Hin3).
+    pose proof (Hnodeinv2 Hconf2 n2) as (b4 & Hin4).
     rewrite (id_coh _ Hcoh) in Hin1, Hin2, Hin3, Hin4.
     exists b1, b2, b3, b4.
     hnf.
@@ -3735,25 +3685,25 @@ Section Proof_of_Accountability.
     rewrite ! Forall_cons_iff in Hinv2.
     simpl in Hinv2.
     (* FIXME: extract this *)
-    assert (forall nn vv, valid_node nn -> is_byz nn = false ->
+    assert (forall nn vv, is_byz nn = false ->
       (localState w nn).(submitted_value) = Some vv ->
       (localState w nn).(conf) ->
       combined_verify vv (lightsig_combine (collected_lightsigs (localState w nn)))) as Hq.
     {
-      intros.
-      specialize (Hnodeinv nn H0).
+      intros nn vv Ha Hb Hc.
+      specialize (Hnodeinv nn Ha).
       pose proof Hnodeinv as ((Hsize1 & _), Hconf_size, Hfrom_nodup, _, _, Hcoll, _)%inv_node_coh.
-      rewrite H1 in Hcoll.
+      rewrite Hb in Hcoll.
       destruct Hcoll as (_ & Hlcv & _).
-      rewrite H2 in Hconf_size.
+      rewrite Hc in Hconf_size.
       apply light_signatures_valid_for_combine in Hlcv; try assumption.
       apply combine_correct.
       exists (localState w nn).(from_set).
       split; try assumption.
       eqsolve.
     }
-    pose proof (Hq _ _ Hn1valid H_n1_nonbyz E1 Hconf1) as HH1.
-    pose proof (Hq _ _ Hn2valid H_n2_nonbyz E2 Hconf2) as HH2.
+    pose proof (Hq _ _ H_n1_nonbyz E1 Hconf1) as HH1.
+    pose proof (Hq _ _ H_n2_nonbyz E2 Hconf2) as HH2.
     split.
     - apply lightcert_conflict_check_correct.
       do 4 eexists.
@@ -3778,7 +3728,7 @@ Section Proof_of_Accountability.
     { pkts : list Packet &
       incl pkts (sentMsgs w0) /\ 
       Forall good_packet pkts /\
-      (forall n, valid_node n -> is_byz n = false ->
+      (forall n, is_byz n = false ->
         exists b1 b2 nsigs1 nsigs2, 
           (* INTENTIONALLY hide such information *)
           In (mkP n1 n (ConfirmMsg (value_bft n1, nsigs1)) b1) pkts /\
@@ -3794,8 +3744,7 @@ Section Proof_of_Accountability.
     pose proof (reachable_inv _ H_w0_reachable) as Htmp.
     (* TODO design prepare' *)
     apply confirmed_different_values_strengthen in Hfundamental0; try assumption.
-    destruct Hfundamental0 as (Hnneq & (H_n1_nonbyz & Hn1valid & Hconf1) & 
-      (H_n2_nonbyz & Hn2valid & Hconf2) & Hv1 & Hv2 & Hvneq).
+    destruct Hfundamental0 as (Hnneq & (H_n1_nonbyz & Hconf1) & (H_n2_nonbyz & Hconf2) & Hv1 & Hv2 & Hvneq).
 
     exists (filter (fun p => if good_packet_dec p 
       then (match msg p with ConfirmMsg _ => true | _ => false end) else false) 
@@ -3805,15 +3754,15 @@ Section Proof_of_Accountability.
     split.
     1: rewrite Forall_forall; setoid_rewrite filter_In.
     1: intros p (? & ?); destruct (good_packet_dec p); eqsolve.
-    intros n Hnvalid H_n_nonbyz.
+    intros n H_n_nonbyz.
     pose proof Htmp as (Hcoh_, Hnodeinv_, _).
     pose proof (Hnodeinv_ _ H_n1_nonbyz) as Hnodeinv1_.
     pose proof (Hnodeinv_ _ H_n2_nonbyz) as Hnodeinv2_.
     apply inv_conf_confmsg in Hnodeinv1_, Hnodeinv2_.
     rewrite Hconf1, Hv1, (id_coh _ Hcoh_) in Hnodeinv1_.
     rewrite Hconf2, Hv2, (id_coh _ Hcoh_) in Hnodeinv2_.
-    specialize (Hnodeinv1_ eq_refl (proj1 Hdetected) n Hnvalid).
-    specialize (Hnodeinv2_ eq_refl (proj2 Hdetected) n Hnvalid).
+    specialize (Hnodeinv1_ eq_refl (proj1 Hdetected) n).
+    specialize (Hnodeinv2_ eq_refl (proj2 Hdetected) n).
     destruct Hnodeinv1_ as (b1 & Hin1), Hnodeinv2_ as (b2 & Hin2).
     exists b1, b2, (zip_from_sigs (localState w0 n1)), (zip_from_sigs (localState w0 n2)).
     split.
@@ -3825,7 +3774,7 @@ Section Proof_of_Accountability.
   Qed.
 
   Definition fullcerts_all_received w' :=
-    forall n, valid_node n -> is_byz n = false ->
+    forall n, is_byz n = false ->
       (* but can elaborate here! *)
       In (mkP n1 n (ConfirmMsg (value_bft n1, zip_from_sigs (localState w' n1))) true) (sentMsgs w') /\
       In (mkP n2 n (ConfirmMsg (value_bft n2, zip_from_sigs (localState w' n2))) true) (sentMsgs w') /\
@@ -3841,8 +3790,8 @@ Section Proof_of_Accountability.
     destruct fullcerts_all_sent as (pkts & HH).
     simpl in H2.
     destruct HH as (Hincl & Hgood & Haa).
-    intros n Hnvalid H_n_nonbyz.
-    specialize (Haa _ Hnvalid H_n_nonbyz).
+    intros n H_n_nonbyz.
+    specialize (Haa _ H_n_nonbyz).
     destruct Haa as (? & ? & ? & ? & Hin1%(in_map receive_pkt) & Hin2%(in_map receive_pkt)).
     apply H2 in Hin1, Hin2.
     simpl in Hin1, Hin2.
@@ -3863,7 +3812,7 @@ Section Proof_of_Accountability.
       NoDup byzs /\
       N - (t0 + t0) <= length byzs /\
       Forall is_byz byzs /\
-      (forall n, is_byz n = false -> valid_node n -> incl byzs (genproof (localState w' n).(received_certs))).
+      (forall n, is_byz n = false -> incl byzs (genproof (localState w' n).(received_certs))).
 
   Variable (w1 : World) (l1 : list (system_step_descriptor * World)).
   Hypothesis (Htrace1 : system_trace w0 l1) (Ew1 : w1 = final_world w0 l1)
@@ -3886,8 +3835,7 @@ Section Proof_of_Accountability.
     (* prepare Hfundamental0. *)
     apply confirmed_different_values_strengthen in Hfundamental0.
     2: now apply reachable_inv.
-    destruct Hfundamental0 as (Hnneq & (H_n1_nonbyz & Hn1valid & Hconf1) & 
-      (H_n2_nonbyz & Hn2valid & Hconf2) & Hv1 & Hv2 & Hvneq); clear Hfundamental0.
+    destruct Hfundamental0 as (Hnneq & (H_n1_nonbyz & Hconf1) & (H_n2_nonbyz & Hconf2) & Hv1 & Hv2 & Hvneq); clear Hfundamental0.
     (* pose proof (reachable_inv _ H_w_reachable) as Hinv. *)
     (* saturate n1 n2 Hinv.
     clear Hconf1 Hconf2 H_w_reachable E1 E2 Hinv Hcoh Hnodeinv Hnodeinv1 Hnodeinv2. (* TODO why clear dependent w does not work here? *)
@@ -3902,11 +3850,10 @@ Section Proof_of_Accountability.
     simpl_state.
     (* get basic information; here by trick, instantiate on n1 or n2 to know this information
         can be also obtained by the classic invariant approach, but anyway *)
-    pose proof (Hw1 n1 Hn1valid H_n1_nonbyz) as (_ & _ & -> & -> & -> & ->).
+    pose proof (Hw1 n1 H_n1_nonbyz) as (_ & _ & -> & -> & -> & ->).
     (* get size of cert *)
     pose proof (Hnodeinv n1 H_n1_nonbyz) as Hnodeinv1.
     pose proof (Hnodeinv n2 H_n2_nonbyz) as Hnodeinv2.
-    unfold holds in Hnodeinv1, Hnodeinv2.
     rewrite En1 in Hnodeinv1.
     rewrite En2 in Hnodeinv2.
     pose proof Hnodeinv1 as ((_ & Hsize1), Hconf_size1, Hfrom_nodup1, _, _, Hcoll1, _)%inv_node_coh.
@@ -3917,27 +3864,27 @@ Section Proof_of_Accountability.
     unfold zip_from_sigs in *.
     simpl_state.
     rewrite -> Forall_forall in Hpsentinv2.
-    assert (forall n, valid_node n -> is_byz n = false -> 
+    assert (forall n, is_byz n = false -> 
       In (value_bft n1, combine from1 sigs1) (localState w1 n).(received_certs) /\
       In (value_bft n2, combine from2 sigs2) (localState w1 n).(received_certs)) as H_c1_c2_in_rcerts.
     {
-      intros n Hnvalid H_n_nonbyz.
-      specialize (Hw1 _ Hnvalid H_n_nonbyz) as (Hin1%Hpsentinv2 & Hin2%Hpsentinv2 & _).
+      intros n H_n_nonbyz.
+      specialize (Hw1 _ H_n_nonbyz) as (Hin1%Hpsentinv2 & Hin2%Hpsentinv2 & _).
       simpl in Hin1, Hin2.
       split; [ apply Hin1 | apply Hin2 ]; auto; try lia.
       all: try now apply NoDup_combine_l.
       all: rewrite combine_length; lia.
     }
     (* again use the single instantiation trick to get the quorum *)
-    pose proof (H_c1_c2_in_rcerts _ Hn1valid H_n1_nonbyz) as (H_c1_in_rcerts_n1 & H_c2_in_rcerts_n1).
+    pose proof (H_c1_c2_in_rcerts _ H_n1_nonbyz) as (H_c1_in_rcerts_n1 & H_c2_in_rcerts_n1).
     rewrite -> En1 in H_c1_in_rcerts_n1, H_c2_in_rcerts_n1.
     simpl_state.
     remember (filter (fun n => In_dec Address_eqdec n from1) from2) as from12.
     exists from12.
-    assert (forall n, valid_node n -> is_byz n = false -> 
+    assert (forall n, is_byz n = false -> 
       incl from12 (genproof (received_certs (localState w1 n)))) as Hcommonproof.
     {
-      intros n Hnvalid H_n_nonbyz nb Hinproof.
+      intros n H_n_nonbyz nb Hinproof.
       subst from12.
       eapply conflicting_cert_quorum_in_proof; eauto.
       1-2: now apply H_c1_c2_in_rcerts.
@@ -3946,9 +3893,7 @@ Section Proof_of_Accountability.
     subst from12.
     intuition.
     - now apply NoDup_filter.
-    - apply valid_cert_valid_senders in Hcert_valid1, Hcert_valid2.
-      rewrite -> ! combine_map_fst in Hcert_valid1, Hcert_valid2; try eqsolve.
-      apply quorum_intersection; auto; try lia.
+    - apply quorum_intersection; auto; try lia.
     - apply Forall_forall.
       intros nb Hinproof.
       eapply inv_sound_weak with (n:=n1); eauto.

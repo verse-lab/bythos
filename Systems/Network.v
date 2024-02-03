@@ -19,19 +19,11 @@ Record World :=
 
 Definition initWorld := mkW initState nil.
 
-(* Network semantics *)
-(* a predicate holds for the state of a given node *)
-Definition holds (n : Address) (w : World) (cond : State -> Prop) :=
-  cond (localState w n).
-
 (* tries to pack all coherent props into a record *)
 Record Coh (w : World) : Prop := mkCoh {
-  id_coh: forall n, holds n w (fun st => id st = n);
-  unrelated_intact: forall n, ~ valid_node n -> holds n w (fun st => st = Init n);
+  id_coh: forall n, (localState w n).(id) = n;
+  (* unrelated_intact: forall n, ~ valid_node n -> holds n w (fun st => st = Init n); *)
 }.
-
-(* unclear about this, ignore it for now *)
-(* Record Qualifier := Q { ts: Timestamp; allowed: Address; }. *)
 
 (* yes, how about extracting this to be ...? *)
 Definition sig_seen_in_history (src : Address) (v : Value) (s : Signature) (pkts : PacketSoup) :=
@@ -93,8 +85,6 @@ Inductive system_step (q : system_step_descriptor) (w w' : World) : Prop :=
       (* try modelling message duplication *)
       (* consumed p = false & *)
       (* require sender to be valid; although can also be managed in procMsg *)
-      valid_node (src p) &
-      valid_node (dst p) &
       is_byz (dst p) = false &
       let: (st', ms) := procMsgWithCheck (localState w (dst p)) (src p) (msg p) in
       w' = mkW (upd (dst p) st' (localState w))
@@ -103,7 +93,6 @@ Inductive system_step (q : system_step_descriptor) (w w' : World) : Prop :=
 | InternStep (proc : Address) (t : InternalTransition) of
       q = Intern proc t &
       (* Coh w & *)
-      valid_node proc &
       is_byz proc = false &
       let: (st', ms) := (procInt (localState w proc) t) in
       w' = mkW (upd proc st' (localState w))
@@ -137,14 +126,14 @@ Inductive system_step (q : system_step_descriptor) (w w' : World) : Prop :=
 (* inversion lemmas *)
 
 Fact DeliverStep_inv p w w' (H : system_step (Deliver p) w w') :
-  In p (sentMsgs w) /\ valid_node (src p) /\ valid_node (dst p) /\ is_byz (dst p) = false /\
+  In p (sentMsgs w) /\ is_byz (dst p) = false /\
   exists st' ms, procMsgWithCheck (localState w (dst p)) (src p) (msg p) = (st', ms) /\
     w' = mkW (upd (dst p) st' (localState w)) (consume p (sentMsgs w) ++ ms).
 Proof.
   inversion H; try discriminate.
   match goal with HH : Deliver _ = Deliver _ |- _ => injection HH as <- end.
   rewrite (surjective_pairing (procMsgWithCheck _ _ _)) in *.
-  do 4 (split; try assumption).
+  do 2 (split; try assumption).
   do 2 eexists.
   split; [ reflexivity | assumption ].
 Qed.
@@ -246,16 +235,13 @@ Proof.
     tauto.
 Qed.
 
-Definition good_packet p := 
-  valid_node (src p) /\ valid_node (dst p) /\
+Definition good_packet p :=
   is_byz (src p) = false /\ is_byz (dst p) = false.
 
 Fact good_packet_dec p : {good_packet p} + {~ good_packet p}.
 Proof.
-  unfold good_packet, valid_node.
-  destruct (in_dec Address_eqdec (src p) valid_nodes), 
-    (in_dec Address_eqdec (dst p) valid_nodes), 
-    (is_byz (src p)), (is_byz (dst p)); auto.
+  unfold good_packet.
+  destruct (is_byz (src p)), (is_byz (dst p)); auto.
   all: now right.
 Qed.
 

@@ -82,7 +82,7 @@ Proof.
   hnf.
   destruct (consumed p).
   1: exists initWorld; auto.
-  destruct Hg as (? & ? & ? & ?).
+  destruct Hg as (? & ?).
   eexists.
   intros HH.
   eapply DeliverStep with (p:=p); try assumption; try reflexivity.
@@ -119,8 +119,8 @@ Proof.
   destruct Hrc as (q & Hstep).
   rewrite ! drop_n /= in Hstep.
   inversion Hstep as [
-    | p0 -> _ Hnvalid Hsrcvalid Hnonbyz Heq 
-    | n0 t -> Hnvalid H_n_nonbyz Heq 
+    | p0 -> _ Hnonbyz Heq 
+    | n0 t -> H_n_nonbyz Heq 
     | n0 dst v ls s -> H_n_byz Heq 
     | n0 dst lc -> H_n_byz Hcc Heq
     | n0 dst c -> H_n_byz Hcc Heq ].

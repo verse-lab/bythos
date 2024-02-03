@@ -1,4 +1,6 @@
-From Coq Require Import List ssrbool.
+From Coq Require Import List.
+From Coq Require ssrbool.
+Import (coercions) ssrbool.
 From ABCProtocol Require Export Address.
 
 
@@ -61,7 +63,7 @@ Axiom lightkey_correct : forall v n ls,
 
 Axiom combine_correct : forall v cs, 
   (exists ns : list Address, 
-    NoDup ns /\ incl ns valid_nodes /\ length ns = N - t0 /\
+    NoDup ns /\ length ns = N - t0 /\
     cs = lightsig_combine (map (fun n => light_sign v (lightkey_map n)) ns)) 
   <-> combined_verify v cs.
 

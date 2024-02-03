@@ -80,16 +80,19 @@ Proof.
     now destruct (g (f x)).
 Qed.
 
-Lemma combine_map_fst [A B : Type] (l1 : list A) (l2 : list B) (H : length l1 = length l2) :
-  map fst (combine l1 l2) = l1.
+Lemma length_eq_Forall2_True [A B : Type] (l1 : list A) (l2 : list B) (H : length l1 = length l2) :
+  Forall2 (fun _ _ => True) l1 l2.
 Proof.
   revert l2 H.
   induction l1 as [ | x l1 IH ]; intros; simpl in H |- *; 
-    destruct l2 as [ | y l2 ]; simpl in H |- *; try discriminate.
-  - reflexivity.
-  - f_equal.
-    apply IH.
-    now injection H.
+    destruct l2 as [ | y l2 ]; simpl in H |- *; try discriminate; auto.
+Qed.
+
+Lemma combine_map_fst [A B : Type] (l1 : list A) (l2 : list B) (H : length l1 = length l2) :
+  map fst (combine l1 l2) = l1.
+Proof.
+  apply length_eq_Forall2_True in H.
+  induction H; simpl; congruence.
 Qed.
 
 Lemma Permutation_split_combine {A : Type} (f : A -> bool) (l : list A) :
