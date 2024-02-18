@@ -14,6 +14,9 @@ Axiom Address_is_finite : forall a : Address, In a valid_nodes.
 
 Definition N := length valid_nodes.
 
+(* TODO the following components may not necessarily belong to the Address module?
+    since is_byz should be arbitrarily instantiated, and t0 can be abstract *)
+
 Parameter is_byz : Address -> bool.
 
 Definition num_byz := length (List.filter is_byz valid_nodes).
