@@ -52,8 +52,7 @@ Axiom at_least_two_honest : exists n1 n2,
 
 End NetAddr.
 
-(* a simple example *)
-(* FIXME: seems like encountered a Coq bug? *)
+(* a simple example, using the finite type in stdpp *)
 (*
 Module RealAddr <: NetAddr.
 
@@ -62,8 +61,8 @@ From stdpp Require Import finite fin.
 Definition Address := fin 5.
 Definition Address_eqdec := @fin_dec 5.
 Definition valid_nodes := enum (fin 5).
-Lemma valid_nodes_NoDup : NoDup valid_nodes.
-Proof NoDup_enum (fin 5).
+Lemma valid_nodes_NoDup : List.NoDup valid_nodes.
+Proof. apply NoDup_ListNoDup. exact (NoDup_enum (fin 5)). Qed.
 Lemma Address_is_finite : forall a : Address, In a valid_nodes.
 Proof. setoid_rewrite <- elem_of_list_In. exact elem_of_enum. Qed.
 
@@ -75,6 +74,16 @@ Definition num_byz := length (List.filter is_byz valid_nodes).
 
 Fact t0_lt_N : t0 < N.
 Proof. unfold N, valid_nodes, t0. fold (card (fin 5)). rewrite fin_card. auto. Qed.
+
+(* FIXME: since this is a definition, we have to copy-paste; hope we can avoid this eventually *)
+Definition Address_inhabitant : Address.
+  destruct valid_nodes as [ | n ? ] eqn:E.
+  2: exact n.
+  assert (N = 0) as EN by (unfold N; now rewrite -> E).
+  pose proof t0_lt_N.
+  rewrite EN in H.
+  now exfalso.
+Qed.
 
 End RealAddr.
 *)

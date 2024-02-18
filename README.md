@@ -2,7 +2,10 @@
 
 ## Requirement
 
-Coq 8.16.1
+Coq 8.19.0
+- To compile, one needs to remove a deprecated import inside the local copy of `stdpp` (see the complaint from Coq)
+
+Making the current proof compatible with different versions should be feasible. 
 
 ## Status
 

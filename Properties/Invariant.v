@@ -1959,7 +1959,7 @@ Proof with basic_solver.
     | n' t Hq H_n_nonbyz Heq 
     | | | ]; try discriminate.
   injection Hq as <-.
-  subst t.
+  destruct t. (* well ... *)
   destruct_procInt as_ st' ms eqn_ Epm.
   destruct_localState w n as_ conf ov from lsigs sigs rlcerts rcerts buffer eqn_ En.
   subst w'.
@@ -2639,7 +2639,7 @@ Proof with basic_solver.
     | n' t Hq H_n_nonbyz Heq 
     | | | ]; try discriminate.
   injection Hq as <-.
-  subst t.
+  destruct t. (* well ... *)
   pose proof (procInt_sent_packets_are_fresh (localState w n) SubmitIntTrans) as Hfresh.
   destruct_procInt as_ st' ms eqn_ Epm.
   destruct_localState w n as_ conf ov from lsigs sigs rlcerts rcerts buffer eqn_ En.
