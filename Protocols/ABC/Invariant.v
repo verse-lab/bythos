@@ -1,13 +1,17 @@
-From Coq Require Import List Bool Lia ssrbool ListSet Permutation.
-From Coq Require ssreflect.
+From Coq Require Import List Bool Lia ListSet Permutation.
+From Coq Require ssrbool ssreflect.
+Import (coercions) ssrbool.
 Import ssreflect.SsrSyntax.
-From ABCProtocol Require Import Types Address Protocol States Network ListFacts.
+From ABCProtocol.Protocols.ABC Require Export Network.
 
-Module Type ACInvariant 
-  (A : NetAddr) (T : Types A) (AC : ACProtocol A T) (Ns : NetState A T AC)
-  (ACN : ACNetwork A T AC Ns).
+Module ACInvariant 
+  (A : NetAddr) (V : Signable) (VBFT : ValueBFT A V) 
+  (P : PKI A V) (TSS : ThresholdSignatureScheme A V).
 
-Import A T AC Ns ACN.
+Import A V VBFT P TSS.
+Import ssrbool.
+
+Module Export ACN := ACNetwork A V VBFT P TSS.
 
 (* this is somewhat "pure" property (not related to psent) *)
 (* HMM why there is not something like "if confirmed, then submitted"?
@@ -1001,7 +1005,7 @@ Lemma inv_deliver_step_submit_pre w (H : invariant w)
 Proof with basic_solver.
   inversion Hstep as [ 
     | p' Hq Hpin Hnonbyz Heq
-    | | | | ]; try discriminate.
+    | | ]; try discriminate.
   injection Hq as <-.
   destruct p as (src, dst, msg, used) eqn:Ep.
   simpl_pkt.
@@ -1168,7 +1172,7 @@ Proof with basic_solver.
   pose proof H as (Hcoh, _, _).
   inversion Hstep as [ 
     | p' Hq Hpin Hnonbyz Heq
-    | | | | ]; try discriminate.
+    | | ]; try discriminate.
   injection Hq as <-.
   destruct p as (src, dst, msg, used) eqn:Ep.
   simpl_pkt.
@@ -1587,6 +1591,7 @@ Proof with basic_solver.
           rewrite <- PeanoNat.Nat.leb_gt in Hconf.
           simpl in Epm.
           rewrite -> Hconf in Epm...
+          now injection Epm.
         }
         replace (upd dst _ (localState w)) with (upd dst (localState w dst) (localState w))
           by (rewrite Edst; destruct conf_dst; reflexivity).
@@ -1818,7 +1823,7 @@ Proof with basic_solver.
   pose proof (coh _ H) as Hcoh.
   inversion Hstep as [ 
     | p' Hq Hpin Hnonbyz Heq 
-    | | | | ]; try discriminate.
+    | | ]; try discriminate.
   injection Hq as <-.
   pose proof (inv_deliver_step_pre w p H Hpin Hnonbyz) as H_.
   destruct p as (src, dst, msg, used) eqn:Ep.
@@ -1957,7 +1962,7 @@ Proof with basic_solver.
   pose proof (coh _ H) as Hcoh.
   inversion Hstep as [ |
     | n' t Hq H_n_nonbyz Heq 
-    | | | ]; try discriminate.
+    | ]; try discriminate.
   injection Hq as <-.
   destruct t. (* well ... *)
   destruct_procInt as_ st' ms eqn_ Epm.
@@ -2184,9 +2189,7 @@ Proof with basic_solver.
   inversion Hstep as [ 
     | p Hq Hpin Hnonbyz Heq 
     | n t Hq H_n_nonbyz Heq 
-    | n dst v ls s Hq H_n_byz Heq 
-    | n dst lc Hq H_n_byz Hcc Heq
-    | n dst c Hq H_n_byz Hcc Heq ].
+    | n dst m Hq H_n_byz Hc Heq ].
   all: subst q.
   - now subst.
   - eapply inv_deliver_step; eauto.
@@ -2203,6 +2206,11 @@ Proof with basic_solver.
     intros p0 Hin_app Hnotin.
     simpl in Hin_app.
     destruct Hin_app as [ <- | ]...
+    simpl.
+    rewrite -> H_n_byz.
+    hnf in Hc.
+    now destruct m.
+  (*
   - subst w'.
     eapply inv_preserve_01.
     1: reflexivity.
@@ -2216,7 +2224,7 @@ Proof with basic_solver.
     destruct Hin_app as [ <- | ]...
     simpl.
     rewrite -> H_n_byz...
-  - (* TODO repeating *)
+  -
     subst w'.
     eapply inv_preserve_01.
     1: reflexivity.
@@ -2230,6 +2238,7 @@ Proof with basic_solver.
     destruct Hin_app as [ <- | ]...
     simpl.
     rewrite -> H_n_byz...
+  *)
 Qed.
 
 Lemma stmap_pointwise_eq_preserve_inv_2 stmap stmap' psent
@@ -2587,7 +2596,7 @@ Lemma inv_2_deliver_step w w' p
 Proof.
   inversion Hstep as [ 
     | p' Hq Hpin Hnonbyz Heq 
-    | | | | ]; try discriminate.
+    | | ]; try discriminate.
   injection Hq as <-.
   pose proof (inv_2_deliver_step_pre w p Hinv2 Hcoh Hpin Hnonbyz) as H_.
   destruct p as (src, dst, msg, used) eqn:Ep.
@@ -2637,7 +2646,7 @@ Proof with basic_solver.
   rewrite -> Forall_forall in Hpsentinv'.
   inversion Hstep as [ |
     | n' t Hq H_n_nonbyz Heq 
-    | | | ]; try discriminate.
+    | ]; try discriminate.
   injection Hq as <-.
   destruct t. (* well ... *)
   pose proof (procInt_sent_packets_are_fresh (localState w n) SubmitIntTrans) as Hfresh.
@@ -2709,6 +2718,7 @@ Proof with basic_solver.
       destruct b0...
       match type of Epkts with _ = map ?ff _ => eapply in_map with (f:=ff) in Hin end.
       simpl in Hin...
+      now rewrite <- Epkts in Hin.
     }
     assert (invariant_2 (mkW (upd n st_ (localState w')) (pkts ++ ps_ ++ sentMsgs w')) /\
       Coh (mkW (upd n st_ (localState w')) (pkts ++ ps_ ++ sentMsgs w'))) as (Hgoal & _).
@@ -2754,13 +2764,13 @@ Proof with basic_solver.
         eapply Coh_psent_irrelevant with (psent':=(mkP src n (SubmitMsg v ls s) false) :: pkts ++ ps_' ++ sentMsgs w') in IHcoh.
         eapply inv_2_by_extend_freshpkt with (psent':=(mkP src n (SubmitMsg v ls s) false) :: pkts ++ ps_' ++ sentMsgs w') in IHinv2.
         2: simpl; intros ? [ <- | ]; simpl...
-        epose proof (inv_2_deliver_step _ _ (mkP src n (SubmitMsg v ls s) false) IHinv2 IHcoh ?[Goalq]) as (Hinv2_step & Hcoh_step).
-        [Goalq]:{
+        unshelve epose proof (inv_2_deliver_step _ _ (mkP src n (SubmitMsg v ls s) false) IHinv2 IHcoh _) as (Hinv2_step & Hcoh_step).
+        2: {
           eapply DeliverStep.
           1: reflexivity.
           2-3: auto.
           1: simpl; auto.
-          cbn delta [sentMsgs localState dst AC.src msg] beta iota.
+          cbn delta [sentMsgs localState dst P0.src msg] beta iota.
           unfold upd at 1.
           destruct (Address_eqdec n n)...
           rewrite Eproc.
@@ -2834,9 +2844,7 @@ Proof with basic_solver.
   inversion Hstep as [ 
     | p Hq Hpin Hnonbyz Heq 
     | n t Hq H_n_nonbyz Heq 
-    | n dst v ls s Hq H_n_byz Heq 
-    | n dst lc Hq H_n_byz Hcc Heq
-    | n dst c Hq H_n_byz Hcc Heq ].
+    | n dst m Hq H_n_byz Hc Heq ].
   all: subst q.
   - now subst.
   - eapply inv_2_deliver_step; eauto.
@@ -2850,7 +2858,13 @@ Proof with basic_solver.
       2: assumption.
       2: apply Hstep.
       assumption.
-  (* TODO repeating below *)
+  - subst w'.
+    apply inv_2_by_extend_freshpkt with (psent:=(sentMsgs w)).
+    2: now constructor.
+    simpl.
+    intros p [ <- | ].
+    all: intuition.
+  (*
   - subst w'.
     apply inv_2_by_extend_freshpkt with (psent:=(sentMsgs w)).
     2: now constructor.
@@ -2863,12 +2877,7 @@ Proof with basic_solver.
     simpl.
     intros p [ <- | ].
     all: intuition.
-  - subst w'.
-    apply inv_2_by_extend_freshpkt with (psent:=(sentMsgs w)).
-    2: now constructor.
-    simpl.
-    intros p [ <- | ].
-    all: intuition.
+  *)
 Qed.
 
 Lemma system_trace_preserve_inv w l (Hinv : invariant w) (H : system_trace w l) :
@@ -2939,7 +2948,7 @@ Proof.
   (* prove by contradiction *)
   destruct (is_byz nb) eqn:E.
   1: auto.
-  destruct genproof_correct as (Hgp, _).
+  destruct genproof_correct as (_, Hgp).
   apply Hgp in Hacc.
   destruct Hacc as (v1 & v2 & sig1 & sig2 & nsigs1 & nsigs2 & Hvneq & Hin1 & Hin2 & Hin_nsigs1 & Hin_nsigs2).
   (* cert in rcerts --> Confirm msg *)
@@ -3222,7 +3231,7 @@ Proof.
       clear Htmp.
       pose proof Hin2' as Hin2''.
       eapply valid_cert_sender_in in Hin1', Hin2'; eauto.
-      destruct genproof_correct as (Hgp, _).
+      destruct genproof_correct as (_, Hgp).
       apply Hgp.
       exists v1, v2, (sign v1 (key_map nb')), (sign v2 (key_map nb')), nsigs1, nsigs2.
       intuition.
@@ -3259,11 +3268,9 @@ Proof.
   inversion Hstep as [ 
     | p Hq Hpin Hnonbyz Heq 
     | n0 t Hq H_n0_nonbyz Heq 
-    | n0 dst v0 ls s Hq H_n_byz Heq 
-    | n0 dst lc Hq H_n_byz Hcc Heq
-    | n0 dst c Hq H_n_byz Hcc Heq ].
+    | n0 dst m Hq H_n_byz Hc Heq ].
   all: subst q.
-  1,4-6: now subst w'.
+  1,4: now subst w'.
   - destruct p as (src, dst, msg, used) eqn:Ep.
     simpl_pkt.
     rewrite <- Ep in *.
@@ -3338,11 +3345,9 @@ Proof.
   inversion Hstep as [ 
     | p Hq Hpin Hnonbyz Heq 
     | n0 t Hq H_n0_nonbyz Heq 
-    | n0 dst v0 ls s Hq H_n_byz Heq 
-    | n0 dst lc Hq H_n_byz Hcc Heq
-    | n0 dst c Hq H_n_byz Hcc Heq ].
+    | n0 dst m Hq H_n_byz Hc Heq ].
   all: subst q.
-  1,4-6: now subst w'.
+  1,4: now subst w'.
   - destruct p as (src, dst, msg, used) eqn:Ep.
     simpl_pkt.
     rewrite <- Ep in *.
