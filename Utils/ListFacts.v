@@ -1,5 +1,7 @@
 From Coq Require Import Bool List Permutation.
 
+(* FIXME: change the file name into the more general "Utils" later! *)
+
 Definition NoDup_eqdec [A : Type] (A_eqdec : forall (a1 a2 : A), {a1 = a2} + {a1 <> a2}) : 
   forall l : list A, {NoDup l} + {~ NoDup l}.
 Proof.
@@ -131,4 +133,12 @@ Proof.
   - intros (H & H0).
     revert H0 H.
     apply in_in_remove.
+Qed.
+
+Definition prod_eq_dec {A B : Type} (eq_dec_a : forall x y : A, {x = y} + {x <> y})
+  (eq_dec_b : forall x y : B, {x = y} + {x <> y}) :
+  forall x y : (A * B)%type, {x = y} + {x <> y}.
+Proof.
+  intros.
+  decide equality; try apply eq_dec_a; try apply eq_dec_b.
 Qed.

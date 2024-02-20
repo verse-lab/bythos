@@ -1,90 +1,47 @@
 From Coq Require Import List Lia.
-From Coq Require ssreflect.
-From Coq Require Import ssrbool.
+From Coq Require ssrbool ssreflect.
+Import (coercions) ssrbool.
 Import ssreflect.SsrSyntax.
-From ABCProtocol Require Import Types Address Protocol States.
+From ABCProtocol.Systems Require Export States.
 
-Module Type ACNetwork
-  (A : NetAddr) (T : Types A) (AC : ACProtocol A T) (Ns : NetState A T AC).
-Import A T AC Ns.
+(* constraints are synthetic ...? *)
 
-Definition PacketSoup := list Packet.
+Module Type Adversary (Export A : NetAddr) (Export M : MessageType) 
+  (Export P : PacketType) (Export Pr : Protocol A M P) (Export Ns : NetState A M P Pr).
 
-(* not sure to use a dedicated PacketSoup for Prcv or not in Coq ... *)
-Record World :=
-  mkW {
-    localState : StateMap;
-    sentMsgs : PacketSoup;
-  }.
+(* FIXME: do we need to consider the case where a Byzantine node sends out multiple messages
+    in one step? currently do not, since that would be equivalent with multiple steps *)
+Parameter byz_constraints : Message -> World -> Prop.
 
-Definition initWorld := mkW initState nil.
+End Adversary.
 
-(* tries to pack all coherent props into a record *)
-Record Coh (w : World) : Prop := mkCoh {
-  id_coh: forall n, (localState w n).(id) = n;
-  (* unrelated_intact: forall n, ~ valid_node n -> holds n w (fun st => st = Init n); *)
-}.
+Module Type Network (Export A : NetAddr) (Export M : MessageType) 
+  (Export P : SimplePacket A M) (Export Pr : Protocol A M P) (Export Ns : NetState A M P Pr) 
+  (Export Adv : Adversary A M P Pr Ns).
 
-(* yes, how about extracting this to be ...? *)
-Definition sig_seen_in_history (src : Address) (v : Value) (s : Signature) (pkts : PacketSoup) :=
-  exists dst consumed ls, In (mkP src dst (SubmitMsg v ls s) consumed) pkts.
+Inductive system_step_descriptor : Type :=
+  | Idle (* stuttering *)
+  | Deliver (p : Packet) 
+  | Intern (proc : Address) (t : InternalTransition) 
+  | Byz (src dst : Address) (m : Message)
+.
 
-Definition cert_correct (psent : PacketSoup) (c : Certificate) :=
-  let: (v, nsigs) := c in
-  forall n sig, 
-    In (n, sig) nsigs ->
-    is_byz n = false ->
-    verify v sig n -> (* this can be expressed in other way *)
-    sig_seen_in_history n v sig psent. 
-
-(* TODO the lightsig can actually be obtained from full certificates?
-  guess this will not affect the following reasoning 
-  (since full certificates are assembled from the sent messages), 
-  so ignore it for now *)
-Definition lightsig_seen_in_history (src : Address) (v : Value) (ls : LightSignature) (pkts : PacketSoup) :=
-  exists dst consumed s, In (mkP src dst (SubmitMsg v ls s) consumed) pkts.
-
-(* safety assumption about light certificates: 
-  if the number of Byzantine nodes is not sufficiently large, 
-  then the light signature is unforgeable *)
-Definition lcert_correct (psent : PacketSoup) (lc : LightCertificate) : Prop :=
-  let: (v, cs) := lc in
-  combined_verify v cs ->
-  forall lsigs,
-    cs = lightsig_combine lsigs ->
-    forall n lsig,
-      In lsig lsigs ->
-      is_byz n = false ->
-      light_verify v lsig n ->
-      lightsig_seen_in_history n v lsig psent. 
-
-Definition lcert_correct_threshold (psent : PacketSoup) (lc : LightCertificate) : Prop :=
-  (num_byz < N - (t0 + t0) -> lcert_correct psent lc).
-
+(* TODO may have different consumption models? *)
 Definition consume (p : Packet) (psent : PacketSoup) :=
   (receive_pkt p) :: (List.remove Packet_eqdec p psent).
 
-Inductive system_step_descriptor : Type :=
-  | Idle | Deliver (p : Packet) 
-  | Intern (proc : Address) (t : InternalTransition) 
-  | ByzSubmit (src dst : Address) (v : Value) (ls : LightSignature) (s : Signature) 
-  | ByzLightConfirm (src dst : Address) (lc : LightCertificate) 
-  | ByzConfirm (src dst : Address) (c : Certificate)
-.
-
-(* TODO use this or indexed inductive relation?
-    and put Coh inside the invariant or here?
-*)
+(* TODO use this or indexed inductive relation? *)
 Inductive system_step (q : system_step_descriptor) (w w' : World) : Prop :=
 | IdleStep of q = Idle & w = w'
 
 | DeliverStep (p : Packet) of
       q = Deliver p &
-      (* Coh w &  *)
       In p (sentMsgs w) &
-      (* try modelling message duplication *)
-      (* consumed p = false & *)
-      (* require sender to be valid; although can also be managed in procMsg *)
+      (* try modelling message duplication by not checking whether p has been consumed or not *)
+      (* FIXME: parameterizing here shall result in different models *)
+      (* FIXME: the order of packets should really do not matter! 
+        so the proof related with "In" should not be very specific. 
+        any way to formalize that notion? *)
       is_byz (dst p) = false &
       let: (st', ms) := procMsgWithCheck (localState w (dst p)) (src p) (msg p) in
       w' = mkW (upd (dst p) st' (localState w))
@@ -92,35 +49,17 @@ Inductive system_step (q : system_step_descriptor) (w w' : World) : Prop :=
 
 | InternStep (proc : Address) (t : InternalTransition) of
       q = Intern proc t &
-      (* Coh w & *)
       is_byz proc = false &
       let: (st', ms) := (procInt (localState w proc) t) in
       w' = mkW (upd proc st' (localState w))
                (ms ++ (sentMsgs w))
 
-(* can possibly generate garbage in the following two trans *)
-| ByzSubmitStep (src dst : Address) (v : Value) (ls : LightSignature) (s : Signature) of
-      q = ByzSubmit src dst v ls s &
-      (* Coh w & *)
+| ByzStep (src dst : Address) (m : Message) of
+      q = Byz src dst m &
       is_byz src &
+      byz_constraints m w &
       w' = mkW (localState w)
-               ((mkP src dst (SubmitMsg v ls s) false) :: (sentMsgs w))
-
-| ByzLightConfirmStep (src dst : Address) (lc : LightCertificate) of
-      q = ByzLightConfirm src dst lc &
-      (* Coh w & *)
-      is_byz src &
-      lcert_correct_threshold (sentMsgs w) lc &
-      w' = mkW (localState w)
-               ((mkP src dst (LightConfirmMsg lc) false) :: (sentMsgs w))
-
-| ByzConfirmStep (src dst : Address) (c : Certificate) of
-      q = ByzConfirm src dst c &
-      (* Coh w & *)
-      is_byz src &
-      cert_correct (sentMsgs w) c &
-      w' = mkW (localState w)
-               ((mkP src dst (ConfirmMsg c) false) :: (sentMsgs w))
+               (mkP src dst m false :: (sentMsgs w))
 .
 
 (* inversion lemmas *)
@@ -158,7 +97,7 @@ Fact system_step_psent_norevert p w w' q :
 Proof.
   intros H Hstep.
   inversion Hstep; subst; auto.
-  3-5: simpl; now right.
+  3: simpl; now right.
   1: destruct (procMsgWithCheck _ _ _) in *.
   2: destruct (procInt _ _) in *.
   all: subst w'.
@@ -332,7 +271,8 @@ Proof.
         simpl; rewrite in_app_iff.
         specialize (Hincl _ (or_intror Hin')).
         right; left.
-        apply in_in_remove; congruence.
+        apply in_in_remove; try assumption.
+        now intros ->.
     }
     specialize (IH _ Htmp).
     destruct IH as (l & Htrace & Hres).
@@ -360,4 +300,12 @@ Proof.
         simpl; tauto.
 Qed.
 
-End ACNetwork.
+End Network.
+
+Module NetworkImpl (Export A : NetAddr) (Export M : MessageType) 
+  (Export P : SimplePacket A M) (Export Pr : Protocol A M P) (Export Ns : NetState A M P Pr) 
+  (Export Adv : Adversary A M P Pr Ns) <: Network A M P Pr Ns Adv.
+
+Include Network A M P Pr Ns Adv.
+
+End NetworkImpl.

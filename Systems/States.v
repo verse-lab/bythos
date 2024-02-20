@@ -1,11 +1,7 @@
-From ABCProtocol Require Import Types Address Protocol.
+From ABCProtocol.Systems Require Export Protocol.
 
-Set Implicit Arguments.
-Unset Strict Implicit.
-Unset Printing Implicit Defensive.
-
-Module Type NetState (A : NetAddr) (T : Types A) (AC : ACProtocol A T).
-Import A T AC.
+Module Type NetState (Export A : NetAddr) (Export M : MessageType) 
+  (Export P : PacketType) (Export Pr : Protocol A M P).
 
 (* using a map library seems to be overkill *)
 (* FIXME: make this total or partial? maybe we should only represent the states of non-Byzantine nodes *)
@@ -16,4 +12,22 @@ Definition initState := (fun n => Init n).
 Definition upd (n : Address) (st : State) (states : StateMap) : StateMap :=
   fun m => if Address_eqdec n m then st else states m.
 
+Definition PacketSoup := list Packet.
+
+(* holistic network state *)
+Record World :=
+  mkW {
+    localState : StateMap;
+    sentMsgs : PacketSoup;
+  }.
+
+Definition initWorld := mkW initState nil.
+
 End NetState.
+
+Module NetStateImpl (Export A : NetAddr) (Export M : MessageType) 
+  (Export P : PacketType) (Export Pr : Protocol A M P) <: NetState A M P Pr.
+
+Include (NetState A M P Pr).
+
+End NetStateImpl.
