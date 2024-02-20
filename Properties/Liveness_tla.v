@@ -1,17 +1,17 @@
-From Coq Require Import List Bool Lia ssrbool ListSet Permutation PeanoNat.
-From Coq Require ssreflect.
+From Coq Require Import List Bool Lia ListSet Permutation PeanoNat.
+From Coq Require ssrbool ssreflect.
+Import (coercions) ssrbool.
 Import ssreflect.SsrSyntax.
-From ABCProtocol Require Import Types Address Protocol States Network ListFacts Invariant. 
+From ABCProtocol.Protocols.ABC Require Export Network.
 
-(* avoid warning about coercion *)
-From ABCProtocol Require TLAmore. 
-Import -(coercions) TLAmore. (* need to separate Require and Import; otherwise Coqdep will complain *)
+(* suppress warning about coercion *)
+From ABCProtocol.Utils Require TLAmore. 
+Export -(coercions) TLAmore. (* need to separate Require and Import; otherwise Coqdep will complain *)
 
-Module Type ACLiveness 
-  (A : NetAddr) (T : Types A) (AC : ACProtocol A T) (Ns : NetState A T AC)
-  (ACN : ACNetwork A T AC Ns) (ACInv : ACInvariant A T AC Ns ACN).
-
-Import A T AC Ns ACN ACInv.
+Module Liveness
+  (Export A : NetAddr) (Export M : MessageType) 
+  (Export P : SimplePacket A M) (Export Pr : Protocol A M P) (Export Ns : NetState A M P Pr) 
+  (Export Adv : Adversary A M P Pr Ns) (Export N : Network A M P Pr Ns Adv).
 
 Section Preliminaries.
 
@@ -121,13 +121,11 @@ Proof.
   inversion Hstep as [
     | p0 -> _ Hnonbyz Heq 
     | n0 t -> H_n_nonbyz Heq 
-    | n0 dst v ls s -> H_n_byz Heq 
-    | n0 dst lc -> H_n_byz Hcc Heq
-    | n0 dst c -> H_n_byz Hcc Heq ].
+    | n0 dst m -> H_n_byz Hc Heq ].
   3: rewrite (surjective_pairing (procInt _ _)) in Heq.
-  3-6: rewrite Heq /= ?in_app_iff in Hnotin.
-  3-6: now apply Decidable.not_or in Hnotin.
-  - congruence.
+  3-4: rewrite Heq /= ?in_app_iff in Hnotin.
+  3-4: now apply Decidable.not_or in Hnotin.
+  - now rewrite H0 in Hin'. (* TODO congruence no longer works now? *)
   - destruct (procMsgWithCheck _ _ _) as (st', ms) in Heq.
     rewrite Heq in Hnotin |- *.
     simpl in Hnotin.
@@ -194,7 +192,7 @@ Proof.
   - intros w w' Hin (q & Hstep).
     (* TODO repeating? *)
     inversion Hstep; subst.
-    1,3-6: left; simpl; auto.
+    1,3-4: left; simpl; auto.
     1: destruct (procInt _ _) in *; subst; simpl; rewrite in_app_iff; tauto.
     destruct (procMsgWithCheck _ _ _) in *.
     subst; cbn delta [sentMsgs] beta iota.
@@ -257,64 +255,4 @@ Qed.
 
 End Fairness.
 
-(* now, really nice things *)
-
-Lemma terminating_convergence_in_tla v (H_byz_minor : num_byz ≤ t0) :
-  ⌜ init ⌝ ∧ □ ⟨ next ⟩ ∧ fairness ⊢
-  ⌜ all_honest_nodes_submitted v ⌝ ~~> ⌜ all_honest_nodes_confirmed ⌝.
-Proof.
-  apply leads_to_by_eventual_delivery.
-  intros.
-  pose proof (honest_submit_all_received_suffcond _ _ Hw H) as Hsuffcond.
-  destruct (submit_msgs_all_sent w v Hw H) as (pkts & Hincl & Hgood & Htmp).
-  simpl in Hsuffcond; clear Htmp.
-  exists pkts.
-  split_and ?; try assumption.
-  intros.
-  eapply terminating_convergence; try eassumption; eauto.
-Qed.
-
-Lemma eventually_accountability_in_tla :
-  ⌜ init ⌝ ∧ □ ⟨ next ⟩ ∧ fairness ⊢
-  ⌜ λ w, ∃ n1 : Address, ∃ n2 : Address, confirmed_different_values n1 n2 w ⌝ ~~> ⌜ accountability ⌝.
-Proof.
-  (* intro first *)
-  let tac n := rewrite <- exist_state_pred; apply leads_to_exist_intro; intros n in tac n1; tac n2.
-  tla_apply (leads_to_trans _ 
-    (⌜ λ w, confirmed_different_values' n1 n2 w ∧ mutual_lightcert_conflict_detected n1 n2 w ⌝)).
-  tla_split.
-  - apply leads_to_by_eventual_delivery.
-    intros.
-    pose proof (mutual_lightcerts_sent _ _ _ Hw H) as (b1 & b2 & b3 & b4 & Hsuffcond).
-    exists (mutual_lightcerts w n1 n2 b1 b2 b3 b4).
-    change (map receive_pkt _) with (mutual_lightcerts w n1 n2 true true true true).
-    split_and ?; try assumption.
-    1: unfold confirmed_different_values, confirmed in H.
-    1: unfold mutual_lightcerts; repeat (constructor; try tauto).
-    intros.
-    (* !! *)
-    pose proof (reachable_inv _ Hw) as Hinv.
-    split.
-    + pose proof (proj2 (is_invariant_step_trace _) (confirmed_different_values'_is_invariant n1 n2) w l0) as HH.
-      rewrite <- Ew0 in HH.
-      apply HH; try assumption.
-      split; try assumption.
-      now apply confirmed_different_values_strengthen.
-    + eapply eventually_mutual_lightcert_conflict_detected; try eassumption; eauto.
-  - apply leads_to_by_eventual_delivery.
-    intros.
-    pose proof (reachable_inv _ Hw) as Hinv.
-    destruct H as (Hfundamental%confirmed_different_values_strengthen & H); try assumption.
-    pose proof (fullcerts_all_received_suffcond _ _ _ Hw Hfundamental H) as Hsuffcond.
-    destruct (fullcerts_all_sent _ _ _ Hw Hfundamental) as (pkts & Hincl & Hgood & Htmp).
-    simpl in Hsuffcond; clear Htmp.
-    exists pkts.
-    split_and ?; try assumption.
-    intros.
-    eapply eventually_accountability; try eassumption; eauto.
-    apply Hsuffcond; auto.
-    rewrite Ew0.
-    now apply system_trace_preserve_inv.
-Qed.
-
-End ACLiveness.
+End Liveness.

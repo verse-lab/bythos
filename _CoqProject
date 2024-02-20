@@ -1,7 +1,8 @@
--Q Structures ABCProtocol
--Q Systems ABCProtocol
--Q Properties ABCProtocol
--Q Utils ABCProtocol
+-Q Structures ABCProtocol.Structures
+-Q Systems ABCProtocol.Systems
+-Q Properties ABCProtocol.Properties
+-Q Utils ABCProtocol.Utils
+-Q Protocols ABCProtocol.Protocols
 
 # Referring to the submodules
 -Q coqtla/src TLA
@@ -19,8 +20,14 @@ Structures/Address.v
 Systems/Protocol.v
 Systems/States.v
 Systems/Network.v
-Properties/Invariant.v
+# Properties/Invariant.v
 Properties/Liveness_tla.v
 Utils/ListFacts.v
 Utils/TLAmore.v
 # Utils/InfSeqAdaptor.v
+
+Protocols/ABC/Types.v
+Protocols/ABC/Protocol.v
+Protocols/ABC/Network.v
+Protocols/ABC/Invariant.v
+Protocols/ABC/Liveness_tla.v
