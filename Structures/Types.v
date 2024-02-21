@@ -162,10 +162,10 @@ Definition receive_pkt p :=
 
 Definition pkt_le p p' : Prop := p' = p \/ p' = receive_pkt p (* may be redundant, but make things simpler? *).
 
-Fact receive_pkt_intact p (H : consumed p) : receive_pkt p = p.
+Fact receive_pkt_intact [p] (H : consumed p) : receive_pkt p = p.
 Proof. destruct p; simpl in *; now rewrite H. Qed.
 
-Fact receive_pkt_intact_inv p (H : receive_pkt p = p) : consumed p.
+Fact receive_pkt_intact_inv [p] (H : receive_pkt p = p) : consumed p.
 Proof. destruct p; simpl in *; congruence. Qed.
 
 Fact receive_pkt_idem p : receive_pkt (receive_pkt p) = receive_pkt p.

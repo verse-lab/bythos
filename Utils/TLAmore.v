@@ -91,3 +91,19 @@ Notation "e ⊨ p" := (satisfies p%L e) (at level 100).
 Notation "⌞  P  ⌟" := (pure_pred P%type).
 
 #[export] Hint Unfold pure_pred satisfies : tla.
+
+(* for always enabled action, its weak fairness is equivalent with happening infinitely often *)
+
+Fact always_enabled_weak_fairness {Σ : Type} (a : action Σ) :
+  □ tla_enabled a ⊢ ((weak_fairness a) → (□ ◇ ⟨a⟩)) ∧ ((□ ◇ ⟨a⟩) → (weak_fairness a)).
+Proof.
+  rewrite weak_fairness_alt3.
+  tla_split.
+  - unseal.
+    destruct H0 as [ | H0 ]; auto.
+    specialize (H0 0).
+    firstorder.
+  - apply impl_drop_hyp.
+    tla_intro.
+    tla_left.
+Qed.

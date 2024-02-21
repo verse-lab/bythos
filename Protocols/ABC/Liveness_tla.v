@@ -12,7 +12,7 @@ Module ACLiveness
 Import A V VBFT P TSS.
 
 Module Export ACInv := ACInvariant A V VBFT P TSS.
-Include Liveness A M P0 ACP Ns ACAdv ACN.
+Include Liveness A M P0 PSOp ACP Ns ACAdv ACN.
 
 (* now, really nice things *)
 
@@ -71,7 +71,7 @@ Proof.
     eapply eventually_accountability; try eassumption; eauto.
     apply Hsuffcond; auto.
     rewrite Ew0.
-    now apply system_trace_preserve_inv.
+    apply <- (is_invariant_step_trace); auto using inv_step.
 Qed.
 
 End ACLiveness.

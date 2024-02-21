@@ -142,3 +142,10 @@ Proof.
   intros.
   decide equality; try apply eq_dec_a; try apply eq_dec_b.
 Qed.
+
+Fact eqdec_refl {A B : Type} (eqdec : forall x y : A, {x = y} + {x <> y}) (x : A) (b1 b2 : B) :
+  (if eqdec x x then b1 else b2) = b1.
+Proof. destruct (eqdec _ _); auto; try contradiction. Qed.
+
+Fact in_cons_iff [A : Type] (l : list A) (x y : A) : In x (y :: l) <-> y = x \/ In x l.
+Proof. reflexivity. Qed.

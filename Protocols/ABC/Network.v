@@ -69,12 +69,13 @@ Module Export ACDT <: ACDataTypes A V P TSS := ACDataTypesImpl A V P TSS.
 Module Export CC : (* hide implementation *) CertCheckers A V P TSS ACDT := CertCheckersImpl A V P TSS ACDT.
 Module Export M <: MessageType := ACMessageImpl A V P TSS ACDT.
 Module Export P0 <: SimplePacket A M := SimplePacketImpl A M.
+Module Export PSOp : (* hide implementation *) PacketSoupOperations P0 := PacketSoupOperationsImpl P0.
 Module Export ACP <: Protocol A M P0 <: ACProtocol A V VBFT P TSS ACDT CC M P0 :=
   ACProtocolImpl A V VBFT P TSS ACDT CC M P0.
 Module Export Ns <: NetState A M P0 ACP := NetStateImpl A M P0 ACP.
 Module Export ACAdv <: Adversary A M P0 ACP Ns := ACAdversary A V VBFT P TSS ACDT CC M P0 ACP Ns.
 
-Include NetworkImpl A M P0 ACP Ns ACAdv.
+Include NetworkImpl A M P0 PSOp ACP Ns ACAdv.
 
 (* tries to pack all coherent props into a record *)
 Record Coh (w : World) : Prop := mkCoh {
