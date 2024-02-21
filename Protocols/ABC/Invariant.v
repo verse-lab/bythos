@@ -340,16 +340,6 @@ Tactic Notation "basic_solver" :=
 
 Local Hint Resolve correct_sign_verify_ok : ABCinv.
 Local Hint Resolve correct_sign_verify_ok_light : ABCinv.
-(*
-Fact incl_appl_simple [A] (l1 l2 : list A) : incl l1 (l1 ++ l2).
-Proof. now apply incl_appl. Qed.
-
-Fact incl_appr_simple [A] (l1 l2 : list A) : incl l1 (l2 ++ l1).
-Proof. now apply incl_appr. Qed.
-
-Local Hint Resolve incl_appl_simple : ABCinv.
-Local Hint Resolve incl_appr_simple : ABCinv.
-*)
 
 Fact incl_sendout_l_simple (l1 l2 : list Packet) : incl l1 (sendout l1 l2).
 Proof. hnf. intros. rewrite In_sendout. now left. Qed.
@@ -2126,35 +2116,6 @@ Proof with basic_solver.
     rewrite -> H_n_byz.
     hnf in Hc.
     now destruct m.
-  (*
-  - subst w'.
-    eapply inv_preserve_01.
-    1: reflexivity.
-    2: rewrite_w_expand w in_ H; apply H.
-    exists (sentMsgs w).
-    split...
-    split.
-    1: unfold incl; firstorder.
-    intros p0 Hin_app Hnotin.
-    simpl in Hin_app.
-    destruct Hin_app as [ <- | ]...
-    simpl.
-    rewrite -> H_n_byz...
-  -
-    subst w'.
-    eapply inv_preserve_01.
-    1: reflexivity.
-    2: rewrite_w_expand w in_ H; apply H.
-    exists (sentMsgs w).
-    split...
-    split.
-    1: unfold incl; firstorder.
-    intros p0 Hin_app Hnotin.
-    simpl in Hin_app.
-    destruct Hin_app as [ <- | ]...
-    simpl.
-    rewrite -> H_n_byz...
-  *)
 Qed.
 
 Lemma stmap_pointwise_eq_preserve_inv_2 stmap stmap' psent
@@ -2754,20 +2715,6 @@ Proof with basic_solver.
     apply inv_2_by_extend_freshpkt with (psent:=(sentMsgs w)).
     2: now constructor.
     intros p [ <- | ]%In_sendout1...
-  (*
-  - subst w'.
-    apply inv_2_by_extend_freshpkt with (psent:=(sentMsgs w)).
-    2: now constructor.
-    simpl.
-    intros p [ <- | ].
-    all: intuition.
-  - subst w'.
-    apply inv_2_by_extend_freshpkt with (psent:=(sentMsgs w)).
-    2: now constructor.
-    simpl.
-    intros p [ <- | ].
-    all: intuition.
-  *)
 Qed.
 
 Lemma reachable_inv w (H_w_reachable : reachable w) :
