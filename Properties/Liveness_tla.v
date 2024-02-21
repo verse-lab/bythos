@@ -8,11 +8,11 @@ From ABCProtocol.Protocols.ABC Require Export Network.
 From ABCProtocol.Utils Require TLAmore. 
 Export -(coercions) TLAmore. (* need to separate Require and Import; otherwise Coqdep will complain *)
 
-Module Liveness
-  (Export A : NetAddr) (Export M : MessageType) 
+Module Liveness (Export A : NetAddr) (Export M : MessageType)
+  (Export BTh : ByzThreshold A) (Export BSett : ByzSetting A) 
   (Export P : SimplePacket A M) (Export PSOp : PacketSoupOperations P)
-  (Export Pr : Protocol A M P) (Export Ns : NetState A M P Pr) 
-  (Export Adv : Adversary A M P Pr Ns) (Export N : Network A M P PSOp Pr Ns Adv).
+  (Export Pr : Protocol A M P BTh) (Export Ns : NetState A M P BTh Pr) 
+  (Export Adv : Adversary A M BTh BSett P Pr Ns) (Export N : Network A M BTh BSett P PSOp Pr Ns Adv).
 
 Section Preliminaries.
 

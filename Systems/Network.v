@@ -4,10 +4,24 @@ Import (coercions) ssrbool.
 Import ssreflect.SsrSyntax.
 From ABCProtocol.Systems Require Export States.
 
+Module Type ByzSetting (Export A : NetAddr).
+
+(* this part is not related (and should never be related) with the protocol implementation, 
+    and also should not be instantiated (i.e., work like universally quantified variables) *)
+(* FIXME: what if "is_byz" would change wrt. time? *)
+
+Parameter is_byz : Address -> bool.
+
+Definition num_byz := length (List.filter is_byz valid_nodes).
+
+End ByzSetting.
+
 (* constraints are synthetic ...? *)
 
 Module Type Adversary (Export A : NetAddr) (Export M : MessageType) 
-  (Export P : PacketType) (Export Pr : Protocol A M P) (Export Ns : NetState A M P Pr).
+  (Export BTh : ByzThreshold A) (Export BSett : ByzSetting A) 
+  (Export P : PacketType) (Export Pr : Protocol A M P BTh) 
+  (Export Ns : NetState A M P BTh Pr).
 
 (* FIXME: do we need to consider the case where a Byzantine node sends out multiple messages
     in one step? currently do not, since that would be equivalent with multiple steps *)
@@ -16,9 +30,10 @@ Parameter byz_constraints : Message -> World -> Prop.
 End Adversary.
 
 Module Type Network (Export A : NetAddr) (Export M : MessageType) 
+  (Export BTh : ByzThreshold A) (Export BSett : ByzSetting A) 
   (Export P : SimplePacket A M) (Export PSOp : PacketSoupOperations P)
-  (Export Pr : Protocol A M P) (Export Ns : NetState A M P Pr) 
-  (Export Adv : Adversary A M P Pr Ns).
+  (Export Pr : Protocol A M P BTh) (Export Ns : NetState A M P BTh Pr) 
+  (Export Adv : Adversary A M BTh BSett P Pr Ns).
 
 Module Export PC : (* hide implementation *) PacketConsumption A M P := PacketConsumptionImpl A M P.
 Module Export PC' := PacketConsumptionImpl' A M P PC.
@@ -312,10 +327,11 @@ Qed.
 End Network.
 
 Module NetworkImpl (Export A : NetAddr) (Export M : MessageType) 
+  (Export BTh : ByzThreshold A) (Export BSett : ByzSetting A) 
   (Export P : SimplePacket A M) (Export PSOp : PacketSoupOperations P)
-  (Export Pr : Protocol A M P) (Export Ns : NetState A M P Pr) 
-  (Export Adv : Adversary A M P Pr Ns) <: Network A M P PSOp Pr Ns Adv.
+  (Export Pr : Protocol A M P BTh) (Export Ns : NetState A M P BTh Pr) 
+  (Export Adv : Adversary A M BTh BSett P Pr Ns) <: Network A M BTh BSett P PSOp Pr Ns Adv.
 
-Include Network A M P PSOp Pr Ns Adv.
+Include Network A M BTh BSett P PSOp Pr Ns Adv.
 
 End NetworkImpl.

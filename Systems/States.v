@@ -2,7 +2,7 @@ From Coq Require Import List Lia.
 From ABCProtocol.Systems Require Export Protocol.
 
 Module Type NetState (Export A : NetAddr) (Export M : MessageType) 
-  (Export P : PacketType) (Export Pr : Protocol A M P).
+  (Export P : PacketType) (Export BTh : ByzThreshold A) (Export Pr : Protocol A M P BTh).
 
 (* using a map library seems to be overkill *)
 (* FIXME: make this total or partial? maybe we should only represent the states of non-Byzantine nodes *)
@@ -29,9 +29,10 @@ Definition initWorld := mkW initState nil.
 End NetState.
 
 Module NetStateImpl (Export A : NetAddr) (Export M : MessageType) 
-  (Export P : PacketType) (Export Pr : Protocol A M P) <: NetState A M P Pr.
+  (Export P : PacketType) (Export BTh : ByzThreshold A) (Export Pr : Protocol A M P BTh) 
+  <: NetState A M P BTh Pr.
 
-Include (NetState A M P Pr).
+Include (NetState A M P BTh Pr).
 
 End NetStateImpl.
 

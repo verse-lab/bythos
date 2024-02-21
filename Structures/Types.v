@@ -38,6 +38,8 @@ End PKI.
 
 Module Type ThresholdSignatureScheme (Export A : NetAddr) (Export V : Signable).
 
+Parameter thres : nat.
+
 Parameter LightPrivateKey : Set.
 Parameter LightSignature : Set.
 Parameter LightSignature_eqdec : forall (ls1 ls2 : LightSignature), {ls1 = ls2} + {ls1 <> ls2}.
@@ -76,7 +78,7 @@ Axiom lightkey_correct : forall v n ls,
 
 Axiom combine_correct : forall v cs, 
   (exists ns : list Address, 
-    NoDup ns /\ length ns = N - t0 /\
+    NoDup ns /\ length ns = N - thres /\
     cs = lightsig_combine (map (fun n => light_sign v (lightkey_map n)) ns)) 
   <-> combined_verify v cs.
 

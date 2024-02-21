@@ -5,12 +5,13 @@ From ABCProtocol.Systems Require Export Protocol.
 From ABCProtocol.Protocols.ABC Require Export Types.
 
 Module Type ACProtocol (A : NetAddr) (V : Signable) (VBFT : ValueBFT A V) 
-  (P : PKI A V) (TSS : ThresholdSignatureScheme A V)
+  (BTh : ByzThreshold A)
+  (P : PKI A V) (TSS : ThresholdSignatureScheme A V with Definition thres := BTh.t0) (* ! *)
   (ACDT : ACDataTypes A V P TSS) 
   (CC : CertCheckers A V P TSS ACDT) (M : ACMessage A V P TSS ACDT)
-  (P0 : SimplePacket A M) <: Protocol A M P0.
+  (P0 : SimplePacket A M) <: Protocol A M P0 BTh.
 
-Import A V VBFT P TSS ACDT CC M P0.
+Import A V VBFT BTh P TSS ACDT CC M P0.
 
 Inductive InternalTransition_ :=
   | SubmitIntTrans.
@@ -217,11 +218,12 @@ Definition procInt (st : State) (tr : InternalTransition) :=
 End ACProtocol.
 
 Module ACProtocolImpl (A : NetAddr) (V : Signable) (VBFT : ValueBFT A V) 
-  (P : PKI A V) (TSS : ThresholdSignatureScheme A V)
+  (BTh : ByzThreshold A)
+  (P : PKI A V) (TSS : ThresholdSignatureScheme A V with Definition thres := BTh.t0)
   (ACDT : ACDataTypes A V P TSS) 
   (CC : CertCheckers A V P TSS ACDT) (M : ACMessage A V P TSS ACDT)
-  (P0 : SimplePacket A M) <: Protocol A M P0 <: ACProtocol A V VBFT P TSS ACDT CC M P0.
+  (P0 : SimplePacket A M) <: Protocol A M P0 BTh <: ACProtocol A V VBFT BTh P TSS ACDT CC M P0.
 
-Include ACProtocol A V VBFT P TSS ACDT CC M P0.
+Include ACProtocol A V VBFT BTh P TSS ACDT CC M P0.
 
 End ACProtocolImpl.

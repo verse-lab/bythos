@@ -4,7 +4,18 @@ Import (coercions) ssrbool.
 Import ssreflect.SsrSyntax.
 From ABCProtocol.Structures Require Export Types.
 
-Module Type Protocol (Export A : NetAddr) (Export M : MessageType) (Export P : PacketType).
+Module Type ByzThreshold (Export A : NetAddr).
+
+(* t0: the threshold, indicating the maximum number of tolerable Byzantine nodes *)
+(* make this a parameter, since sometimes we do not need a concrete number *)
+Parameter t0 : nat.
+
+Axiom t0_lt_N : t0 < N.
+
+End ByzThreshold.
+
+Module Type Protocol (Export A : NetAddr) (Export M : MessageType) (Export P : PacketType)
+  (Export BTh : ByzThreshold A).
 
 Parameter InternalTransition : Type.
 

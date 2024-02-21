@@ -4,14 +4,14 @@ Import (coercions) ssrbool.
 Import ssreflect.SsrSyntax.
 From ABCProtocol.Protocols.ABC Require Export Network.
 
-Module ACInvariant 
-  (A : NetAddr) (V : Signable) (VBFT : ValueBFT A V) 
-  (P : PKI A V) (TSS : ThresholdSignatureScheme A V).
+Module ACInvariant (A : NetAddr) (V : Signable) (VBFT : ValueBFT A V) 
+  (BTh : ByzThreshold A) (BSett : ByzSetting A)
+  (P : PKI A V) (TSS : ThresholdSignatureScheme A V with Definition thres := BTh.t0).
 
-Import A V VBFT P TSS.
-Import ssrbool.
+Import A V VBFT BTh BSett P TSS.
+Import ssrbool. (* anyway *)
 
-Module Export ACN := ACNetwork A V VBFT P TSS.
+Module Export ACN := ACNetwork A V VBFT BTh BSett P TSS.
 
 (* this is somewhat "pure" property (not related to psent) *)
 (* HMM why there is not something like "if confirmed, then submitted"?
@@ -1340,8 +1340,8 @@ Proof with basic_solver.
           }
           (* only consider the updated node, i.e. itself *)
           (* FIXME: assert this earlier? *)
-          unshelve epose proof (PsentLe _ _ _ (PsentEq' _ (sentMsgs w) Hpin) 
-            (incl_sendout_l_simple _ (broadcast n (LightConfirmMsg (v, lightsig_combine (ls :: lsigs_dst)))))) as Hpmnt1.
+          pose proof (PsentLe _ _ _ (PsentEq' _ (sentMsgs w) Hpin) 
+            (incl_sendout_r_simple _ (broadcast n (LightConfirmMsg (v, lightsig_combine (ls :: lsigs_dst)))))) as Hpmnt1.
           constructor; simpl_state.
           ++simpl.
             intros n0 lsig sig Hin.
@@ -1637,7 +1637,7 @@ Proof with basic_solver.
           apply StateRLCertsMnt.
           rewrite -> Edst.
           hnf.
-          intuition.
+          simpl...
         --destruct H as (_, Hnodeinv, _).
           specialize (Hnodeinv dst Hnonbyz).
           hnf in Hnodeinv.
@@ -1704,7 +1704,7 @@ Proof with basic_solver.
         apply StateRCertsMnt.
         rewrite -> Edst.
         hnf.
-        intuition.
+        simpl...
       * destruct H as (_, Hnodeinv, _).
         specialize (Hnodeinv dst Hnonbyz).
         hnf in Hnodeinv.

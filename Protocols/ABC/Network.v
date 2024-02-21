@@ -6,14 +6,15 @@ From ABCProtocol.Systems Require Export Network.
 From ABCProtocol.Protocols.ABC Require Export Protocol.
 
 Module ACAdversary (A : NetAddr) (V : Signable) (VBFT : ValueBFT A V) 
-  (P : PKI A V) (TSS : ThresholdSignatureScheme A V)
+  (BTh : ByzThreshold A) (BSett : ByzSetting A)
+  (P : PKI A V) (TSS : ThresholdSignatureScheme A V with Definition thres := BTh.t0)
   (ACDT : ACDataTypes A V P TSS) 
   (CC : CertCheckers A V P TSS ACDT) (M : ACMessage A V P TSS ACDT)
   (P0 : SimplePacket A M) 
-  (ACP : ACProtocol A V VBFT P TSS ACDT CC M P0) 
-  (Ns : NetState A M P0 ACP) <: Adversary A M P0 ACP Ns.
+  (ACP : ACProtocol A V VBFT BTh P TSS ACDT CC M P0) 
+  (Ns : NetState A M P0 BTh ACP) <: Adversary A M BTh BSett P0 ACP Ns.
 
-Import A V VBFT P TSS ACDT CC M P0 ACP Ns.
+Import A V VBFT BTh BSett P TSS ACDT CC M P0 ACP Ns.
 
 (* yes, how about extracting this to be ...? *)
 Definition sig_seen_in_history (src : Address) (v : Value) (s : Signature) (pkts : PacketSoup) :=
@@ -37,6 +38,7 @@ Definition lightsig_seen_in_history (src : Address) (v : Value) (ls : LightSigna
 (* safety assumption about light certificates: 
   if the number of Byzantine nodes is not sufficiently large, 
   then the light signature is unforgeable *)
+(* TODO can we say that the light certificate is unforgeable instead (just like here)? *)
 Definition lcert_correct (psent : PacketSoup) (lc : LightCertificate) : Prop :=
   let: (v, cs) := lc in
   combined_verify v cs ->
@@ -49,7 +51,7 @@ Definition lcert_correct (psent : PacketSoup) (lc : LightCertificate) : Prop :=
       lightsig_seen_in_history n v lsig psent. 
 
 Definition lcert_correct_threshold (psent : PacketSoup) (lc : LightCertificate) : Prop :=
-  (num_byz < N - (t0 + t0) -> lcert_correct psent lc).
+  (num_byz < N - (thres + thres) -> lcert_correct psent lc).
 
 Definition byz_constraints (m : Message) (w : World) : Prop :=
   match m with
@@ -61,21 +63,22 @@ Definition byz_constraints (m : Message) (w : World) : Prop :=
 End ACAdversary.
 
 Module ACNetwork (A : NetAddr) (V : Signable) (VBFT : ValueBFT A V) 
-  (P : PKI A V) (TSS : ThresholdSignatureScheme A V).
+  (BTh : ByzThreshold A) (BSett : ByzSetting A)
+  (P : PKI A V) (TSS : ThresholdSignatureScheme A V with Definition thres := BTh.t0).
 
-Import A V VBFT P TSS.
+Import A V VBFT BTh BSett P TSS.
 
 Module Export ACDT <: ACDataTypes A V P TSS := ACDataTypesImpl A V P TSS.
 Module Export CC : (* hide implementation *) CertCheckers A V P TSS ACDT := CertCheckersImpl A V P TSS ACDT.
 Module Export M <: MessageType := ACMessageImpl A V P TSS ACDT.
 Module Export P0 <: SimplePacket A M := SimplePacketImpl A M.
 Module Export PSOp : (* hide implementation *) PacketSoupOperations P0 := PacketSoupOperationsImpl P0.
-Module Export ACP <: Protocol A M P0 <: ACProtocol A V VBFT P TSS ACDT CC M P0 :=
-  ACProtocolImpl A V VBFT P TSS ACDT CC M P0.
-Module Export Ns <: NetState A M P0 ACP := NetStateImpl A M P0 ACP.
-Module Export ACAdv <: Adversary A M P0 ACP Ns := ACAdversary A V VBFT P TSS ACDT CC M P0 ACP Ns.
+Module Export ACP <: Protocol A M P0 BTh <: ACProtocol A V VBFT BTh P TSS ACDT CC M P0 :=
+  ACProtocolImpl A V VBFT BTh P TSS ACDT CC M P0.
+Module Export Ns <: NetState A M P0 BTh ACP := NetStateImpl A M P0 BTh ACP.
+Module Export ACAdv <: Adversary A M BTh BSett P0 ACP Ns := ACAdversary A V VBFT BTh BSett P TSS ACDT CC M P0 ACP Ns.
 
-Include NetworkImpl A M P0 PSOp ACP Ns ACAdv.
+Include NetworkImpl A M BTh BSett P0 PSOp ACP Ns ACAdv.
 
 (* tries to pack all coherent props into a record *)
 Record Coh (w : World) : Prop := mkCoh {
