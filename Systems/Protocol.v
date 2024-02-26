@@ -20,7 +20,8 @@ Module Type Protocol (Export A : NetAddr) (Export M : MessageType) (Export P : P
 Parameter InternalTransition : Type.
 
 Parameter State : Type.
-Parameter State_eqdec : forall (s1 s2 : State), {s1 = s2} + {s1 <> s2}.
+(* not used for now *)
+(* Parameter State_eqdec : forall (s1 s2 : State), {s1 = s2} + {s1 <> s2}. *)
 
 Parameter Init : Address -> State.
 

@@ -11,7 +11,8 @@ Definition StateMap := Address -> State.
 Definition initState := (fun n => Init n).
 
 Definition upd (n : Address) (st : State) (states : StateMap) : StateMap :=
-  fun m => if Address_eqdec n m then st else states m.
+  (* fun m => if Address_eqdec n m then st else states m. *)
+  Eval unfold map_update in map_update Address_eqdec n st states.
 
 (* if to parameterize this, then need some module type about finite multiset? *)
 (* currently, let's stick to list *)

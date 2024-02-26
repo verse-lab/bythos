@@ -149,3 +149,7 @@ Proof. destruct (eqdec _ _); auto; try contradiction. Qed.
 
 Fact in_cons_iff [A : Type] (l : list A) (x y : A) : In x (y :: l) <-> y = x \/ In x l.
 Proof. reflexivity. Qed.
+
+Definition map_update [A B : Type] (A_eqdec : forall a1 a2 : A, {a1 = a2} + {a1 <> a2}) 
+  (a : A) (b : B) (mp : A -> B) : A -> B :=
+  fun a' => if A_eqdec a a' then b else mp a'.
