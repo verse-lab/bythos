@@ -66,7 +66,10 @@ Definition procInt (st : State) (tr : InternalTransition) : State * list Packet 
       (st', pkts)
   end.
 
-(* TODO do things still work if we consider short-circuiting? *)
+(* TODO do things still work if we consider short-circuiting?
+    it seems like the following heuristic will break when the triggering message is
+    Echo, but by short-circuiting the node collects enough Ready messages and thus 
+    the subsequent triggering message becomes Ready. *)
 
 Definition procMsg (st : State) (src : Address) (msg : Message) : option (State * list Packet) :=
   let: Node n smap emap vmap cnt omap := st in
@@ -84,7 +87,8 @@ Definition procMsg (st : State) (src : Address) (msg : Message) : option (State 
     end
   | _ =>
     (* simply add to message counter *)
-    (* explicit in check *)
+    (* explicit in_dec check *)
+    (* FIXME: maybe impose size limit to counter like in ABC? currently do not *)
     if in_dec Address_eqdec src (cnt msg)
     then None
     else
@@ -102,6 +106,12 @@ Definition procMsg (st : State) (src : Address) (msg : Message) : option (State 
   would trigger some event. 
 *)
 
+(* some auxiliary definitions for the monitor *)
+
+Definition th_echo4ready := N - t0.
+Definition th_ready4ready := N - (t0 + t0).
+Definition th_ready4output := N - t0.
+
 Definition check_ready_condition (st : State) (msg : Message) : bool :=
   let: Node n smap emap vmap cnt omap := st in
   match msg with
@@ -109,44 +119,50 @@ Definition check_ready_condition (st : State) (msg : Message) : bool :=
     (* should have not sent ready message before *)
     negb (ssrbool.isSome (vmap (q, r))) &&
     (* reach the threshold *)
-    (N - t0 <=? length (cnt msg))
+    (th_echo4ready <=? length (cnt msg))
   | ReadyMsg q r _ =>
     (* should have not sent ready message before *)
     negb (ssrbool.isSome (vmap (q, r))) &&
     (* reach the threshold *)
-    (N - (t0 + t0) <=? length (cnt msg))
+    (th_ready4ready <=? length (cnt msg))
   | _ => false
   end.
 
 Definition check_output_condition (st : State) (msg : Message) : bool :=
-  let: Node n smap emap vmap cnt omap := st in
   match msg with
   | ReadyMsg _ _ _ =>
+    (* allow setting the output multiple times? seems fine *)
     (* reach the threshold *)
-    (N - t0 <=? length (cnt msg))
+    (th_ready4output <=? length (st.(msgcnt) msg))
   | _ => false
   end.
 
-Definition msg_to_readymsg (m : Message) : Message :=
+Definition update_voted_by_msg (st : State) (m : Message) : State * list Packet :=
   match m with
-  | EchoMsg q r v => ReadyMsg q r v
-  | _ => m
+  | EchoMsg q r v | ReadyMsg q r v =>
+    let: vmap' := map_update AddrRdPair_eqdec (q, r) (Some v) st.(voted) in
+    (st <| voted := vmap' |>, broadcast st.(id) (ReadyMsg q r v))
+  | _ => (st, nil) (* illegal *)
   end.
 
 Definition update_output_by_msg (m : Message) output :=
   match m with
-  | EchoMsg q r v | ReadyMsg q r v =>
+  | ReadyMsg q r v =>
     map_update AddrRdPair_eqdec (q, r) (output_merge (output (q, r)) v) output
-  | _ => output
+  | _ => output (* illegal *)
   end.
 
 Definition routine_check (st : State) (msg : Message) : State * list Packet :=
-  let: pkts := (if check_ready_condition st msg 
-                 then broadcast st.(id) (msg_to_readymsg msg) else nil) in
-  let: st' := if check_output_condition st msg
-              then (st <| output := (update_output_by_msg msg st.(output)) |>)
-              else st in
-  (st', pkts).
+  let: (st', pkts) := 
+    if check_ready_condition st msg
+    then update_voted_by_msg st msg
+    else (st, nil) in
+  (* TODO this consequencing is ad-hoc ... maybe having some combinator would be better *)
+  let: st'' := 
+    if check_output_condition st' msg
+    then st' <| output := update_output_by_msg msg st'.(output) |>
+    else st' in
+  (st'', pkts).
 
 Definition procMsgWithCheck (st : State) (src : Address) (msg : Message) : State * list Packet :=
   match procMsg st src msg with
