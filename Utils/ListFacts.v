@@ -153,3 +153,9 @@ Proof. reflexivity. Qed.
 Definition map_update [A B : Type] (A_eqdec : forall a1 a2 : A, {a1 = a2} + {a1 <> a2}) 
   (a : A) (b : B) (mp : A -> B) : A -> B :=
   fun a' => if A_eqdec a a' then b else mp a'.
+
+(* TODO ABC should have something similar *)
+
+Definition set_add_simple [A : Type] (A_eqdec : forall a1 a2 : A, {a1 = a2} + {a1 <> a2}) 
+  (a : A) (l : list A) : list A :=
+  if in_dec A_eqdec a l then l else a :: l.

@@ -6,7 +6,7 @@ From ABCProtocol.Systems Require Export Network.
 From ABCProtocol.Protocols.RB Require Export Protocol.
 
 Module RBAdversary (A : NetAddr) (R : RBTag) (V : Signable) (VBFT : ValueBFT A R V) 
-  (BTh : ByzThreshold A) (BSett : ByzSetting A)
+  (BTh : ClassicByzThreshold A) (BSett : ByzSetting A)
   (M : RBMessage A R V)
   (P : SimplePacket A M) 
   (RBP : RBProtocol A R V VBFT BTh M P) 
@@ -21,10 +21,11 @@ Definition byz_constraints (m : Message) (w : World) : Prop :=
 End RBAdversary.
 
 Module RBNetwork (A : NetAddr) (R : RBTag) (V : Signable) (VBFT : ValueBFT A R V) 
-  (BTh : ByzThreshold A) (BSett : ByzSetting A).
+  (BTh : ClassicByzThreshold A) (BSett : RestrictedByzSetting A BTh).
 
 Import A R V VBFT BTh BSett.
 
+(* Module Export BTh <: ClassicByzThreshold A := ClassicByzThresholdImpl A. *)
 Module Export M <: MessageType := RBMessageImpl A R V.
 Module Export P <: SimplePacket A M := SimplePacketImpl A M.
 Module Export PSOp : (* hide implementation *) PacketSoupOperations P := PacketSoupOperationsImpl P.

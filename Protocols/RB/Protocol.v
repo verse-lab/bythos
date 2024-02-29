@@ -1,4 +1,4 @@
-From Coq Require Import Bool List ListSet PeanoNat.
+From Coq Require Import Bool List ListSet PeanoNat Lia.
 From Coq Require ssrbool.
 Import (coercions) ssrbool.
 From ABCProtocol.Systems Require Export Protocol.
@@ -8,7 +8,10 @@ From RecordUpdate Require Import RecordUpdate.
 
 Module Type RBProtocol (A : NetAddr) (R : RBTag) (V : Signable)
   (VBFT : ValueBFT A R V) 
-  (BTh : ByzThreshold A) (M : RBMessage A R V)
+  (* although the fraction 1/3 will not be used in the protocol, 
+      this protocol only makes sense with t0 being N/3 ...
+      use module type to tell this restriction *)
+  (BTh : ClassicByzThreshold A) (M : RBMessage A R V)
   (P : SimplePacket A M) <: Protocol A M P BTh.
 
 Import A R V VBFT BTh M P.
@@ -20,7 +23,7 @@ Definition InternalTransition := InternalTransition_.
 
 Definition AddrRdPair_eqdec : forall (ar1 ar2 : Address * Round), {ar1 = ar2} + {ar1 <> ar2}
   := prod_eq_dec Address_eqdec Round_eqdec.
-
+(*
 Inductive Output : Set := ONone | OSome (v : Value) | OAmbig.
 
 Definition output_merge (o : Output) (v : Value) : Output :=
@@ -29,7 +32,7 @@ Definition output_merge (o : Output) (v : Value) : Output :=
   | OSome v' => if Value_eqdec v v' then o else OAmbig
   | OAmbig => OAmbig
   end.
-
+*)
 Record State_ :=
   Node {
     id : Address;
@@ -41,7 +44,10 @@ Record State_ :=
     echoed : Address * Round -> option Value;
     voted : Address * Round -> option Value; 
     msgcnt : Message -> list Address;
-    output : Address * Round -> Output; (* final output *)
+    (* final output *)
+    (* using the list type makes the statement of invariant easier, 
+        but we need to prove that the length of this list <= 1 *)
+    output : Address * Round -> list Value;
   }.
 
 (* try something new *)
@@ -50,7 +56,7 @@ Record State_ :=
 Definition State := State_.
 
 Definition Init (n : Address) : State :=
-  Node n (fun _ => false) (fun _ => None) (fun _ => None) (fun _ => nil) (fun _ => ONone).
+  Node n (fun _ => false) (fun _ => None) (fun _ => None) (fun _ => nil) (fun _ => nil).
 
 Definition procInt (st : State) (tr : InternalTransition) : State * list Packet :=
   let: Node n smap emap vmap cnt omap := st in
@@ -87,7 +93,7 @@ Definition procMsg (st : State) (src : Address) (msg : Message) : option (State 
     end
   | _ =>
     (* simply add to message counter *)
-    (* explicit in_dec check *)
+    (* make in_dec check explicit here *)
     (* FIXME: maybe impose size limit to counter like in ABC? currently do not *)
     if in_dec Address_eqdec src (cnt msg)
     then None
@@ -148,7 +154,7 @@ Definition update_voted_by_msg (st : State) (m : Message) : State * list Packet 
 Definition update_output_by_msg (m : Message) output :=
   match m with
   | ReadyMsg q r v =>
-    map_update AddrRdPair_eqdec (q, r) (output_merge (output (q, r)) v) output
+    map_update AddrRdPair_eqdec (q, r) (set_add_simple Value_eqdec v (output (q, r))) output
   | _ => output (* illegal *)
   end.
 
@@ -178,7 +184,7 @@ End RBProtocol.
 
 Module RBProtocolImpl (A : NetAddr) (R : RBTag) (V : Signable)
   (VBFT : ValueBFT A R V) 
-  (BTh : ByzThreshold A) (M : RBMessage A R V)
+  (BTh : ClassicByzThreshold A) (M : RBMessage A R V)
   (P : SimplePacket A M) <: Protocol A M P BTh <: RBProtocol A R V VBFT BTh M P.
 
 Include RBProtocol A R V VBFT BTh M P.

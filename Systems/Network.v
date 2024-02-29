@@ -12,9 +12,27 @@ Module Type ByzSetting (Export A : NetAddr).
 
 Parameter is_byz : Address -> bool.
 
+(* this module is not intended to be instantiated, so let's include a Definition here anyway *)
 Definition num_byz := length (List.filter is_byz valid_nodes).
 
 End ByzSetting.
+
+Module Type RestrictedByzSetting (Export A : NetAddr) (Export BTh : ByzThreshold A) <: ByzSetting A.
+
+(* usually, we require the number of Byzantine nodes to be no more than the threshold *)
+
+Include ByzSetting A.
+
+(* TODO a dilemma: 
+  (1) put BTh as an module argument, but then BTh cannot be instantiated in Network/Invariant module
+    since this ByzSetting will not be instantiated;
+  (2) use another local t0 and use "with Definition t0 := " to connect the two t0s, 
+    but not sure if that will work well or not 
+  currently use (1), since we do not mean to instantiate the proof modules *)
+
+Axiom num_byz_le_t0 : num_byz <= t0.
+
+End RestrictedByzSetting.
 
 (* constraints are synthetic ...? *)
 
