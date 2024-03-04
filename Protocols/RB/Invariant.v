@@ -5,9 +5,9 @@ Import ssreflect.SsrSyntax.
 From ABCProtocol.Protocols.RB Require Export Network.
 
 From RecordUpdate Require Import RecordUpdate.
-
+(*
 From stdpp Require Import tactics. (* anyway *)
-
+*)
 Module RBInvariant (A : NetAddr) (R : RBTag) (V : Signable) (VBFT : ValueBFT A R V)
   (BTh : ClassicByzThreshold A) (BSett : RestrictedByzSetting A BTh).
 
@@ -147,15 +147,27 @@ Tactic Notation "hypothesis" :=
     end
   end.
 
-Tactic Notation "destruct_eqdec" "as_" simple_intropattern(pat) :=
-  match goal with
-    |- context[if ?eqdec ?a ?b then _ else _] =>
-    match type of eqdec with
-      forall _ : _, forall _ : _, sumbool (eq _ _) (not (eq _ _)) =>
-      destruct (eqdec a b) as [ pat | ] +
-      destruct (eqdec a b) as [ | ]
-    end
+Tactic Notation "destruct_eqdec_raw" constr(eqdec) constr(a) constr(b) simple_intropattern(pat) :=
+  match type of eqdec with
+    forall _ : _, forall _ : _, sumbool (eq _ _) (not (eq _ _)) =>
+    destruct (eqdec a b) as [ pat | ] +
+    destruct (eqdec a b) as [ | ]
   end.
+
+Tactic Notation "destruct_eqdec" "in_" hyp(H) "as_" simple_intropattern(pat) :=
+  repeat match type of H with
+    context[if ?eqdec ?a ?b then _ else _] => destruct_eqdec_raw eqdec a b pat
+  end.
+
+Tactic Notation "destruct_eqdec" "as_" simple_intropattern(pat) :=
+  repeat match goal with
+    |- context[if ?eqdec ?a ?b then _ else _] => destruct_eqdec_raw eqdec a b pat
+  end.
+
+Tactic Notation "destruct_eqdec!" "as_" simple_intropattern(pat) :=
+  repeat match goal with 
+  | H : context[if ?eqdec ?a ?b then _ else _] |- _ => destruct_eqdec_raw eqdec a b pat
+  end; try destruct_eqdec as_ pat.
 
 Create HintDb RBinv.
 
@@ -174,8 +186,6 @@ Tactic Notation "decide_msg" constr(msg) "using_" constr(decider) "eqn_" ident(E
 *)
 Section State_Monotone_Proofs.
 
-(* base state inv *)
-
 Inductive state_mnt : State -> State -> Prop :=
   | MNT_sent : forall (st : State) r,
     st.(sent) r = false ->
@@ -189,12 +199,15 @@ Inductive state_mnt : State -> State -> Prop :=
     ~ In q (cnt msg) ->
     state_mnt st (st <| msgcnt := map_update Message_eqdec msg (q :: cnt msg) cnt |>)
   | MNT_voted : forall (st : State) q r v,
-    st.(voted) (q, r) = None -> (* ignore the other condition *)
+    st.(voted) (q, r) = None ->
+    (* TODO is this useful anymore? *)
+    (th_echo4ready <= S (length (st.(msgcnt) (EchoMsg q r v))) \/
+     th_ready4ready <= S (length (st.(msgcnt) (ReadyMsg q r v)))) ->
     state_mnt st (st <| voted := map_update AddrRdPair_eqdec (q, r) (Some v) st.(voted) |>)
   | MNT_output : forall (st : State) q r vs',
-    (* ignore one condition *)
     let: omap := st.(output) in
-    incl (omap (q, r)) vs' -> (* over approximation *)
+    incl (omap (q, r)) vs' -> (* over approximation; actually it should be set_add *)
+    (* Forall (fun v => th_ready4output <= length (st.(msgcnt) (ReadyMsg q r v))) vs' -> *)
     state_mnt st (st <| output := map_update AddrRdPair_eqdec (q, r) vs' omap |>)
 .
 
@@ -221,7 +234,8 @@ Tactic Notation "state_mnt_star" uconstr(l) :=
   end; state_mnt_star_ l.
 *)
 Tactic Notation "state_mnt_star" constr(kind) tactic(tac) :=
-  eapply MNTs_S; [ apply kind | tac ]; simpl; auto.
+  eapply MNTs_S; [ eapply kind | tac ]; simpl.
+  (* using auto at the end may accidentally resolve some evars *)
 
 (* Tactic Notation "state_mnt_star_2" constr(kind1) constr(kind2) :=
   exists true; eapply MNTs_S; [ apply kind1 | eapply MNTs_S; [ apply kind2 | apply MNTs_0 ] ]; auto. *)
@@ -240,7 +254,7 @@ Proof with (try (exists false; constructor)).
     + destruct msg as [ r v | | ]; try discriminate.
       destruct (echoed (src, r)) eqn:EE; try discriminate.
       revert E Ef; intros [= <- <-] [= <- <-]. (* TODO made tactic? *)
-      eexists; state_mnt_star MNT_echoed (apply MNTs_0).
+      now eexists; state_mnt_star MNT_echoed (apply MNTs_0).
     + simpl_via_is_InitialMsg_false msg.
       destruct (in_dec _ _ _) as [ Hin | Hnotin ] in E; try discriminate.
       revert E; intros [= <- <-].
@@ -248,8 +262,9 @@ Proof with (try (exists false; constructor)).
       (* fine-grained discussion; avoid repetition as much as possible *)
       destruct msg as [ | q r v | q r v ]; simpl in Ef; try discriminate.
       all: destruct (andb _ _) eqn:EE in Ef; simpl in Ef; injection_pair Ef; 
-        [ destruct (voted (q, r)) eqn:?; try discriminate | ].
-      3-4: destruct (Nat.leb _ _) eqn:? in |- *.
+        [ apply andb_true_iff in EE; destruct EE as (EE1 & EE2%Nat.leb_le),
+            (voted (q, r)) eqn:?; try discriminate | ].
+      3-4: destruct (Nat.leb _ _) eqn:Eth2 in |- *; [ apply Nat.leb_le in Eth2 | ].
       all: eexists.
       all: match goal with 
         | |- context[set output _ _] => state_mnt_star MNT_output idtac
@@ -258,15 +273,15 @@ Proof with (try (exists false; constructor)).
       all: first 
         [ state_mnt_star MNT_voted (state_mnt_star MNT_msgcnt (apply MNTs_0))
         | state_mnt_star MNT_msgcnt (apply MNTs_0)
-        | idtac ].
-      all: apply incl_set_add_simple.
+        | idtac ]; auto using incl_set_add_simple.
+      all: unfold map_update in EE2; rewrite eqdec_refl in EE2; simpl in EE2; auto.
   - unfold upd.
     destruct (Address_eqdec _ _) as [ <- | Hneq ]...
     destruct t as [ r ].
     destruct (w @ n) as [ dst' sent echoed voted cnt output ].
     simpl in E.
     destruct (sent r) eqn:?; injection_pair E...
-    eexists; state_mnt_star MNT_sent (apply MNTs_0).
+    now eexists; state_mnt_star MNT_sent (apply MNTs_0).
 Qed.
 
 (* use state_mnt as an over-approximation to prove some state-only invariants *)
@@ -296,6 +311,11 @@ Definition voted_persistent st st' : Prop :=
 Definition output_persistent st st' : Prop :=
   forall q r v, In v (st.(output) (q, r)) -> In v (st'.(output) (q, r)).
 
+(* let's prove id_coh here ... *)
+
+Definition id_persistent st st' : Prop :=
+  forall n, st.(id) = n -> st'.(id) = n.
+
 (* TODO how to break/form invariants easily? *)
 Record node_state_invariants st st' : Prop := {
   _ : lift_point_to_edge msgcnt_coh st st';
@@ -304,6 +324,7 @@ Record node_state_invariants st st' : Prop := {
   _ : msgcnt_persistent st st';
   _ : voted_persistent st st';
   _ : output_persistent st st';
+  _ : id_persistent st st';
 }.
 
 #[export] Instance Transitive_node_state_invariants : Transitive node_state_invariants.
@@ -312,21 +333,22 @@ Proof.
   intros ??? H H0.
   destruct H, H0.
   constructor.
-  all: hnf in *; unfold msgcnt_coh in *.
+  (* FIXME: automatically unfold these? use autounfold, if necessary *)
+  all: hnf in *; unfold msgcnt_coh(*, getready_coh_fwd, getready_coh_bwd1, getready_coh_bwd2 *) in *.
   all: auto.
-  all: firstorder.
+  all: intuition.
 Qed.
 
 Fact invariants_pre_pre st st' (H : state_mnt st st') :
   node_state_invariants st st'.
 Proof.
   constructor.
-  all: hnf.
-  1: unfold msgcnt_coh. (* ! *)
-  all: intros; inversion H; subst; simpl; auto; (* heuristic *) try hypothesis.
+  all: hnf; unfold msgcnt_coh(*, getready_coh_fwd, getready_coh_bwd1, getready_coh_bwd2*).
+  (* heuristics: auto; if auto does not work then eauto; hypothesis has what you need *)
+  all: intros; inversion H; subst; simpl in *; eauto; try hypothesis.
   (* another layer of heuristic *)
-  all: unfold map_update; destruct_eqdec as_ <-; simpl; auto; try hypothesis; try congruence.
-  - destruct msg1; try contradiction.
+  all: unfold map_update; destruct_eqdec as_ ->; simpl in *; eauto; try hypothesis; try congruence.
+  - destruct msg0; try contradiction.
     all: constructor; try assumption.
     apply (H0 (EchoMsg _ _ _)).
     apply (H0 (ReadyMsg _ _ _)).
@@ -349,6 +371,79 @@ Proof.
   destruct Hstep.
   eapply invariants_pre; eauto.
 Qed.
+
+Definition id_coh w : Prop := forall n, (w @ n).(id) = n.
+
+Fact id_coh_is_invariant : is_invariant_step id_coh.
+Proof.
+  hnf; intros ??? H Hstep.
+  hnf in H |- *; intros n; specialize (H n).
+  apply invariants with (n:=n) in Hstep.
+  destruct Hstep; auto.
+Qed.
+
+(* length is also monotonic, but can be reduced to In + NoDup, so it is not included above *)
+
+(* implication-shaped invariants *)
+(* the above are pointed *)
+
+Definition getready_coh_fwd st : Prop :=
+  forall q r v, 
+    st.(voted) (q, r) = Some v ->
+    (th_echo4ready <= length (st.(msgcnt) (EchoMsg q r v)) \/ 
+     th_ready4ready <= length (st.(msgcnt) (ReadyMsg q r v))).
+
+Definition getready_coh_bwd1 st : Prop :=
+  forall q r v, 
+    th_echo4ready <= length (st.(msgcnt) (EchoMsg q r v)) ->
+    exists v', st.(voted) (q, r) = Some v'.
+
+Definition getready_coh_bwd2 st : Prop :=
+  forall q r v, 
+    th_ready4ready <= length (st.(msgcnt) (ReadyMsg q r v)) ->
+    exists v', st.(voted) (q, r) = Some v'.
+(*
+Record node_state_invariants_2 st st' : Prop := {
+  _ : lift_point_to_edge getready_coh_fwd st st';
+  _ : lift_point_to_edge getready_coh_bwd1 st st';
+  _ : lift_point_to_edge getready_coh_bwd2 st st';
+}.
+
+(* still need to use state_mnt, since sometimes the hypothesis on the LHS of arrow
+    may not hold in the previous state, but hold in the next state *)
+
+#[export] Instance Transitive_node_state_invariants_2 : Transitive node_state_invariants_2.
+Proof.
+  hnf.
+  intros ??? H H0.
+  destruct H, H0.
+  constructor.
+  (* FIXME: automatically unfold these? use autounfold, if necessary *)
+  all: hnf in *; unfold getready_coh_fwd, getready_coh_bwd1, getready_coh_bwd2 in *.
+  all: auto.
+  all: intuition.
+Qed.
+
+Fact invariants_2_pre_pre st st' (H : state_mnt st st') :
+  node_state_invariants_2 st st'.
+Proof.
+  constructor.
+  all: hnf; unfold getready_coh_fwd, getready_coh_bwd1, getready_coh_bwd2.
+  all: intros; inversion H; subst; simpl in *; eauto; try hypothesis.
+  all: unfold map_update in *; destruct_eqdec! as_ ->; simpl in *; eauto; try hypothesis.
+  (* goal-specific heuristics *)
+  2-3: firstorder.
+  2:{
+
+  3:{
+  1-3: pose proof le_n_S; firstorder.
+  - destruct msg0; try contradiction.
+    all: constructor; try assumption.
+    apply (H0 (EchoMsg _ _ _)).
+    apply (H0 (ReadyMsg _ _ _)).
+Qed.
+
+*)
 
 End State_Monotone_Proofs.
 
@@ -409,12 +504,6 @@ Definition msgcnt_recv_bwd p stmap : Prop :=
     end
   | _ => True
   end.
-
-Definition getready_coh st : Prop :=
-  forall q r v, 
-    st.(voted) (q, r) = Some v <->
-    (th_echo4ready <= length (st.(msgcnt) (EchoMsg q r v)) \/ 
-     th_ready4ready <= length (st.(msgcnt) (ReadyMsg q r v))).
 
 Definition readymsg_sent_fwd psent st : Prop :=
   forall q r v, st.(voted) (q, r) = Some v -> forall n, exists used, 
