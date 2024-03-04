@@ -5,9 +5,8 @@ Import ssreflect.SsrSyntax.
 From ABCProtocol.Protocols.RB Require Export Network.
 
 From RecordUpdate Require Import RecordUpdate.
-(*
 From stdpp Require Import tactics. (* anyway *)
-*)
+
 Module RBInvariant (A : NetAddr) (R : RBTag) (V : Signable) (VBFT : ValueBFT A R V)
   (BTh : ClassicByzThreshold A) (BSett : RestrictedByzSetting A BTh).
 
@@ -178,6 +177,10 @@ Fact incl_set_add_simple {A : Type} (eqdec : forall a1 a2 : A, {a1 = a2} + {a1 <
   (a : A) (l : list A) : incl l (set_add_simple eqdec a l).
 Proof. hnf. intros. unfold set_add_simple. destruct (in_dec _ _ _); simpl; tauto. Qed.
 
+Fact In_set_add_simple {A : Type} (eqdec : forall a1 a2 : A, {a1 = a2} + {a1 <> a2})
+  (a a' : A) (l : list A) : In a' (set_add_simple eqdec a l) <-> a = a' \/ In a' l.
+Proof. unfold set_add_simple. destruct (in_dec _ _ _); simpl; eqsolve. Qed.
+
 Local Hint Resolve incl_set_add_simple : RBinv.
 
 (*
@@ -262,7 +265,7 @@ Proof with (try (exists false; constructor)).
       (* fine-grained discussion; avoid repetition as much as possible *)
       destruct msg as [ | q r v | q r v ]; simpl in Ef; try discriminate.
       all: destruct (andb _ _) eqn:EE in Ef; simpl in Ef; injection_pair Ef; 
-        [ apply andb_true_iff in EE; destruct EE as (EE1 & EE2%Nat.leb_le),
+        [ apply andb_true_iff in EE; destruct EE as (EE & Eth%Nat.leb_le),
             (voted (q, r)) eqn:?; try discriminate | ].
       3-4: destruct (Nat.leb _ _) eqn:Eth2 in |- *; [ apply Nat.leb_le in Eth2 | ].
       all: eexists.
@@ -274,7 +277,7 @@ Proof with (try (exists false; constructor)).
         [ state_mnt_star MNT_voted (state_mnt_star MNT_msgcnt (apply MNTs_0))
         | state_mnt_star MNT_msgcnt (apply MNTs_0)
         | idtac ]; auto using incl_set_add_simple.
-      all: unfold map_update in EE2; rewrite eqdec_refl in EE2; simpl in EE2; auto.
+      all: unfold map_update in Eth; rewrite eqdec_refl in Eth; simpl in Eth; auto.
   - unfold upd.
     destruct (Address_eqdec _ _) as [ <- | Hneq ]...
     destruct t as [ r ].
@@ -296,7 +299,7 @@ Definition msgcnt_coh st : Prop :=
 Definition lift_point_to_edge (P : State -> Prop) : State -> State -> Prop :=
   fun st st' => P st -> P st'.
 
-Definition sent_persistent st st' : Prop :=
+Definition sent_persistent st st' : Prop := Eval unfold lift_point_to_edge in
   forall r, st.(sent) r -> st'.(sent) r.
 
 Definition echoed_persistent st st' : Prop :=
@@ -387,6 +390,8 @@ Qed.
 (* implication-shaped invariants *)
 (* the above are pointed *)
 
+(* the following three must be grouped together! otherwise cannot be proved *)
+
 Definition getready_coh_fwd st : Prop :=
   forall q r v, 
     st.(voted) (q, r) = Some v ->
@@ -395,23 +400,109 @@ Definition getready_coh_fwd st : Prop :=
 
 Definition getready_coh_bwd1 st : Prop :=
   forall q r v, 
+    (*
     th_echo4ready <= length (st.(msgcnt) (EchoMsg q r v)) ->
-    exists v', st.(voted) (q, r) = Some v'.
+    (* exists v', st.(voted) (q, r) = Some v'. *)
+    (* use isSome *)
+    st.(voted) (q, r).
+    *)
+    (* or ...? *)
+    st.(voted) (q, r) = None ->
+    length (st.(msgcnt) (EchoMsg q r v)) < th_echo4ready.
 
 Definition getready_coh_bwd2 st : Prop :=
   forall q r v, 
+    (*
     th_ready4ready <= length (st.(msgcnt) (ReadyMsg q r v)) ->
-    exists v', st.(voted) (q, r) = Some v'.
+    (* exists v', st.(voted) (q, r) = Some v'. *)
+    st.(voted) (q, r).
+    *)
+    st.(voted) (q, r) = None ->
+    length (st.(msgcnt) (ReadyMsg q r v)) < th_ready4ready.
+
+Definition getoutput_coh st : Prop :=
+  forall q r v, 
+    In v (st.(output) (q, r)) <->
+    th_ready4output <= length (st.(msgcnt) (ReadyMsg q r v)).
+
+Record node_state_invariants_2 st st' : Prop := {
+  _ : lift_point_to_edge (fun st0 => getready_coh_fwd st0 /\ getready_coh_bwd1 st0 /\
+      getready_coh_bwd2 st0) st st';
+  _ : lift_point_to_edge getoutput_coh st st';
+}.
 (*
 Record node_state_invariants_2 st st' : Prop := {
   _ : lift_point_to_edge getready_coh_fwd st st';
   _ : lift_point_to_edge getready_coh_bwd1 st st';
   _ : lift_point_to_edge getready_coh_bwd2 st st';
+  _ : lift_point_to_edge getoutput_coh st st';
 }.
+*)
 
-(* still need to use state_mnt, since sometimes the hypothesis on the LHS of arrow
-    may not hold in the previous state, but hold in the next state *)
+(*
+Fact node_state_invariants_2P st st' : node_state_invariants_2 st st' <-> node_state_invariants_2' st st'.
+Proof. split; intros [ ]; constructor; hnf in *; try tauto. 
+*)
 
+Tactic Notation "solvetac" tactic(tac) :=
+  constructor; hnf; unfold getready_coh_fwd, getready_coh_bwd1, getready_coh_bwd2, getoutput_coh; tac.
+
+#[export] Instance Reflexive_node_state_invariants_2 : Reflexive node_state_invariants_2.
+Proof. solvetac auto. Qed.
+
+(* let's try proving the things above directly, to see whether direct style proving is indeed difficult *)
+(* the proof skeleton is basically the same *)
+Fact invariants_2 q w w' (Hstep : system_step q w w') :
+  forall n, node_state_invariants_2 (w @ n) (w' @ n).
+Proof.
+  intros n.
+  inversion_step' Hstep; clear Hstep; intros; try reflexivity.
+  - unfold upd.
+    destruct (Address_eqdec _ _) as [ <- | Hneq ]; [ | reflexivity ].
+    destruct (procMsg _ _ _) as [ (st', ms) | ] eqn:E in Ef.
+    2: injection_pair Ef; reflexivity.
+    destruct (w @ dst) as [ dst' sent echoed voted cnt output ].
+    unfold procMsg in E.
+    destruct (is_InitialMsg msg) eqn:Edecide.
+    + destruct msg as [ r v | | ]; try discriminate.
+      destruct (echoed (src, r)) eqn:EE; try discriminate.
+      revert E Ef; intros [= <- <-] [= <- <-].
+      solvetac auto.
+    + simpl_via_is_InitialMsg_false msg.
+      destruct (in_dec _ _ _) as [ Hin | Hnotin ] in E; try discriminate.
+      revert E; intros [= <- <-].
+      unfold routine_check in Ef; simpl in Ef.
+      destruct msg as [ | q r v | q r v ]; simpl in Ef; try discriminate.
+      all: destruct (andb _ _) eqn:EE in Ef; simpl in Ef; injection_pair Ef; 
+        [ apply andb_true_iff in EE; destruct EE as (EE & Eth%Nat.leb_le),
+            (voted (q, r)) eqn:?; try discriminate 
+        | apply andb_false_iff in EE; rewrite Nat.leb_gt in EE ].
+      3-4: destruct (Nat.leb _ _) eqn:Eth2 in |- *; 
+        [ apply Nat.leb_le in Eth2 | apply Nat.leb_nle in Eth2 ].
+      all: solvetac
+        (match goal with |- (_ /\ _ /\ _) -> _ => intros (Ha & Hb & Hc) | _ => intros H end;
+          intros; split_and?; intros;
+        simpl in *; unfold map_update in *; destruct_eqdec! as_ ?; simplify_eq;
+        simpl in *; try solve [ eauto | tauto | intuition ]).
+      all: try rewrite In_set_add_simple in *.
+      all: try solve 
+        [ rewrite H; split; auto; lia (* for th_ready4output goals without v = v *)
+        | rewrite H; eqsolve (* for th_ready4output goals with v = v *)
+        | rewrite H in EE; simpl in EE; eqsolve (* for lt goals *)
+        | match goal with
+          | |- context[?n1 <= S ?n2] => pose proof (fun H => Nat.le_trans n1 _ _ H (le_S _ _ (le_n n2)))
+          end; firstorder (* for le or le goals *) ].
+  - unfold upd.
+    destruct (Address_eqdec _ _) as [ -> | Hneq ]; try reflexivity.
+    destruct t as [ r ].
+    destruct (w @ n) as [ dst' sent echoed voted cnt output ].
+    simpl in E.
+    destruct (sent r) eqn:?; injection_pair E; try reflexivity.
+    solvetac auto.
+Qed.
+
+(*
+(* failed attempt of using state_mnt to prove the above things *)
 #[export] Instance Transitive_node_state_invariants_2 : Transitive node_state_invariants_2.
 Proof.
   hnf.
@@ -470,7 +561,8 @@ Definition initialmsg_recv_bwd p stmap : Prop :=
   | mkP src dst (InitialMsg r v) true =>
     is_byz dst = false ->
       let: st := stmap dst in
-      exists v', st.(echoed) (src, r) = Some v'
+      (* exists v', st.(echoed) (src, r) = Some v' *)
+      st.(echoed) (src, r)
   | _ => True
   end.
 
@@ -518,11 +610,6 @@ Definition readymsg_sent_bwd p stmap : Prop :=
       st.(voted) (q, r) = Some v
   | _ => True
   end.
-
-Definition getoutput_coh st : Prop :=
-  forall q r v, 
-    In v (st.(output) (q, r)) <->
-    th_ready4output <= length (st.(msgcnt) (ReadyMsg q r v)).
 
 (* should be useful ... intensionally inductive? *)
 (* serve as a way to tell that "at least some of the ready messages are the consequences of echo messages" *)
