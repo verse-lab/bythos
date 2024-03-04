@@ -278,7 +278,6 @@ Global Arguments psent_invariant _ _/. *)
 Record invariant (w : World) : Prop := mkInv {
   coh: Coh w;
   node_inv: forall n, is_byz n = false -> 
-    (* TODO maybe also require valid_node n to make things look better *)
     node_invariant (sentMsgs w) (localState w n);
     (* node_invariant (localState w n) (sentMsgs w); *)
   psent_inv: psent_invariant (localState w) (sentMsgs w)
@@ -341,14 +340,8 @@ Tactic Notation "basic_solver" :=
 Local Hint Resolve correct_sign_verify_ok : ABCinv.
 Local Hint Resolve correct_sign_verify_ok_light : ABCinv.
 
-Fact incl_sendout_l_simple (l1 l2 : list Packet) : incl l1 (sendout l1 l2).
-Proof. hnf. intros. rewrite In_sendout. now left. Qed.
-
-Fact incl_sendout_r_simple (l1 l2 : list Packet) : incl l1 (sendout l2 l1).
-Proof. hnf. intros. rewrite In_sendout. now right. Qed.
-
-Local Hint Resolve incl_sendout_l_simple : ABCinv.
-Local Hint Resolve incl_sendout_r_simple : ABCinv.
+Local Hint Resolve incl_sendout_l : ABCinv.
+Local Hint Resolve incl_sendout_r : ABCinv.
 
 Inductive psent_mnt : bool -> PacketSoup -> PacketSoup -> Prop :=
   (* since we do not count, mutual in is enough (rather than permutation) *)
@@ -1341,7 +1334,7 @@ Proof with basic_solver.
           (* only consider the updated node, i.e. itself *)
           (* FIXME: assert this earlier? *)
           pose proof (PsentLe _ _ _ (PsentEq' _ (sentMsgs w) Hpin) 
-            (incl_sendout_r_simple _ (broadcast n (LightConfirmMsg (v, lightsig_combine (ls :: lsigs_dst)))))) as Hpmnt1.
+            (incl_sendout_r _ (broadcast n (LightConfirmMsg (v, lightsig_combine (ls :: lsigs_dst)))))) as Hpmnt1.
           constructor; simpl_state.
           ++simpl.
             intros n0 lsig sig Hin.
@@ -1553,7 +1546,7 @@ Proof with basic_solver.
         }
         (* only consider the updated node, i.e. itself *)
         pose proof (PsentLe _ _ _ (PsentEq' _ (sentMsgs w) Hpin) 
-          (incl_sendout_l_simple _ (broadcast n (LightConfirmMsg (v, lightsig_combine (ls :: lsigs_dst)))))) as Hpmnt1.
+          (incl_sendout_l _ (broadcast n (LightConfirmMsg (v, lightsig_combine (ls :: lsigs_dst)))))) as Hpmnt1.
         constructor; simpl_state...
         --intros lc Hin.
           specialize (Hrlcerts_trace lc Hin).

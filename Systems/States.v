@@ -54,6 +54,12 @@ Create HintDb psent.
 
 #[export] Hint Rewrite -> In_sendout1 In_sendout in_app_iff in_cons_iff : psent.
 
+Fact incl_sendout_l (l1 l2 : list Packet) : incl l1 (sendout l1 l2).
+Proof. hnf. intros. rewrite In_sendout. now left. Qed.
+
+Fact incl_sendout_r (l1 l2 : list Packet) : incl l1 (sendout l2 l1).
+Proof. hnf. intros. rewrite In_sendout. now right. Qed.
+
 End PacketSoupOperations.
 
 Module PacketSoupOperationsImpl (Export P : PacketType) <: PacketSoupOperations P.
@@ -69,6 +75,13 @@ Proof. intros. unfold sendout. now rewrite in_app_iff. Qed.
 
 Fact sendout0 : forall psent, sendout nil psent = psent.
 Proof (fun _ => eq_refl).
+
+(* FIXME: can we eliminate this duplicate? *)
+Fact incl_sendout_l (l1 l2 : list Packet) : incl l1 (sendout l1 l2).
+Proof. hnf. intros. rewrite In_sendout. now left. Qed.
+
+Fact incl_sendout_r (l1 l2 : list Packet) : incl l1 (sendout l2 l1).
+Proof. hnf. intros. rewrite In_sendout. now right. Qed.
 
 End PacketSoupOperationsImpl.
 

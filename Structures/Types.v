@@ -1,4 +1,4 @@
-From Coq Require Import List.
+From Coq Require Import List RelationClasses.
 From Coq Require ssrbool.
 Import (coercions) ssrbool.
 From ABCProtocol.Structures Require Export Address.
@@ -145,6 +145,11 @@ Module Type PacketType.
 Parameter Packet : Type.
 Parameter Packet_eqdec : forall (p1 p2 : Packet), {p1 = p2} + {p1 <> p2}.
 
+(* TODO add primitives that packet should support? like send_to and broadcast?
+    we need to make sure that a node does not have access to the consumed field of a packet
+    since it is only for proving!
+  for now, ensure it by manual inspection *)
+
 End PacketType.
 
 Module Type SimplePacket (Export A : NetAddr) (Export M : MessageType) <: PacketType.
@@ -163,6 +168,9 @@ Definition receive_pkt p :=
   let: mkP src dst msg _ := p in mkP src dst msg true.
 
 Definition pkt_le p p' : Prop := p' = p \/ p' = receive_pkt p (* may be redundant, but make things simpler? *).
+
+#[export] Instance Reflexive_pkt_le : Reflexive pkt_le.
+Proof. now constructor. Qed.
 
 Fact receive_pkt_intact [p] (H : consumed p) : receive_pkt p = p.
 Proof. destruct p; simpl in *; now rewrite H. Qed.

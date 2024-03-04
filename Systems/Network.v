@@ -63,6 +63,8 @@ Inductive system_step_descriptor : Type :=
   | Byz (src dst : Address) (m : Message)
 .
 
+Global Notation "w '@' n" := (localState w n) (at level 50, left associativity).
+
 (* TODO use this or indexed inductive relation? currently seems no difference *)
 Inductive system_step (q : system_step_descriptor) (w w' : World) : Prop :=
 | IdleStep of q = Idle & w = w'
@@ -123,19 +125,33 @@ Proof.
   - intuition.
 Qed.
 
-Fact system_step_psent_norevert [p w w' q] : 
-  In (receive_pkt p) (sentMsgs w) -> system_step q w w' -> In (receive_pkt p) (sentMsgs w').
+Fact system_step_psent_persistent [p w w' q] : 
+  In p (sentMsgs w) -> system_step q w w' -> exists p', pkt_le p p' /\ In p' (sentMsgs w').
 Proof.
   intros H Hstep.
-  inversion Hstep; subst; auto.
-  3: simpl; rewrite In_sendout1; now right.
+  inversion Hstep; subst; eauto using Reflexive_pkt_le.
+  3: exists p; simpl; rewrite In_sendout1; auto using Reflexive_pkt_le.
   1: destruct (procMsgWithCheck _ _ _) in *.
   2: destruct (procInt _ _) in *.
   all: subst w'; simpl.
-  all: rewrite ! In_sendout.
-  - right.
-    now apply consume_norevert.
-  - now right.
+  all: setoid_rewrite In_sendout.
+  - setoid_rewrite In_consume.
+    destruct (Packet_eqdec p p0) as [ <- | ].
+    + exists (receive_pkt p); intuition.
+      hnf; now right.
+    + exists p; intuition.
+      reflexivity.
+  - exists p; auto using Reflexive_pkt_le.
+Qed.
+
+Corollary system_step_psent_norevert [p w w' q] : 
+  In (receive_pkt p) (sentMsgs w) -> system_step q w w' -> In (receive_pkt p) (sentMsgs w').
+Proof.
+  intros H H0.
+  eapply system_step_psent_persistent in H; eauto.
+  destruct H as (p' & Hle & Hin).
+  hnf in Hle; rewrite receive_pkt_idem in Hle.
+  now destruct Hle as [ -> | -> ].
 Qed.
 
 (* two multistep propositions *)
