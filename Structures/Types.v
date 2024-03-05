@@ -188,6 +188,10 @@ Fact In_broadcast src m p :
   In p (broadcast src m) <-> exists dst, p = mkP src dst m false.
 Proof. unfold broadcast. rewrite -> in_map_iff. pose proof Address_is_finite. firstorder; eauto. Qed.
 
+Fact broadcast_all_fresh n m :
+  Forall (fun p => p.(consumed) = false) (broadcast n m).
+Proof. apply Forall_forall. now intros ? (? & ->)%In_broadcast. Qed.
+
 End SimplePacket.
 
 Module SimplePacketImpl (Export A : NetAddr) (Export M : MessageType) <: (SimplePacket A M) <: PacketType.

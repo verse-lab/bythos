@@ -1,4 +1,4 @@
-From Coq Require Import Bool List Permutation.
+From Coq Require Import Bool List Permutation RelationClasses.
 
 (* FIXME: change the file name into the more general "Utils" later! *)
 
@@ -154,8 +154,18 @@ Definition map_update [A B : Type] (A_eqdec : forall a1 a2 : A, {a1 = a2} + {a1 
   (a : A) (b : B) (mp : A -> B) : A -> B :=
   fun a' => if A_eqdec a a' then b else mp a'.
 
+Fact map_update_refl {A B : Type} (A_eqdec : forall a1 a2 : A, {a1 = a2} + {a1 <> a2})
+  (a : A) (b : B) (mp : A -> B) :
+  map_update A_eqdec a b mp a = b.
+Proof. unfold map_update. now rewrite eqdec_refl. Qed.
+
 (* TODO ABC should have something similar *)
 
 Definition set_add_simple [A : Type] (A_eqdec : forall a1 a2 : A, {a1 = a2} + {a1 <> a2}) 
   (a : A) (l : list A) : list A :=
   if in_dec A_eqdec a l then l else a :: l.
+
+Definition Ineq [A : Type] (l1 l2 : list A) : Prop := forall x, In x l1 <-> In x l2.
+
+#[export] Instance Equivalence_Ineq {A : Type} : Equivalence (@Ineq A).
+Proof. constructor; hnf; unfold Ineq in *; firstorder. Qed.

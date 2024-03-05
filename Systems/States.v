@@ -14,6 +14,9 @@ Definition upd (n : Address) (st : State) (states : StateMap) : StateMap :=
   (* fun m => if Address_eqdec n m then st else states m. *)
   Eval unfold map_update in map_update Address_eqdec n st states.
 
+Fact upd_refl n st stmap : upd n st stmap n = st.
+Proof. now apply map_update_refl. Qed.
+
 (* if to parameterize this, then need some module type about finite multiset? *)
 (* currently, let's stick to list *)
 Definition PacketSoup := list Packet.

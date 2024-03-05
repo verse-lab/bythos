@@ -112,19 +112,22 @@ Tactic Notation "inversion_step'" hyp(H) :=
     match type of Heq with ?w' = _ => try (subst w'; simpl_world) end
   | match type of Heq with ?w' = _ => try (subst w'; simpl_world) end
   ].
-(*
+
 Tactic Notation "destruct_localState" ident(w) ident(n) 
   "as_" simple_intropattern(pat) "eqn_" ident(E) :=
-  let n' := fresh n in
-  let Htmp := fresh "Htmp" in
   match goal with 
-  | H : Coh w |- _ =>
+  | H : ?P |- _ =>
+    change P with (forall pp : nat, id (w @ pp) = pp); (* convertible checked here *)
+    let Htmp := fresh "Htmp" in
+    pose proof (H n) as Htmp;
     destruct (w @ n) as pat eqn:E; 
-    assert (n' = n) as Htmp by
-      (now rewrite <- (id_coh _ H n), E); 
-    subst n'
+    simpl in Htmp; 
+    match type of Htmp with ?nn = _ => subst nn end
   end.
-*)
+
+Tactic Notation "destruct_localState" ident(w) ident(n) "as_" simple_intropattern(pat) :=
+  let E := fresh "E" in
+  destruct_localState w n as_ pat eqn_ E; clear E.
 
 Tactic Notation "simpl_via_is_InitialMsg_false" constr(msg) :=
   repeat match goal with
@@ -184,7 +187,6 @@ Proof. unfold set_add_simple. destruct (in_dec _ _ _); simpl; eqsolve. Qed.
 Local Hint Resolve incl_set_add_simple : RBinv.
 
 Local Hint Resolve incl_sendout_l incl_sendout_r : psent.
-Local Hint Rewrite -> In_consume : psent.
 
 (*
 Tactic Notation "decide_msg" constr(msg) "using_" constr(decider) "eqn_" ident(E) :=
@@ -334,6 +336,8 @@ Tactic Notation "state_mnt_star" constr(kind) tactic(tac) :=
 
 (* Tactic Notation "state_mnt_star_2" constr(kind1) constr(kind2) :=
   exists true; eapply MNTs_S; [ apply kind1 | eapply MNTs_S; [ apply kind2 | apply MNTs_0 ] ]; auto. *)
+
+Local Hint Rewrite -> In_consume : psent.
 
 Fact state_mnt_is_invariant q w w' (Hstep : system_step q w w') :
   forall n, exists l : state_mnt_type_list (w @ n) (w' @ n), 
@@ -849,8 +853,10 @@ Proof.
     simpl in IH; try tauto.
   all: try solve
     [ exists false; apply Hpsent, In_broadcast; eauto (* for simple *)
-    | destruct (Value_eqdec v0 v) as [ -> | ];
+    | destruct (Value_eqdec v0 v) as [ -> | ]; (* for those involve value *)
       try solve [ tauto | eqsolve | exists false; apply Hpsent, In_broadcast; eauto ]
+      (* we can show that the value echoed/voted this time is the same as the final one, 
+          but it's not necessary *)
     | destruct (Address_eqdec q0 q) as [ -> | ]; try solve [ tauto | eqsolve ] ].
   (*
   (* need to use previously proved invariants to unify the echoed/voted values *)
@@ -870,6 +876,220 @@ Proof.
 Qed.
 
 End Forward.
+
+Section Backward.
+
+(* the state-major view is useful, but we also need a packetsoup-major view *)
+(*
+(* psent: the old packetsoup (before update) *)
+(* TODO in theory, there will be atmost Puse ... is it good to have such generic thing? *)
+Inductive psent_mnt_type (psent : PacketSoup) : Type :=
+  | Puse : forall p, In p psent -> psent_mnt_type psent
+  | Papp : forall pkts,
+    Forall (fun p => p.(consumed) = false) pkts -> psent_mnt_type psent
+  (* HMM since we are proving, do not consider sendout1 ...? *)
+.
+
+Global Arguments Papp : clear implicits.
+
+Definition psent_mnt [psent_implicit] (s : psent_mnt_type psent_implicit) (psent : PacketSoup) (psent' : PacketSoup) : Prop :=
+  match s with
+  | Puse _ p _ => 
+    psent' = consume p psent
+  | Papp _ pkts _ =>
+    Ineq psent' (sendout pkts psent)
+  end.
+
+Fixpoint psent_mnt_star (psent : PacketSoup) [psent_implicit] (l : list (psent_mnt_type psent)) (psent' : PacketSoup) : Prop :=
+  let fix aux psent_ (l : (psent_mnt_type psent)) 
+  match l with
+  | nil => psent' = psent
+  | s :: l' => exists psent_, psent_mnt s psent_ /\ @psent_mnt_star psent_ l' psent'
+  end.
+
+*)
+
+Inductive psent_mnt_type_base (psent : PacketSoup) : Type :=
+  | Pid : psent_mnt_type_base psent
+  | Puse : forall p, In p psent -> psent_mnt_type_base psent
+.
+
+(* a list *)
+Inductive psent_mnt_type : PacketSoup -> Type :=
+  | Pbase : forall psent, psent_mnt_type_base psent -> psent_mnt_type psent
+  | Pcons : forall pkts,
+    Forall (fun p => p.(consumed) = false) pkts ->
+    forall psent, psent_mnt_type psent -> psent_mnt_type psent
+  (* HMM since we are proving, do not consider sendout1 ...? *)
+.
+
+Global Arguments Pbase : clear implicits.
+Global Arguments Pcons : clear implicits.
+
+Definition psent_mnt_base psent (s : psent_mnt_type_base psent) : PacketSoup :=
+  match s with
+  | Pid _ => psent
+  | Puse _ p _ => consume p psent
+  end.
+
+Fixpoint psent_mnt psent (l : psent_mnt_type psent) psent' : Prop :=
+  match l with
+  | Pbase _ b => psent' = psent_mnt_base b
+  | Pcons pkts _ _ l => exists psent_, psent_mnt l psent_ /\ Ineq psent' (sendout pkts psent_)
+  end.
+
+Definition state_effect_bcast (n : Address) (m : Message) (stmap : StateMap) : Prop :=
+  match m with
+  | InitialMsg r v => value_bft n r = v /\ (stmap n).(sent) r
+  | EchoMsg q r v => (stmap n).(echoed) (q, r) = Some v
+  | ReadyMsg q r v => (stmap n).(voted) (q, r) = Some v
+  end.
+
+Definition state_effect_recv (src n : Address) (m : Message) (stmap : StateMap) : Prop :=
+  match m with
+  | InitialMsg r _ => (stmap n).(echoed) (src, r)
+  | EchoMsg _ _ _ | ReadyMsg _ _ _ => In src ((stmap n).(msgcnt) m)
+  end.
+
+Inductive state_effect [psent : PacketSoup] (stmap : StateMap) : psent_mnt_type psent -> Prop :=
+  | PSid : state_effect stmap (Pbase psent (Pid _)) (* under-specified *)
+  | PSrecv : forall src n m used (Hnonbyz : is_byz n = false) (Hr : state_effect_recv src n m stmap) H,
+    let: p := mkP src n m used in
+    state_effect stmap (Pbase psent (Puse psent p H))
+  | PSbroadcast : forall n m (Hnonbyz : is_byz n = false) (Hb : state_effect_bcast n m stmap) H
+      l (Hl : state_effect stmap l),
+    let: pkts := broadcast n m in
+    state_effect stmap (Pcons pkts H psent l)
+  | PSbyz : forall n (Hnonbyz : is_byz n) p (Hc : byz_constraints (p.(msg)) (mkW stmap psent)) H,
+    state_effect stmap (Pcons (p :: nil) H psent (Pbase psent (Pid _)))
+.
+
+Local Hint Constructors state_effect : core.
+
+Tactic Notation "psent_mnt_tac" constr(kind) tactic(tac) :=
+  unshelve eapply Pcons; [ eapply kind; try eassumption | tac ]; simpl.
+
+Tactic Notation "psent_mnt_tac_base" constr(kind) :=
+  unshelve eexists; [ eapply Pbase, kind; try eassumption | ]; simpl.
+
+Ltac state_effect_solve :=
+  match goal with
+  | |- @state_effect _ _ _ => econstructor; simpl; eauto; 
+    repeat (first [ rewrite upd_refl; simpl | rewrite map_update_refl; simpl ]);
+    auto with RBinv; state_effect_solve
+  | _ => idtac
+  end.
+
+(* ad-hoc *)
+(* Ltac find_rewrite_isSome :=
+  repeat match goal with
+  | H : ?a = _ |- is_true (isSome ?a) => rewrite H
+  | H : ?a = _ |- context[isSome ?a] => rewrite H
+  end. *)
+(*
+Ltac find_rewrite_isSome :=
+  repeat match goal with
+  | H : ?a = _ |- is_true (isSome ?a) => rewrite H
+  | H : ?a = _ |- context[isSome ?a] => rewrite H
+  end.
+*)
+
+Local Hint Extern 3 (is_true (isSome ?a)) => 
+  (match goal with
+  | H : ?a = _ |- _ => rewrite H
+  end) : RBinv.
+
+Ltac psent_analyze' psent' :=
+  match psent' with
+  | consume ?p ?psent => uconstr:(Pbase psent (Puse psent p ltac:(assumption)))
+  | sendout (?pkts1 ++ ?pkts2) ?psent_ =>
+    let ss := psent_analyze' constr:(sendout pkts1 psent_) in
+    uconstr:(Pcons pkts2 _ _ ss)
+  | sendout ?pkts ?psent_ => 
+    let ss := psent_analyze' constr:(psent_) in
+    uconstr:(Pcons pkts _ _ ss)
+  | sendout1 ?p ?psent_ => 
+    (* let ss := psent_analyze' constr:(psent_) in *)
+    (* early terminate *)
+    uconstr:(Pcons (p :: nil) ltac:(now constructor) _ (Pbase _ (Pid psent_)))
+  | _ => uconstr:(Pbase _ (Pid psent'))
+  end.
+
+Ltac psent_mnt_solve :=
+  match goal with
+  (*
+  | |- exists (_ : _), _ = _ /\ _ => 
+    eexists; split; (* TODO appending anything after the semicolon here will result in non-termination? *)
+    *)
+  | |- exists (_ : _), _ = ?psent /\ _ => exists psent; split; 
+    (* [ reflexivity | solve [ reflexivity (*| intros ?; autorewrite with psent; tauto ]*) ] ] *)
+    (* does not work ... *)
+    [ reflexivity | ];
+    first [ reflexivity | intros ?; autorewrite with psent; simpl; tauto | idtac ]
+    (* why the last tactic may not work? *)
+  | |- exists (_ : _), (exists _, _) /\ _ => 
+    eexists; split; [ psent_mnt_solve | intros ?; autorewrite with psent ]; try tauto
+  | _ => idtac
+  end.
+
+Ltac psent_analyze :=
+  (* let l := fresh "l" in *)
+  try rewrite sendout0;
+  match goal with
+  | |- exists (_ : ?t), psent_mnt _ ?psent' /\ _ =>
+    let l := psent_analyze' psent' in
+    unshelve eexists l;
+    match goal with
+    | |- psent_mnt _ ?psent' /\ _ => 
+      split; [ simpl; auto; psent_mnt_solve | state_effect_solve ]
+    | _ => try apply broadcast_all_fresh
+    end
+    (* evar (l : t); exists l;
+    split; [ try rewrite sentout0; psent_analyze' l | ] *)
+  end.
+
+(* Ltac psent_analyze :=
+  let l := fresh "l" in
+  match goal with
+  | |- exists (_ : ?t), _ =>
+    evar (l : t); exists l;
+    split; [ try rewrite sentout0; psent_analyze' l | ]
+  end. *)
+
+Fact psent_mnt_sound q w w' (Hstep : system_step q w w') 
+  (Hcoh : id_coh w) (* still needed *) :
+  exists l : psent_mnt_type (sentMsgs w),
+    psent_mnt l (sentMsgs w') /\ state_effect (localState w') l.
+Proof with (try now (try rewrite sendout0; psent_mnt_tac_base Pid; auto with core)).
+  inversion_step' Hstep; clear Hstep; intros...
+  - (* the case analysis is slightly different; the None case needs to be discussed now *)
+    destruct_localState w dst as_ [ dst' sent echoed voted cnt output ].
+    unfold procMsg in Ef.
+    destruct (is_InitialMsg msg) eqn:Edecide.
+    + destruct msg as [ r v | | ]; try discriminate.
+      destruct (echoed (src, r)) eqn:EE; simplify_eq.
+      all: psent_analyze.
+    + simpl_via_is_InitialMsg_false msg.
+      destruct (in_dec _ _ _) as [ Hin | Hnotin ] in Ef.
+      1: simplify_eq; destruct msg; psent_analyze.
+      unfold routine_check in Ef; simpl in Ef.
+      destruct msg as [ | q r v | q r v ]; simpl in Ef; try discriminate.
+      all: destruct (andb _ _) eqn:EE in Ef; simpl in Ef; injection_pair Ef; 
+        [ apply andb_true_iff in EE; destruct EE as (EE & Eth%Nat.leb_le),
+            (voted (q, r)) eqn:?; try discriminate | ].
+      3-4: destruct (Nat.leb _ _) eqn:Eth2 in |- *; [ apply Nat.leb_le in Eth2 | ].
+      all: psent_analyze.
+  - destruct t as [ r ].
+    destruct_localState w n as_ [ n' sent echoed voted cnt output ].
+    simpl in E.
+    destruct (sent r) eqn:?; simplify_eq...
+    psent_analyze.
+  - (* TODO the bug happens here ... *)
+    psent_analyze. (* ???? *)
+    intros ?; autorewrite with psent; simpl; tauto.
+Qed.
+
+End Backward.
 
 (* should be useful ... intensionally inductive? *)
 (* serve as a way to tell that "at least some of the ready messages are the consequences of echo messages" *)
