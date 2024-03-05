@@ -4,6 +4,8 @@ The paper: [As easy as ABC: Optimal (A)ccountable (B)yzantine (C)onsensus is eas
 
 # Proof Explanation
 
+***Warning: the explanation here is only for the simplified version of ABC. The explanation for the full version will be updated later (since its proof no longer has a clear structure as in the simplified case).***
+
 Main efforts are put on organizing the proof. 
 
 ## What this proof does not depend on
