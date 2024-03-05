@@ -144,6 +144,17 @@ Proof.
   - exists p; auto using Reflexive_pkt_le.
 Qed.
 
+Corollary system_step_psent_persistent_weak_full [src dst msg w w' q] : 
+  (exists used, In (mkP src dst msg used) (sentMsgs w)) ->
+  system_step q w w' -> 
+  (exists used, In (mkP src dst msg used) (sentMsgs w')).
+Proof.
+  intros (used & H) Hstep.
+  eapply system_step_psent_persistent in H; eauto.
+  unfold pkt_le in H; simpl in H.
+  destruct H as (_ & [ -> | -> ] & ?); eauto.
+Qed.
+
 Corollary system_step_psent_norevert [p w w' q] : 
   In (receive_pkt p) (sentMsgs w) -> system_step q w w' -> In (receive_pkt p) (sentMsgs w').
 Proof.
@@ -153,6 +164,10 @@ Proof.
   hnf in Hle; rewrite receive_pkt_idem in Hle.
   now destruct Hle as [ -> | -> ].
 Qed.
+
+Corollary system_step_psent_norevert_full [src dst msg w w' q] :
+  In (mkP src dst msg true) (sentMsgs w) -> system_step q w w' -> In (mkP src dst msg true) (sentMsgs w').
+Proof. rewrite <- receive_pkt_intact with (p:=mkP _ _ _ _) in |- * by auto. apply system_step_psent_norevert. Qed.
 
 (* two multistep propositions *)
 

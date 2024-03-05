@@ -253,7 +253,9 @@ Definition state_mnt (st : State) (s : state_mnt_type st) : State :=
   end.
 
 (* here, psent refers to the updated packet soup. HMM do we need to include the original one? *)
-Definition psent_effect (st : State) (s : state_mnt_type st) ((* !? *) n : Address) (psent : PacketSoup) : Prop :=
+(* "n" is the external address observed from the network point of view, which will be used
+    by packet delivery, for instance *)
+Definition psent_effect (st : State) (s : state_mnt_type st) (n : Address) (psent : PacketSoup) : Prop :=
   match s with
   | Msent _ r _ =>
     incl (broadcast st.(id) (InitialMsg r (value_bft st.(id) r))) psent
@@ -295,6 +297,7 @@ Inductive state_mnt_type_list : State -> State -> Type :=
 
 (* Global Arguments MNTcons : clear implicits. *)
 
+(* an over-approx of the effect over psent? since it can say nothing about psent *)
 Fixpoint psent_effect_star (n : Address) (psent : PacketSoup) [st st'] (l : state_mnt_type_list st st') : Prop :=
   match l with
   | MNTnil _ => True
@@ -406,7 +409,7 @@ Definition msgcnt_coh st : Prop :=
     | _ => List.NoDup (st.(msgcnt) msg)
     end.
 
-Definition lift_point_to_edge (P : State -> Prop) : State -> State -> Prop :=
+Definition lift_point_to_edge {A : Type} (P : A -> Prop) : A -> A -> Prop :=
   fun st st' => P st -> P st'.
 
 Definition sent_persistent st st' : Prop := Eval unfold lift_point_to_edge in
@@ -426,8 +429,7 @@ Definition output_persistent st st' : Prop :=
 
 (* let's prove id_coh here ... *)
 
-Definition id_persistent st st' : Prop :=
-  forall n, st.(id) = n -> st'.(id) = n.
+Definition id_persistent st st' : Prop := st.(id) = st'.(id).
 
 (* TODO how to break/form invariants easily? *)
 Record node_state_invariants st st' : Prop := {
@@ -450,6 +452,7 @@ Proof.
   all: hnf in *; unfold msgcnt_coh(*, getready_coh_fwd, getready_coh_bwd1, getready_coh_bwd2 *) in *.
   all: auto.
   all: intuition.
+  - congruence.
 Qed.
 
 Fact invariants_pre_pre st (d : state_mnt_type st) :
@@ -492,7 +495,7 @@ Proof.
   hnf; intros ??? H Hstep.
   hnf in H |- *; intros n; specialize (H n).
   apply invariants with (n:=n) in Hstep.
-  destruct Hstep; auto.
+  destruct Hstep; hnf in *; congruence.
 Qed.
 
 (* length is also monotonic, but can be reduced to In + NoDup, so it is not included above *)
@@ -648,6 +651,10 @@ Qed.
 
 End State_Monotone_Proofs.
 
+(* TODO naming issue: the "forward"/"backward" invariants should be named as 
+    local to global/global to local invariants to avoid confusion with
+    the "forward"/"backward" reasoning styles *)
+
 Definition initialmsg_sent_fwd psent st : Prop :=
   forall r, st.(sent) r -> forall n, exists used, 
     In (mkP st.(id) n (InitialMsg r (value_bft st.(id) r)) used) psent.
@@ -726,8 +733,7 @@ Definition readymsg_sent_bwd p stmap : Prop :=
 Section Forward.
 
 Definition lift_node_inv (P : PacketSoup -> State -> Prop) : World -> Prop :=
-  fun w => forall n, is_byz n = false ->
-    P (sentMsgs w) (localState w n).
+  fun w => forall n, is_byz n = false -> P (sentMsgs w) (w @ n).
 
 Record node_psent_fwd_invariants psent st : Prop := {
   _ : initialmsg_sent_fwd psent st;
@@ -737,51 +743,131 @@ Record node_psent_fwd_invariants psent st : Prop := {
   _ : readymsg_sent_fwd psent st;
 }.
 (*
-#[export] Instance Transitive_node_state_invariants : Transitive node_state_invariants.
-Proof.
+Definition node_psent_fwd_invariants := lift_point_to_edge (lift_node_inv node_psent_fwd_invariants_).
+*)
+(*
+#[export] Instance Transitive_node_psent_fwd_invariants : Transitive node_psent_fwd_invariants.
+Proof. 
   hnf.
   intros ??? H H0.
-  destruct H, H0.
-  constructor.
-  (* FIXME: automatically unfold these? use autounfold, if necessary *)
-  all: hnf in *; unfold msgcnt_coh(*, getready_coh_fwd, getready_coh_bwd1, getready_coh_bwd2 *) in *.
-  all: auto.
-  all: intuition.
-Qed.
-
-Fact invariants_pre_pre st (d : state_mnt_type st) :
-  node_state_invariants st (state_mnt d).
-Proof.
-  constructor.
-  all: hnf; unfold msgcnt_coh(*, getready_coh_fwd, getready_coh_bwd1, getready_coh_bwd2*).
-  (* heuristics: auto; if auto does not work then eauto; hypothesis has what you need *)
-  all: intros; destruct d; subst; simpl in *; eauto; try hypothesis.
-  (* another layer of heuristic *)
-  all: unfold map_update; destruct_eqdec as_ ->; simpl in *; eauto; try hypothesis; try congruence.
-  - destruct msg0; try contradiction.
-    all: constructor; try assumption.
-    apply (H (EchoMsg _ _ _)).
-    apply (H (ReadyMsg _ _ _)).
-Qed.
-
-Fact invariants_pre st st' (l : state_mnt_type_list st st') :
-  node_state_invariants st st'.
-Proof.
-  induction l.
-  - constructor; hnf; auto.
-  - pose proof (invariants_pre_pre d).
-    etransitivity; eauto.
-Qed.
-
-Fact invariants q w w' (Hstep : system_step q w w') :
-  forall n, node_state_invariants (w @ n) (w' @ n).
-Proof.
-  intros n.
-  eapply state_mnt_is_invariant with (n:=n) in Hstep.
-  destruct Hstep.
-  eapply invariants_pre; eauto.
+  hnf in H, H0 |- *.
+  intuition.
 Qed.
 *)
+(* TODO generalize to arbitrary bundle? *)
+Tactic Notation "saturate" :=
+  match goal with
+    Hstep : system_step _ _ _ |- _ =>
+    pose proof (invariants Hstep) as Hinv; 
+    match goal with
+      H : context[localState _ ?n] |- _ =>
+      is_var n; specialize (Hinv n); destruct Hinv
+    end
+  end.
+
+Tactic Notation "pick" constr(def) "as_" ident(H) :=
+  first
+  [ match goal with
+    | H0 : def _ |- _ => rename H0 into H
+    | H0 : def _ _ |- _ => rename H0 into H
+    | H0 : def _ _ _ |- _ => rename H0 into H
+    end
+  | match goal with
+    | H0 : context[def] |- _ => rename H0 into H; hnf in H
+    end ];
+  unfold def in H.
+
+(* TODO need improvement *)
+Tactic Notation "pick" constr(def) "as_" ident(H) "by_" tactic2(tac) :=
+  let a := fresh "eprop" in
+  evar (a : Prop); assert a as H; subst a; [ tac; pick def as_ H; exact H | ].
+
+Tactic Notation "saturate_assumptions" :=
+  repeat match goal with
+    H : ?P -> ?Q |- _ => 
+    match type of P with
+      Prop => specialize (H ltac:(assumption))
+    end
+  end.
+(*
+(* while you can certainly prove these individually, proving them together can save some time *)
+Fact initialmsg_sent_fwd_is_invariant : is_invariant_step (lift_node_inv initialmsg_sent_fwd).
+Proof.
+  hnf; intros ??? H Hstep.
+  unfold lift_node_inv, initialmsg_sent_fwd in *.
+  intros n Hnonbyz r Hsent m.
+  specialize (H _ Hnonbyz r).
+  pick id_persistent as_ Hid by_ saturate; rewrite <- Hid; clear Hid.
+  (* examine what can cause the change? *)
+  pose proof Hstep as Hstep_.
+  apply state_mnt_is_invariant with (n:=n) in Hstep.
+  destruct Hstep as (l & Hpsent).
+  revert H.
+  induction l; intros.
+  - specialize (H ltac:(assumption) m).
+    eapply system_step_psent_persistent_weak_full; eauto.
+  - simpl in Hpsent; destruct Hpsent as (Hpsent & HH).
+    saturate_assumptions.
+    destruct d; simpl in Hpsent, IHl; try tauto.
+    unfold map_update in IHl; destruct_eqdec in_ IHl as_ ->; try tauto.
+    (* changed *)
+    exists false.
+    apply Hpsent, In_broadcast; eauto.
+Qed.
+*)
+
+(* this proof would depend on id_coh to unify the internal/external identifiers *)
+
+Fact fwd_invariants : is_invariant_step (fun w => id_coh w /\ lift_node_inv node_psent_fwd_invariants w).
+Proof.
+  hnf; intros qq ?? (Hcoh & H) Hstep.
+  apply and_wlog_r; [ eapply id_coh_is_invariant; eauto | intros Hcoh' ].
+  unfold lift_node_inv in *.
+  intros n Hnonbyz; specialize (H _ Hnonbyz).
+  specialize (Hcoh n); specialize (Hcoh' n). (* unify *)
+  (* get the effect *)
+  pose proof Hstep as Hstep_.
+  apply state_mnt_is_invariant with (n:=n) in Hstep.
+  destruct Hstep as (l & Hpsent).
+  (* need to make the invariant clause one-to-one *)
+  constructor.
+  all: match goal with |- ?def _ _ => pick def as_ H' by_ (destruct H); clear H; rename H' into H end.
+  all: hnf; rewrite Hcoh in *; rewrite Hcoh' in *.
+  (* TODO how can this be automated? want something like param_sync *)
+  1: intros r; specialize (H r).
+  2-3,5: intros q r v; specialize (H q r v).
+  5: intros m q; specialize (H m q).
+  all: intros.
+  all: revert H; induction l as [ st | st d st' l IH ]; intros.
+  all: (* all MNTnil (under-specified) cases *)
+    try solve 
+    [ eapply system_step_psent_norevert_full; eauto
+    | eapply system_step_psent_persistent_weak_full; eauto ].
+  all: simpl in Hpsent; destruct Hpsent as (Hpsent & HH).
+  all: destruct d; simpl in Hpsent, IH, (type of l); saturate_assumptions; try tauto.
+  all: unfold map_update in *; destruct_eqdec! as_ ?; simplify_eq (* also simplifies id_coh *); 
+    simpl in IH; try tauto.
+  all: try solve
+    [ exists false; apply Hpsent, In_broadcast; eauto (* for simple *)
+    | destruct (Value_eqdec v0 v) as [ -> | ];
+      try solve [ tauto | eqsolve | exists false; apply Hpsent, In_broadcast; eauto ]
+    | destruct (Address_eqdec q0 q) as [ -> | ]; try solve [ tauto | eqsolve ] ].
+  (*
+  (* need to use previously proved invariants to unify the echoed/voted values *)
+  (* ... this is one bad thing about such proofs (meaning, over state_mnt_type_list) *)
+  1:{ destruct (Value_eqdec v0 v) as [ -> | ]; try tauto. eqsolve. }
+  1-3: pose proof (invariants_pre l) as Hvv.
+  1-2: pick echoed_persistent as_ Hv by_ (destruct Hvv).
+  3: pick voted_persistent as_ Hv by_ (destruct Hvv).
+  1-3: clear Hvv; simpl in Hv; specialize (Hv q r v0); rewrite eqdec_refl in Hv; 
+    specialize (Hv eq_refl); assert (v0 = v) as -> by congruence.
+  all: try solve 
+    [ exists false; apply Hpsent, In_broadcast; eauto
+    | tauto ].
+  destruct (Address_eqdec q0 q) as [ -> | ]; auto.
+  simpl in IH; intuition.
+  *)
+Qed.
 
 End Forward.
 
@@ -805,7 +891,6 @@ Definition integrity w : Prop :=
     is_byz p = false -> is_byz q = false ->
     In v ((localState w p).(output) (q, r)) ->
     (localState w q).(sent) r /\ value_bft q r = v.
-
 
 End Main_Proof.
 
