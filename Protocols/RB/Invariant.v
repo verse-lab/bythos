@@ -183,44 +183,132 @@ Proof. unfold set_add_simple. destruct (in_dec _ _ _); simpl; eqsolve. Qed.
 
 Local Hint Resolve incl_set_add_simple : RBinv.
 
+Local Hint Resolve incl_sendout_l incl_sendout_r : psent.
+Local Hint Rewrite -> In_consume : psent.
+
 (*
 Tactic Notation "decide_msg" constr(msg) "using_" constr(decider) "eqn_" ident(E) :=
   destruct (decider msg) eqn:E.
 *)
 Section State_Monotone_Proofs.
 
-Inductive state_mnt : State -> State -> Prop :=
-  | MNT_sent : forall (st : State) r,
-    st.(sent) r = false ->
-    state_mnt st (st <| sent := map_update Round_eqdec r true st.(sent) |>)
-  | MNT_echoed : forall (st : State) q r v, 
-    st.(echoed) (q, r) = None ->
-    state_mnt st (st <| echoed := map_update AddrRdPair_eqdec (q, r) (Some v) st.(echoed) |>)
-  | MNT_msgcnt : forall (st : State) q msg,
+(* materialize *)
+(* TODO carrying proofs? *)
+Inductive state_mnt_type (st : State) : Type :=
+  | Msent : forall r,
+    st.(sent) r = false -> state_mnt_type st
+  | Mechoed : forall q r (v : Value), 
+    st.(echoed) (q, r) = None -> state_mnt_type st
+  | Mmsgcnt : forall q msg,
     (match msg with InitialMsg _ _ => False | _ => True end) ->
     let: cnt := st.(msgcnt) in
-    ~ In q (cnt msg) ->
-    state_mnt st (st <| msgcnt := map_update Message_eqdec msg (q :: cnt msg) cnt |>)
-  | MNT_voted : forall (st : State) q r v,
+    ~ In q (cnt msg) -> state_mnt_type st
+  | Mvoted : forall q r v,
     st.(voted) (q, r) = None ->
     (* TODO is this useful anymore? *)
     (th_echo4ready <= S (length (st.(msgcnt) (EchoMsg q r v))) \/
-     th_ready4ready <= S (length (st.(msgcnt) (ReadyMsg q r v)))) ->
-    state_mnt st (st <| voted := map_update AddrRdPair_eqdec (q, r) (Some v) st.(voted) |>)
-  | MNT_output : forall (st : State) q r vs',
+     th_ready4ready <= S (length (st.(msgcnt) (ReadyMsg q r v)))) -> state_mnt_type st
+  | Moutput : forall q r vs',
     let: omap := st.(output) in
     incl (omap (q, r)) vs' -> (* over approximation; actually it should be set_add *)
-    (* Forall (fun v => th_ready4output <= length (st.(msgcnt) (ReadyMsg q r v))) vs' -> *)
-    state_mnt st (st <| output := map_update AddrRdPair_eqdec (q, r) vs' omap |>)
+    state_mnt_type st
 .
 
+Global Arguments Moutput : clear implicits.
+
+(* but we can have different interpretations ... *)
+(*
+Definition state_mnt (st : State) (s : state_mnt_type st) (st' : State) : Prop :=
+  match s with
+  | Msent _ r _ =>
+    st' = (st <| sent := map_update Round_eqdec r true st.(sent) |>)
+  | Mechoed _ q r v _ =>
+    st' = (st <| echoed := map_update AddrRdPair_eqdec (q, r) (Some v) st.(echoed) |>)
+  | Mmsgcnt _ q msg _ _ =>
+    let: cnt := st.(msgcnt) in
+    st' = (st <| msgcnt := map_update Message_eqdec msg (q :: cnt msg) cnt |>)
+  | Mvoted _ q r v _ _ =>
+    st' = (st <| voted := map_update AddrRdPair_eqdec (q, r) (Some v) st.(voted) |>)
+  | Moutput _ q r vs' _ =>
+    let: omap := st.(output) in
+    st' = (st <| output := map_update AddrRdPair_eqdec (q, r) vs' omap |>)
+  end.
+*)
+
+(* as a function, directly? *)
+Definition state_mnt (st : State) (s : state_mnt_type st) : State :=
+  match s with
+  | Msent _ r _ =>
+    (st <| sent := map_update Round_eqdec r true st.(sent) |>)
+  | Mechoed _ q r v _ =>
+    (st <| echoed := map_update AddrRdPair_eqdec (q, r) (Some v) st.(echoed) |>)
+  | Mmsgcnt _ q msg _ _ =>
+    let: cnt := st.(msgcnt) in
+    (st <| msgcnt := map_update Message_eqdec msg (q :: cnt msg) cnt |>)
+  | Mvoted _ q r v _ _ =>
+    (st <| voted := map_update AddrRdPair_eqdec (q, r) (Some v) st.(voted) |>)
+  | Moutput _ q r vs' _ =>
+    let: omap := st.(output) in
+    (st <| output := map_update AddrRdPair_eqdec (q, r) vs' omap |>)
+  end.
+
+(* here, psent refers to the updated packet soup. HMM do we need to include the original one? *)
+Definition psent_effect (st : State) (s : state_mnt_type st) ((* !? *) n : Address) (psent : PacketSoup) : Prop :=
+  match s with
+  | Msent _ r _ =>
+    incl (broadcast st.(id) (InitialMsg r (value_bft st.(id) r))) psent
+  | Mechoed _ q r v _ =>
+    In (mkP q n (InitialMsg r v) true) psent /\
+    incl (broadcast st.(id) (EchoMsg q r v)) psent
+  | Mmsgcnt _ q msg _ _ =>
+    In (mkP q n msg true) psent
+  | Mvoted _ q r v _ _ =>
+    incl (broadcast st.(id) (ReadyMsg q r v)) psent
+  | Moutput _ q r vs' _ => True
+  end.
+
 (* TODO use a library for transitive closure? *)
+(*
 Inductive state_mnt_star : bool -> State -> State -> Prop :=
   | MNTs_0 : forall st, state_mnt_star false st st
   | MNTs_S : forall b st st' st'',
     state_mnt st st' ->
     state_mnt_star b st' st'' ->
     state_mnt_star true st st''.
+*)
+
+(* hmm, need dependent list in this case *)
+
+(*
+Inductive state_mnt_type_list : State -> Type :=
+  | MNTnil : forall st, state_mnt_type_list st
+  | MNTcons : forall st (d : state_mnt_type st), 
+    state_mnt_type_list (state_mnt d) ->
+    state_mnt_type_list st.
+*)
+
+Inductive state_mnt_type_list : State -> State -> Type :=
+  | MNTnil : forall st, state_mnt_type_list st st
+  | MNTcons : forall st (d : state_mnt_type st) st', 
+    state_mnt_type_list (state_mnt d) st' ->
+    state_mnt_type_list st st'.
+
+(* Global Arguments MNTcons : clear implicits. *)
+
+Fixpoint psent_effect_star (n : Address) (psent : PacketSoup) [st st'] (l : state_mnt_type_list st st') : Prop :=
+  match l with
+  | MNTnil _ => True
+  | MNTcons d l' =>
+    psent_effect d n psent /\ psent_effect_star n psent l' (* TODO setting implicit during definition? *)
+  end.
+(*
+Inductive psent_effect_star (n : Address) (psent : PacketSoup) : bool -> State -> Prop :=
+  | PEs_0 : forall st, psent_effect_star n psent false st
+  | PEs_S : forall b st st' st'' (d : psent_effect_type st),
+    psent_effect d n psent ->
+    psent_effect_star n psent b st' ->
+    psent_effect_star true st st''.
+*)
 
 (* the two tactics below are certainly not generic, but enough here *)
 (*
@@ -236,16 +324,18 @@ Tactic Notation "state_mnt_star" uconstr(l) :=
   | _ => exists false
   end; state_mnt_star_ l.
 *)
+
 Tactic Notation "state_mnt_star" constr(kind) tactic(tac) :=
-  eapply MNTs_S; [ eapply kind | tac ]; simpl.
+  unshelve eapply MNTcons; [ eapply kind; try eassumption | tac ]; simpl.
   (* using auto at the end may accidentally resolve some evars *)
 
 (* Tactic Notation "state_mnt_star_2" constr(kind1) constr(kind2) :=
   exists true; eapply MNTs_S; [ apply kind1 | eapply MNTs_S; [ apply kind2 | apply MNTs_0 ] ]; auto. *)
 
 Fact state_mnt_is_invariant q w w' (Hstep : system_step q w w') :
-  forall n, exists b, state_mnt_star b (w @ n) (w' @ n).
-Proof with (try (exists false; constructor)).
+  forall n, exists l : state_mnt_type_list (w @ n) (w' @ n), 
+    psent_effect_star n (sentMsgs w') l.
+Proof with (try (now exists (MNTnil _))).
   inversion_step' Hstep; clear Hstep; intros...
   - unfold upd.
     destruct (Address_eqdec _ _) as [ <- | Hneq ]...
@@ -257,7 +347,10 @@ Proof with (try (exists false; constructor)).
     + destruct msg as [ r v | | ]; try discriminate.
       destruct (echoed (src, r)) eqn:EE; try discriminate.
       revert E Ef; intros [= <- <-] [= <- <-]. (* TODO made tactic? *)
-      now eexists; state_mnt_star MNT_echoed (apply MNTs_0).
+      (* now eexists; state_mnt_star MNT_echoed (apply MNTs_0). *)
+      unshelve eexists.
+      1: state_mnt_star Mechoed (apply MNTnil).
+      simpl; autorewrite with psent; simpl; auto with psent.
     + simpl_via_is_InitialMsg_false msg.
       destruct (in_dec _ _ _) as [ Hin | Hnotin ] in E; try discriminate.
       revert E; intros [= <- <-].
@@ -268,6 +361,19 @@ Proof with (try (exists false; constructor)).
         [ apply andb_true_iff in EE; destruct EE as (EE & Eth%Nat.leb_le),
             (voted (q, r)) eqn:?; try discriminate | ].
       3-4: destruct (Nat.leb _ _) eqn:Eth2 in |- *; [ apply Nat.leb_le in Eth2 | ].
+      all: unshelve eexists.
+      all: match goal with 
+        | |- state_mnt_type_list _ (set output _ _) => state_mnt_star Moutput idtac
+        | _ => idtac 
+        end.
+      all: first 
+        [ state_mnt_star Mvoted (state_mnt_star Mmsgcnt (apply MNTnil))
+        | state_mnt_star Mmsgcnt (apply MNTnil)
+        | idtac ]; auto using incl_set_add_simple.
+      1-3: unfold map_update in Eth; rewrite eqdec_refl in Eth; simpl in Eth; auto.
+      all: simpl; autorewrite with psent; simpl; auto with psent.
+      intuition (auto with psent).
+      (*
       all: eexists.
       all: match goal with 
         | |- context[set output _ _] => state_mnt_star MNT_output idtac
@@ -278,13 +384,17 @@ Proof with (try (exists false; constructor)).
         | state_mnt_star MNT_msgcnt (apply MNTs_0)
         | idtac ]; auto using incl_set_add_simple.
       all: unfold map_update in Eth; rewrite eqdec_refl in Eth; simpl in Eth; auto.
+      *)
   - unfold upd.
     destruct (Address_eqdec _ _) as [ <- | Hneq ]...
     destruct t as [ r ].
     destruct (w @ n) as [ dst' sent echoed voted cnt output ].
     simpl in E.
     destruct (sent r) eqn:?; injection_pair E...
-    now eexists; state_mnt_star MNT_sent (apply MNTs_0).
+    (* now eexists; state_mnt_star MNT_sent (apply MNTs_0). *)
+    unshelve eexists.
+    1: state_mnt_star Msent (apply MNTnil).
+    simpl; autorewrite with psent; simpl; auto with psent.
 Qed.
 
 (* use state_mnt as an over-approximation to prove some state-only invariants *)
@@ -342,27 +452,27 @@ Proof.
   all: intuition.
 Qed.
 
-Fact invariants_pre_pre st st' (H : state_mnt st st') :
-  node_state_invariants st st'.
+Fact invariants_pre_pre st (d : state_mnt_type st) :
+  node_state_invariants st (state_mnt d).
 Proof.
   constructor.
   all: hnf; unfold msgcnt_coh(*, getready_coh_fwd, getready_coh_bwd1, getready_coh_bwd2*).
   (* heuristics: auto; if auto does not work then eauto; hypothesis has what you need *)
-  all: intros; inversion H; subst; simpl in *; eauto; try hypothesis.
+  all: intros; destruct d; subst; simpl in *; eauto; try hypothesis.
   (* another layer of heuristic *)
   all: unfold map_update; destruct_eqdec as_ ->; simpl in *; eauto; try hypothesis; try congruence.
   - destruct msg0; try contradiction.
     all: constructor; try assumption.
-    apply (H0 (EchoMsg _ _ _)).
-    apply (H0 (ReadyMsg _ _ _)).
+    apply (H (EchoMsg _ _ _)).
+    apply (H (ReadyMsg _ _ _)).
 Qed.
 
-Fact invariants_pre st st' b (H : state_mnt_star b st st') :
+Fact invariants_pre st st' (l : state_mnt_type_list st st') :
   node_state_invariants st st'.
 Proof.
-  induction H.
+  induction l.
   - constructor; hnf; auto.
-  - apply invariants_pre_pre in H.
+  - pose proof (invariants_pre_pre d).
     etransitivity; eauto.
 Qed.
 
@@ -586,14 +696,16 @@ Definition msgcnt_recv_fwd psent st : Prop :=
 
 Definition msgcnt_recv_bwd p stmap : Prop :=
   match p with
-  | mkP src dst m true =>
-    match m with
-    | EchoMsg _ _ _ | ReadyMsg _ _ _ =>
+  (* | mkP src dst m true => *)
+  | mkP src dst (EchoMsg _ _ _) true
+  | mkP src dst (ReadyMsg _ _ _) true =>
+    (* match m with
+    | EchoMsg _ _ _ | ReadyMsg _ _ _ => *)
       is_byz dst = false ->
         let: st := stmap dst in
-        In src (st.(msgcnt) m)
-    | _ => True
-    end
+        In src (st.(msgcnt) p.(msg))
+    (* | _ => True
+    end *)
   | _ => True
   end.
 
@@ -610,6 +722,68 @@ Definition readymsg_sent_bwd p stmap : Prop :=
       st.(voted) (q, r) = Some v
   | _ => True
   end.
+
+Section Forward.
+
+Definition lift_node_inv (P : PacketSoup -> State -> Prop) : World -> Prop :=
+  fun w => forall n, is_byz n = false ->
+    P (sentMsgs w) (localState w n).
+
+Record node_psent_fwd_invariants psent st : Prop := {
+  _ : initialmsg_sent_fwd psent st;
+  _ : initialmsg_recv_fwd psent st;
+  _ : echomsg_sent_fwd psent st;
+  _ : msgcnt_recv_fwd psent st;
+  _ : readymsg_sent_fwd psent st;
+}.
+(*
+#[export] Instance Transitive_node_state_invariants : Transitive node_state_invariants.
+Proof.
+  hnf.
+  intros ??? H H0.
+  destruct H, H0.
+  constructor.
+  (* FIXME: automatically unfold these? use autounfold, if necessary *)
+  all: hnf in *; unfold msgcnt_coh(*, getready_coh_fwd, getready_coh_bwd1, getready_coh_bwd2 *) in *.
+  all: auto.
+  all: intuition.
+Qed.
+
+Fact invariants_pre_pre st (d : state_mnt_type st) :
+  node_state_invariants st (state_mnt d).
+Proof.
+  constructor.
+  all: hnf; unfold msgcnt_coh(*, getready_coh_fwd, getready_coh_bwd1, getready_coh_bwd2*).
+  (* heuristics: auto; if auto does not work then eauto; hypothesis has what you need *)
+  all: intros; destruct d; subst; simpl in *; eauto; try hypothesis.
+  (* another layer of heuristic *)
+  all: unfold map_update; destruct_eqdec as_ ->; simpl in *; eauto; try hypothesis; try congruence.
+  - destruct msg0; try contradiction.
+    all: constructor; try assumption.
+    apply (H (EchoMsg _ _ _)).
+    apply (H (ReadyMsg _ _ _)).
+Qed.
+
+Fact invariants_pre st st' (l : state_mnt_type_list st st') :
+  node_state_invariants st st'.
+Proof.
+  induction l.
+  - constructor; hnf; auto.
+  - pose proof (invariants_pre_pre d).
+    etransitivity; eauto.
+Qed.
+
+Fact invariants q w w' (Hstep : system_step q w w') :
+  forall n, node_state_invariants (w @ n) (w' @ n).
+Proof.
+  intros n.
+  eapply state_mnt_is_invariant with (n:=n) in Hstep.
+  destruct Hstep.
+  eapply invariants_pre; eauto.
+Qed.
+*)
+
+End Forward.
 
 (* should be useful ... intensionally inductive? *)
 (* serve as a way to tell that "at least some of the ready messages are the consequences of echo messages" *)

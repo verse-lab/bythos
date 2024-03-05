@@ -15,7 +15,7 @@ Module RBAdversary (A : NetAddr) (R : RBTag) (V : Signable) (VBFT : ValueBFT A R
 Import A R V VBFT BTh BSett M P RBP Ns.
 
 Definition byz_constraints (m : Message) (w : World) : Prop :=
-  (* no constraint here *)
+  (* no constraint here, since we assume reliable communication channels *)
   True.
 
 End RBAdversary.
@@ -35,9 +35,27 @@ Module Export Ns <: NetState A M P BTh RBP := NetStateImpl A M P BTh RBP.
 Module Export RBAdv <: Adversary A M BTh BSett P RBP Ns := RBAdversary A R V VBFT BTh BSett M P RBP Ns.
 
 Include NetworkImpl A M BTh BSett P PSOp RBP Ns RBAdv.
+(*
+Definition lift_node_coh_ (P : State -> Prop) : PacketSoup -> State -> Prop :=
+  fun _ st => P st.
 
-Record Coh (w : World) : Prop := mkCoh {
-  id_coh: forall n, (localState w n).(id) = n;
-}.
+Definition lift_node_inv (P : PacketSoup -> State -> Prop) : World -> Prop :=
+  fun w => forall n, is_byz n = false ->
+    P (sentMsgs w) (localState w n).
 
+Definition lift_node_coh (P : State -> Prop) : World -> Prop :=
+  Eval unfold lift_node_inv, lift_node_coh_ in lift_node_inv (lift_node_coh_ P).
+
+Definition lift_psent_inv_ (P : StateMap -> PacketSoup -> PacketSoup -> Prop)
+  : StateMap -> PacketSoup -> Prop :=
+  fun stmap psent => P stmap psent psent.
+
+Definition lift_psent_inv (P : StateMap -> PacketSoup -> PacketSoup -> Prop)
+  : World -> Prop :=
+  Eval unfold lift_psent_inv_ in fun w => lift_psent_inv_ P (localState w) (sentMsgs w).
+
+(* TODO there is no other case where the statement depends on the external n? *)
+Definition id_coh w : Prop := 
+  forall n, is_byz n = false -> (localState w n).(id) = n.
+*)
 End RBNetwork.
