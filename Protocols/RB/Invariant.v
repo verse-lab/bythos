@@ -188,11 +188,12 @@ Tactic Notation "pick" constr(def) "as_" ident(H) "by_" tactic2(tac) :=
   let a := fresh "eprop" in
   evar (a : Prop); assert a as H; subst a; [ tac; pick def as_ H; exact H | ].
 
+(* TODO more aggressive (plus backtracking) version? *)
 Tactic Notation "saturate_assumptions" :=
   repeat match goal with
     H : ?P -> ?Q |- _ => 
     match type of P with
-      Prop => specialize (H ltac:(assumption))
+      Prop => specialize (H ltac:(try apply I; try reflexivity; assumption))
     end
   end.
 
@@ -1179,6 +1180,7 @@ Record node_psent_bwd_invariants_recv p stmap : Prop := {
 }.
 *)
 
+(*
 Definition lift_pkt_inv (P : Packet -> StateMap -> Prop) : World -> Prop :=
   fun w => forall p, In p (sentMsgs w) -> P p (localState w).
 
@@ -1194,8 +1196,35 @@ Record node_psent_bwd_invariants_recv w : Prop := {
   _ : lift_pkt_inv initialmsg_recv_bwd w;
   _ : lift_pkt_inv msgcnt_recv_bwd w;
 }.
+*)
 
-Fact bwd_invariants_sent : is_invariant_step (fun w => id_coh w /\ node_psent_bwd_invariants_sent w).
+Definition lift_pkt_inv (P : Packet -> StateMap -> Prop) : PacketSoup -> StateMap -> Prop :=
+  fun psent stmap => forall p, In p psent -> P p stmap.
+
+(*
+Record node_psent_bwd_invariants_sent psent stmap : Prop := {
+  _ : lift_pkt_inv initialmsg_sent_bwd psent stmap;
+  _ : lift_pkt_inv echomsg_sent_bwd psent stmap;
+  _ : lift_pkt_inv readymsg_sent_bwd psent stmap;
+}.
+*)
+
+Record node_psent_bwd_invariants_sent p stmap : Prop := {
+  _ : initialmsg_sent_bwd p stmap;
+  _ : echomsg_sent_bwd p stmap;
+  _ : readymsg_sent_bwd p stmap;
+}.
+
+(* this bunch can pass the cons case easily, since it does no work for fresh packets *)
+Record node_psent_bwd_invariants_recv psent stmap : Prop := {
+  _ : lift_pkt_inv initialmsg_recv_bwd psent stmap;
+  _ : lift_pkt_inv msgcnt_recv_bwd psent stmap;
+}.
+
+Local Hint Rewrite -> In_broadcast : psent.
+
+Fact bwd_invariants_sent : 
+  is_invariant_step (fun w => id_coh w /\ lift_pkt_inv node_psent_bwd_invariants_sent (sentMsgs w) (localState w)).
 Proof.
   hnf; intros q ?? (Hcoh & H) Hstep.
   apply and_wlog_r; [ eapply id_coh_is_invariant; eauto | intros Hcoh' ].
@@ -1219,49 +1248,36 @@ Proof.
   remember (sentMsgs w') as psent' eqn:Htmp; clear Htmp. (* TODO generalize? *)
   revert psent' Hpsent H. 
   induction l as [ psent (* implicitly generalized *) b | pkts ps Hf Hcheck psent l IH ]; intros.
-
-  2:{ simpl in Hse.
-  all: revert H; induction l as [ psent b | pkts Hf psent l IH ]; intros H.
-  2:{
-    simpl in Hpsent. 
-
-  
-  1:{ simpl in Hpsent. 
-  all: simpl in Hpsent; 
-    match type of Hpsent with
-    | psent_mnt 
-    estruct Hpsent as (Hpsent & HH).
-  all: 
-2:{
-  all: (* all MNTnil (under-specified) cases *)
-    try solve 
-    [ eapply system_step_psent_norevert_full; eauto
-    | eapply system_step_psent_persistent_weak_full; eauto ].
-  all: simpl in Hpsent; destruct Hpsent as (Hpsent & HH).
-  all: destruct d; simpl in Hpsent, IH, (type of l); saturate_assumptions; try tauto.
-  all: unfold map_update in *; destruct_eqdec! as_ ?; simplify_eq (* also simplifies id_coh *); 
-    simpl in IH; try tauto.
-  all: try solve
-    [ exists false; apply Hpsent, In_broadcast; eauto (* for simple *)
-    | destruct (Value_eqdec v0 v) as [ -> | ]; (* for those involve value *)
-      try solve [ tauto | eqsolve | exists false; apply Hpsent, In_broadcast; eauto ]
-      (* we can show that the value echoed/voted this time is the same as the final one, 
-          but it's not necessary *)
-    | destruct (Address_eqdec q0 q) as [ -> | ]; try solve [ tauto | eqsolve ] ].
-
-(* 
-
-    intros p Hpin.
-
-
-    Fact bwd_invariants : is_invariant_step (fun w => id_coh w /\ lift_pkt_inv node_psent_bwd_invariants w).
-    Proof.
-      hnf; intros qq ?? (Hcoh & H) Hstep.
-      apply and_wlog_r; [ eapply id_coh_is_invariant; eauto | intros Hcoh' ].
-      unfold lift_pkt_inv in *.
-      intros p Hpin.
-    
-     *)
+  all: simpl in Hse, Hpsent.
+  (* TODO why we do not need to destruct H here (and only need to destruct later)? can I explain? *)
+  - (* this bunch can pass the base case easily, since it does no work for existing packets *)
+    hnf in H |- *; intros [ src dst msg used ] Hin.
+    (* use persistent properties to solve *)
+    pose proof (invariants Hstep_) as Hinv.
+    destruct b as [ | p' Hin' ]; simpl in Hpsent; subst psent'.
+    2: apply (In_consume_conv_full Hin') in Hin; destruct Hin as (used' & Hin).
+    all: specialize (H _ Hin).
+    all: constructor.
+    all: match goal with |- ?def _ _ => pick def as_ H' by_ (destruct H); clear H; rename H' into H;
+      unfold def end.
+    all: destruct msg; try exact I; intros Hnonbyz; specialize (H Hnonbyz).
+    all: specialize (Hinv src); destruct Hinv; intuition. (* intuition works well here *)
+  - destruct Hpsent as (psent_ & Hpmnt & Hineq).
+    destruct ps as [ [ n m ] | pb ]; simpl in Hcheck; subst pkts.
+    1: destruct Hse as (Hnonbyz & Hb & He).
+    2: destruct Hse as (Hbyz & Hc & ->).
+    all: saturate_assumptions; specialize (IH _ Hpmnt H); clear H. 
+    2: simpl in Hpmnt; subst psent_.
+    all: hnf in IH |- *; intros pp Hin%Hineq; autorewrite with psent in Hin; simpl in Hin.
+    + (* interesting part *)
+      destruct Hin as [ (dst & ->) | ]; [ | intuition ].
+      constructor.
+      all: hnf; destruct m as [ r v | qq r v | qq r v ]; simpl in Hb; intuition.
+    + destruct pp as [ ? ? msg ? ], Hin as [ [ -> | [] ] | ]; try intuition.
+      simpl in Hbyz.
+      constructor.
+      all: hnf; destruct msg as [ r v | qq r v | qq r v ]; intros; eqsolve.
+Qed.
 
 End Backward.
 
