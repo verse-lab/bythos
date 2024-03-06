@@ -1210,12 +1210,14 @@ Record node_psent_bwd_invariants_sent psent stmap : Prop := {
 }.
 *)
 
+(* this bunch can pass the base case easily, since it does no work for existing packets *)
 Record node_psent_bwd_invariants_sent p stmap : Prop := {
   _ : initialmsg_sent_bwd p stmap;
   _ : echomsg_sent_bwd p stmap;
   _ : readymsg_sent_bwd p stmap;
 }.
 
+(* this bunch can pass the cons case easily, since it does no work for fresh packets *)
 Record node_psent_bwd_invariants_recv p stmap : Prop := {
   _ : initialmsg_recv_bwd p stmap;
   _ : msgcnt_recv_bwd p stmap;
@@ -1255,9 +1257,10 @@ Proof.
   all: now eapply (bwd_invariants_id_pre Hstep _) in H; eauto.
 Qed.
 
-Fact bwd_invariants_sent :
-  is_invariant_step (fun w => id_coh w (* needed, since will use psent_mnt_sound *)
-    /\ lift_pkt_inv node_psent_bwd_invariants_sent (sentMsgs w) (localState w)).
+Fact bwd_invariants :
+  is_invariant_step (fun w => id_coh w /\ (* needed, since will use psent_mnt_sound *)
+    (lift_pkt_inv node_psent_bwd_invariants_sent (sentMsgs w) (localState w)
+      /\ lift_pkt_inv node_psent_bwd_invariants_recv (sentMsgs w) (localState w))).
 Proof.
   hnf; intros q ?? (Hcoh & H) Hstep.
   apply and_wlog_r; [ eapply id_coh_is_invariant; eauto | intros Hcoh' ].
@@ -1265,82 +1268,48 @@ Proof.
   pose proof Hstep as Hstep_.
   apply psent_mnt_sound in Hstep; try assumption.
   destruct Hstep as (l & Hpsent & Hse).
-  (* need to make the invariant clause one-to-one *)
-  (* constructor.
-  all: match goal with |- _ ?def _ => pick def as_ H' by_ (destruct H); clear H; rename H' into H;
-    unfold def end.
-  all: hnf. *)
-  (*
-  all: hnf; rewrite Hcoh in *; rewrite Hcoh' in *.
-  (* TODO how can this be automated? want something like param_sync *)
-  1: intros r; specialize (H r).
-  2-3,5: intros q r v; specialize (H q r v).
-  5: intros m q; specialize (H m q).
-  all: intros.
-  *)
   remember (sentMsgs w') as psent' eqn:Htmp; clear Htmp. (* TODO generalize? *)
   revert psent' Hpsent H. 
   induction l as [ psent (* implicitly generalized *) b | pkts ps Hf Hcheck psent l IH ]; intros.
   all: simpl in Hse, Hpsent.
   (* TODO why we do not need to destruct H here (and only need to destruct later)? can I explain? *)
-  - (* this bunch can pass the base case easily, since it does no work for existing packets *)
-    destruct b as [ | p' Hin' ]; simpl in Hpsent; subst psent'.
-    + now apply (bwd_invariants_id Hstep_ psent).
+  - destruct b as [ | p' Hin' ]; simpl in Hpsent; subst psent'.
+    1: split; now apply (bwd_invariants_id Hstep_ psent).
+    split; [ apply proj1 in H | apply proj2 in H ].
     + hnf in H |- *. intros [ src dst msg used ] Hin. 
       apply (In_consume_conv_full Hin') in Hin. destruct Hin as (used' & Hin).
       specialize (H _ Hin).
       eapply (bwd_invariants_id_pre Hstep_ _) in H. simpl in H. exact H.
+    + (* check which packet is consumed this time *)
+      destruct p' as [ src' dst' msg' used' ].
+      hnf in H |- *. intros p Hin%In_consume. simpl in Hin.
+      destruct Hin as [ <- | (Hin & _) ].
+      2: specialize (H _ Hin).
+      1: destruct used'; [ specialize (H _ Hin') | ].
+      1,3: eapply (bwd_invariants_id_pre Hstep_ _) in H; simpl in H; exact H.
+      (* interesting part *)
+      clear H. destruct Hse as (Hnonbyz & Hr).
+      destruct msg' as [ r' v' | q' r' v' | q' r' v' ]; simpl in Hr.
+      all: constructor; try exact I.
+      all: hnf; simpl; auto.
   - destruct Hpsent as (psent_ & Hpmnt & Hineq), Hse as (He & Hse).
     specialize (IH He _ Hpmnt H). clear H.
-    hnf in IH |- *. intros pp Hin%Hineq. autorewrite with psent in Hin.
-    destruct Hin as [ Hin | ]; [ | intuition ].
-    destruct ps as [ [ n m ] | pb ]; simpl in Hcheck; subst pkts.
-    1: destruct Hse as (Hnonbyz & Hb).
-    2: destruct Hse as (Hbyz & Hc & ->); simpl in Hpmnt; subst psent_.
-    + (* interesting part *)
-      apply In_broadcast in Hin. destruct Hin as (dst & ->).
-      constructor.
-      all: hnf; destruct m as [ r v | qq r v | qq r v ]; simpl in Hb; intuition.
-    + destruct pp as [ ? ? msg ? ], Hin as [ -> | [] ]; try intuition.
-      simpl in Hbyz.
-      constructor.
-      all: hnf; destruct msg as [ r v | qq r v | qq r v ]; intros; eqsolve.
-Qed.
-
-Fact bwd_invariants_recv :
-  is_invariant_step (fun w => id_coh w /\ lift_pkt_inv node_psent_bwd_invariants_recv (sentMsgs w) (localState w)).
-Proof.
-  hnf; intros q ?? (Hcoh & H) Hstep.
-  apply and_wlog_r; [ eapply id_coh_is_invariant; eauto | intros Hcoh' ].
-  (* get the effect *)
-  pose proof Hstep as Hstep_.
-  apply psent_mnt_sound in Hstep; try assumption.
-  destruct Hstep as (l & Hpsent & Hse).
-  remember (sentMsgs w') as psent' eqn:Htmp; clear Htmp. (* TODO generalize? *)
-  revert psent' Hpsent H. 
-  induction l as [ psent (* implicitly generalized *) b | pkts ps Hf Hcheck psent l IH ]; intros.
-  all: simpl in Hse, Hpsent.
-  (* TODO why we do not need to destruct H here (and only need to destruct later)? can I explain? *)
-  - destruct b as [ | [ src' dst' msg' used' ] Hin' ]; simpl in Hpsent; subst psent'.
-    1: now apply (bwd_invariants_id Hstep_ psent).
-    (* check which packet is consumed this time *)
-    hnf in H |- *. intros p Hin%In_consume. simpl in Hin.
-    destruct Hin as [ <- | (Hin & _) ].
-    2: specialize (H _ Hin).
-    1: destruct used'; [ specialize (H _ Hin') | ].
-    1,3: eapply (bwd_invariants_id_pre Hstep_ _) in H; simpl in H; exact H.
-    (* interesting part *)
-    clear H. destruct Hse as (Hnonbyz & Hr).
-    destruct msg' as [ r' v' | q' r' v' | q' r' v' ]; simpl in Hr.
-    all: constructor; try exact I.
-    all: hnf; simpl; auto.
-  - (* this bunch can pass the cons case easily, since it does no work for fresh packets *)
-    destruct Hpsent as (psent_ & Hpmnt & Hineq), Hse as (He & Hse).
-    specialize (IH He _ Hpmnt H). clear H.
-    hnf in IH |- *. intros pp Hin%Hineq. autorewrite with psent in Hin.
-    destruct Hin as [ Hin | ]; [ | intuition ].
-    rewrite -> Forall_forall in Hf. apply Hf in Hin. destruct pp as [ ? ? mm ? ]. simpl in Hin. subst.
-    constructor; destruct mm; apply I.
+    split; [ apply proj1 in IH | apply proj2 in IH ].
+    all: hnf in IH |- *; intros pp Hin%Hineq; autorewrite with psent in Hin.
+    all: destruct Hin as [ Hin | ]; [ | intuition ].
+    + destruct ps as [ [ n m ] | pb ]; simpl in Hcheck; subst pkts.
+      1: destruct Hse as (Hnonbyz & Hb).
+      2: destruct Hse as (Hbyz & Hc & ->); simpl in Hpmnt; subst psent_.
+      * (* interesting part *)
+        apply In_broadcast in Hin. destruct Hin as (dst & ->).
+        constructor.
+        all: hnf; destruct m as [ r v | qq r v | qq r v ]; simpl in Hb; intuition.
+      * destruct pp as [ ? ? msg ? ], Hin as [ -> | [] ]; try intuition.
+        simpl in Hbyz.
+        constructor.
+        all: hnf; destruct msg as [ r v | qq r v | qq r v ]; intros; eqsolve.
+    + rewrite -> Forall_forall in Hf. apply Hf in Hin. destruct pp as [ ? ? mm ? ]. simpl in Hin. subst.
+      constructor; destruct mm; apply I.
 Qed.
 
 End Backward.
