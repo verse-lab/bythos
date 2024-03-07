@@ -200,6 +200,10 @@ Fact In_set_add_simple {A : Type} (eqdec : forall a1 a2 : A, {a1 = a2} + {a1 <> 
   (a a' : A) (l : list A) : In a' (set_add_simple eqdec a l) <-> a = a' \/ In a' l.
 Proof. unfold set_add_simple. destruct (in_dec _ _ _); simpl; eqsolve. Qed.
 
+Fact NoDup_set_add_simple {A : Type} (eqdec : forall a1 a2 : A, {a1 = a2} + {a1 <> a2})
+  (a : A) (l : list A) : List.NoDup l -> List.NoDup (set_add_simple eqdec a l).
+Proof. intros H. unfold set_add_simple. destruct (in_dec _ _ _); simpl; auto. now constructor. Qed.
+
 Local Hint Resolve incl_set_add_simple : RBinv.
 
 Local Hint Resolve incl_sendout_l incl_sendout_r : psent.
@@ -437,6 +441,8 @@ Definition msgcnt_coh st : Prop :=
     | _ => List.NoDup (st.(msgcnt) msg)
     end.
 
+Definition output_coh st : Prop := forall q r, List.NoDup (st.(output) (q, r)).
+
 Definition sent_persistent st st' : Prop := Eval unfold lift_point_to_edge in
   forall r, st.(sent) r -> st'.(sent) r.
 
@@ -473,9 +479,11 @@ Proof.
 Qed.
 
 Fact persistent_invariants_pre_pre st tag (d : state_mnt_type st tag) :
-  node_persistent_invariants st (state_mnt d) /\ lift_point_to_edge msgcnt_coh st (state_mnt d).
+  node_persistent_invariants st (state_mnt d) /\ lift_point_to_edge msgcnt_coh st (state_mnt d)
+    /\ lift_point_to_edge output_coh st (state_mnt d).
 Proof.
-  split; [ constructor | ].
+  split_and?.
+  1: constructor.
   all: match goal with |- lift_point_to_edge ?def _ _ => unfold def | _ => idtac end; hnf.
   (* heuristics: auto; if auto does not work then eauto; hypothesis has what you need *)
   all: intros; destruct d; subst; simpl in *; eauto; try hypothesis.
@@ -485,16 +493,18 @@ Proof.
     all: constructor; try assumption.
     apply (H (EchoMsg _ _ _)).
     apply (H (ReadyMsg _ _ _)).
+  - apply NoDup_set_add_simple, H.
 Qed.
 
 Fact persistent_invariants_pre st st' (l : state_mnt_type_list st st') :
-  node_persistent_invariants st st' /\ lift_point_to_edge msgcnt_coh st st'.
+  node_persistent_invariants st st' /\ lift_point_to_edge msgcnt_coh st st'
+    /\ lift_point_to_edge output_coh st st'.
 Proof.
   induction l.
-  - split; [ constructor | ]; hnf; auto.
-  - destruct IHl.
-    pose proof (persistent_invariants_pre_pre d) as (? & ?).
-    split; [ | hnf in *; intuition ].
+  - split_and?. 1: constructor. all: hnf; auto.
+  - destruct_and? IHl.
+    pose proof (persistent_invariants_pre_pre d) as HH. destruct_and? HH.
+    split; [ | split_and?; hnf in *; intuition ].
     etransitivity; eauto.
 Qed.
 
@@ -526,6 +536,7 @@ Qed.
 (* reformulate *)
 Record node_state_invariants st : Prop := {
   _ : msgcnt_coh st;
+  _ : output_coh st;
   _ : getready_coh_some st;
   _ : getready_coh_none st;
   _ : getoutput_coh_fwd st;
@@ -539,14 +550,10 @@ Proof.
   hnf. intros ??? H Hstep.
   hnf in H |- *. intros n. specialize (H n).
   pose proof (state_mnt_sound Hstep n) as (l & _ & Hinv_pre).
-  pose proof (persistent_invariants_pre l) as (_ & H1).
+  pose proof (persistent_invariants_pre l) as (_ & HH). destruct_and? HH.
   constructor.
   all: match goal with |- ?def _ => pick def as_ H' by_ (destruct H); 
-    match def with
-    | msgcnt_coh => hnf in H1
-    | _ => pick def as_ H'' by_ (destruct Hinv_pre)
-    end; now saturate_assumptions
-  end.
+    try (pick def as_ H'' by_ (destruct Hinv_pre)); hnf in * end; now saturate_assumptions.
 Qed.
 
 End State_Monotone_Proofs.
@@ -981,7 +988,7 @@ End Backward.
     ready messages"; but that would involve the notion of time, which is not convenient to formalize
     and use in the safety proofs *)
 
-Definition echo_is_before_ready p psent : Prop :=
+Definition echo_exists_before_ready p psent : Prop :=
   match p with
   | mkP src dst (ReadyMsg q r v) used =>
     is_byz src = false ->
@@ -989,12 +996,6 @@ Definition echo_is_before_ready p psent : Prop :=
         In (mkP src' dst' (EchoMsg q r v) true) psent
   | _ => True
   end.
-
-Definition integrity w : Prop :=
-  forall p q r v, 
-    is_byz p = false -> is_byz q = false ->
-    In v ((localState w p).(output) (q, r)) ->
-    (localState w q).(sent) r /\ value_bft q r = v.
 
 End Main_Proof.
 
