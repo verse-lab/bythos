@@ -171,7 +171,7 @@ Tactic Notation "pick" constr(def) "as_" ident(H) "by_" tactic2(tac) :=
   let a := fresh "eprop" in
   evar (a : Prop); assert a as H; subst a; [ tac; pick def as_ H; exact H | ].
 
-(* TODO more aggressive (plus backtracking) version? *)
+(* HMM more aggressive (plus backtracking) version? *)
 Tactic Notation "saturate_assumptions" :=
   repeat match goal with
     H : ?P -> ?Q |- _ => 
@@ -200,7 +200,7 @@ Local Hint Resolve incl_sendout_l incl_sendout_r : psent.
 Section State_Monotone_Proofs.
 
 (* materialize *)
-(* TODO carrying proofs? *)
+(* carrying proofs? seems OK, as long as it will never be used in equality proofs *)
 Inductive state_mnt_type (st : State) : Type :=
   | Msent : forall r,
     st.(sent) r = false -> state_mnt_type st
@@ -265,6 +265,14 @@ Inductive state_mnt_type_list : State -> State -> Type :=
     state_mnt_type_list (state_mnt d) st' ->
     state_mnt_type_list st st'.
 
+(*
+(* HMM the backwards one is more intuitive? *)
+Inductive state_mnt_type_list : State -> State -> Type :=
+  | MNTnil : forall st, state_mnt_type_list st st
+  | MNTcons : forall st st' (d : state_mnt_type st'), 
+    state_mnt_type_list st st' ->
+    state_mnt_type_list st (state_mnt d).
+*)
 (* from the experience in the backward proofs, it seems beneficial to write this as a recursive function
     instead of an inductive predicate *)
 
@@ -276,9 +284,41 @@ Fixpoint psent_effect_star (n : Address) (psent : PacketSoup) [st st'] (l : stat
     psent_effect d n psent /\ psent_effect_star n psent l' (* TODO setting implicit during definition? *)
   end.
 
-Tactic Notation "state_mnt_star" constr(kind) tactic(tac) :=
-  unshelve eapply MNTcons; [ eapply kind; try eassumption | tac ]; simpl.
-  (* using auto at the end may accidentally resolve some evars *)
+Local Ltac state_analyze_select f :=
+  match f with
+  | sent => uconstr:(Msent)
+  | echoed => uconstr:(Mechoed)
+  | voted => uconstr:(Mvoted)
+  | msgcnt => uconstr:(Mmsgcnt)
+  | output => uconstr:(Moutput)
+  end.
+
+(* need to add st' as an argument, since the size of state components in the goal will only increase;
+    so do recursion on the st' here *)
+Ltac state_analyze' st' :=
+  match st' with
+  | set ?f _ ?st =>
+    let ctor := state_analyze_select f in
+    unshelve eapply MNTcons; [ eapply ctor; try eassumption | ]; 
+      simpl; state_analyze' st
+  | _ => try solve [ apply (MNTnil _) ]
+  end.
+
+Ltac psent_effect_star_solver :=
+  (* mostly heuristics *)
+  simpl; autorewrite with psent; simpl; auto using incl_set_add_simple with psent; 
+  try solve [ intuition (auto using incl_set_add_simple with psent) ].
+
+Ltac state_analyze :=
+  try rewrite sendout0;
+  match goal with
+  | |- exists (_ : state_mnt_type_list _ ?st'), _ =>
+    unshelve eexists; [ state_analyze' st' | ];
+    match goal with
+    | |- @psent_effect_star _ _ _ _ _ => psent_effect_star_solver
+    | _ => basic_solver
+    end
+  end.
 
 Local Hint Rewrite -> In_consume : psent.
 
@@ -299,44 +339,26 @@ Proof with (try (now exists (MNTnil _))).
     unfold procMsg in E.
     destruct (is_InitialMsg msg) eqn:Edecide.
     + destruct msg as [ r v | | ]; try discriminate.
-      destruct (echoed (src, r)) eqn:EE; try discriminate.
-      revert E Ef; intros [= <- <-] [= <- <-]. (* TODO made tactic? *)
-      (* now eexists; state_mnt_star MNT_echoed (apply MNTs_0). *)
-      unshelve eexists.
-      1: state_mnt_star Mechoed (apply MNTnil).
-      simpl; autorewrite with psent; simpl; auto with psent.
+      destruct (echoed (src, r)) eqn:EE; try discriminate. simplify_eq.
+      state_analyze.
     + simpl_via_is_InitialMsg_false msg.
-      destruct (in_dec _ _ _) as [ Hin | Hnotin ] in E; try discriminate.
-      revert E; intros [= <- <-].
-      unfold routine_check in Ef; simpl in Ef.
+      destruct (in_dec _ _ _) as [ Hin | Hnotin ] in E; try discriminate. simplify_eq.
+      unfold routine_check in Ef. simpl in Ef.
       (* fine-grained discussion; avoid repetition as much as possible *)
       destruct msg as [ | q r v | q r v ]; simpl in Ef; try discriminate.
       all: destruct (andb _ _) eqn:EE in Ef; simpl in Ef; injection_pair Ef; 
         [ apply andb_true_iff in EE; destruct EE as (EE & Eth%Nat.leb_le),
             (voted (q, r)) eqn:?; try discriminate | ].
       3-4: destruct (Nat.leb _ _) eqn:Eth2 in |- *; [ apply Nat.leb_le in Eth2 | ].
-      all: unshelve eexists.
-      all: match goal with 
-        | |- state_mnt_type_list _ (set output _ _) => state_mnt_star Moutput idtac
-        | _ => idtac 
-        end.
-      all: first 
-        [ state_mnt_star Mvoted (state_mnt_star Mmsgcnt (apply MNTnil))
-        | state_mnt_star Mmsgcnt (apply MNTnil)
-        | idtac ]; auto using incl_set_add_simple.
-      1-3: unfold map_update in Eth; rewrite eqdec_refl in Eth; simpl in Eth; auto.
-      all: simpl; autorewrite with psent; simpl; auto with psent.
-      intuition (auto with psent).
+      all: state_analyze.
+      all: unfold map_update in Eth; rewrite eqdec_refl in Eth; simpl in Eth; auto.
   - unfold upd.
     destruct (Address_eqdec _ _) as [ <- | Hneq ]...
     destruct t as [ r ].
     destruct (w @ n) as [ dst' sent echoed voted cnt output ].
     simpl in E.
     destruct (sent r) eqn:?; injection_pair E...
-    (* now eexists; state_mnt_star MNT_sent (apply MNTs_0). *)
-    unshelve eexists.
-    1: state_mnt_star Msent (apply MNTnil).
-    simpl; autorewrite with psent; simpl; auto with psent.
+    state_analyze.
 Qed.
 
 (* use state_mnt as an over-approximation to prove some state-only invariants *)
@@ -383,14 +405,8 @@ Record node_state_invariants st st' : Prop := {
 
 #[export] Instance Transitive_node_state_invariants : Transitive node_state_invariants.
 Proof.
-  hnf.
-  intros ??? H H0.
-  destruct H, H0.
-  constructor.
-  (* FIXME: automatically unfold these? use autounfold, if necessary *)
-  all: hnf in *; unfold msgcnt_coh(*, getready_coh_fwd, getready_coh_bwd1, getready_coh_bwd2 *) in *.
-  all: auto.
-  all: intuition.
+  hnf. intros ??? H H0. destruct H, H0. constructor.
+  all: hnf; intuition.
   - congruence.
 Qed.
 
@@ -398,7 +414,7 @@ Fact invariants_pre_pre st (d : state_mnt_type st) :
   node_state_invariants st (state_mnt d).
 Proof.
   constructor.
-  all: hnf; unfold msgcnt_coh(*, getready_coh_fwd, getready_coh_bwd1, getready_coh_bwd2*).
+  all: hnf; unfold msgcnt_coh.
   (* heuristics: auto; if auto does not work then eauto; hypothesis has what you need *)
   all: intros; destruct d; subst; simpl in *; eauto; try hypothesis.
   (* another layer of heuristic *)
@@ -418,8 +434,12 @@ Proof.
     etransitivity; eauto.
 Qed.
 
+(* TODO is this wrapper actually useful? *)
+Definition lift_state_pair_inv (P : State -> State -> Prop) : World -> World -> Prop :=
+  fun w w' => forall n, P (w @ n) (w' @ n).
+
 Fact invariants q w w' (Hstep : system_step q w w') :
-  forall n, node_state_invariants (w @ n) (w' @ n).
+  lift_state_pair_inv node_state_invariants w w'.
 Proof.
   intros n.
   eapply state_mnt_sound with (n:=n) in Hstep.
@@ -433,7 +453,7 @@ Fact id_coh_is_invariant : is_invariant_step id_coh.
 Proof.
   hnf; intros ??? H Hstep.
   hnf in H |- *; intros n; specialize (H n).
-  apply invariants with (n:=n) in Hstep.
+  apply invariants in Hstep. hnf in Hstep. specialize (Hstep n).
   destruct Hstep; hnf in *; congruence.
 Qed.
 
@@ -771,10 +791,6 @@ Fixpoint state_effect [psent : PacketSoup] (stmap : StateMap) (l : psent_mnt_typ
     end
   end.
 
-(* TODO not very useful *)
-Tactic Notation "psent_mnt_tac_base" constr(kind) :=
-  unshelve eexists; [ eapply Pbase, kind; try eassumption | ]; simpl.
-
 Local Hint Extern 100 (is_true (isSome ?a)) => 
   (match goal with
   | H : ?a = _ |- _ => rewrite H
@@ -847,8 +863,9 @@ Fact psent_mnt_sound q w w' (Hstep : system_step q w w')
   (Hcoh : id_coh w) (* still needed *) :
   exists l : psent_mnt_type (sentMsgs w),
     psent_mnt l (sentMsgs w') /\ state_effect (localState w') l.
-Proof with (try now (try rewrite sendout0; psent_mnt_tac_base Pid; auto with core)).
-  inversion_step' Hstep; clear Hstep; intros...
+Proof.
+  inversion_step' Hstep; clear Hstep; intros.
+  - psent_analyze.
   - (* the case analysis is slightly different; the None case needs to be discussed now *)
     destruct_localState w dst as_ [ dst' sent echoed voted cnt output ].
     unfold procMsg in Ef.
@@ -869,8 +886,8 @@ Proof with (try now (try rewrite sendout0; psent_mnt_tac_base Pid; auto with cor
   - destruct t as [ r ].
     destruct_localState w n as_ [ n' sent echoed voted cnt output ].
     simpl in E.
-    destruct (sent r) eqn:?; simplify_eq...
-    psent_analyze.
+    destruct (sent r) eqn:?; simplify_eq.
+    all: psent_analyze.
   - (* TODO the bug happens here ... *)
     psent_analyze. (* ???? *)
     intros ?; autorewrite with psent; simpl; tauto.
