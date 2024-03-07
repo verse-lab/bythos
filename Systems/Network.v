@@ -1,4 +1,4 @@
-From Coq Require Import List Lia.
+From Coq Require Import List Bool Lia.
 From Coq Require ssrbool ssreflect.
 Import (coercions) ssrbool.
 Import ssreflect.SsrSyntax.
@@ -31,6 +31,32 @@ Include ByzSetting A.
   currently use (1), since we do not mean to instantiate the proof modules *)
 
 Axiom num_byz_le_t0 : num_byz <= t0.
+
+(* this will not be instantiated, so anyway *)
+
+Fact num_byz_bound [l : list Address] (Hnodup : List.NoDup l) :
+  length (filter is_byz l) <= num_byz.
+Proof.
+  unfold num_byz.
+  apply NoDup_incl_length; auto using NoDup_filter.
+  intros ? (Hin & Hbyz)%filter_In.
+  apply filter_In; auto using Address_is_finite.
+Qed.
+
+Fact at_least_one_nonfaulty [l : list Address] (Hnodup : List.NoDup l)
+  (Hlen : t0 < length l) : exists n, is_byz n = false /\ In n l.
+Proof.
+  pose proof (filter_length is_byz l).
+  pose proof (num_byz_bound Hnodup).
+  pose proof num_byz_le_t0.
+  destruct (filter (fun _ => _) l) as [ | n l0 ] eqn:E in H.
+  1: simpl in H; lia.
+  pose proof (or_introl eq_refl : In n (n :: l0)) as HH.
+  rewrite <- E in HH.
+  apply filter_In in HH.
+  exists n.
+  now rewrite <- negb_true_iff.
+Qed.
 
 End RestrictedByzSetting.
 
@@ -168,6 +194,32 @@ Qed.
 Corollary system_step_psent_norevert_full [src dst msg w w' q] :
   In (mkP src dst msg true) (sentMsgs w) -> system_step q w w' -> In (mkP src dst msg true) (sentMsgs w').
 Proof. rewrite <- receive_pkt_intact with (p:=mkP _ _ _ _) in |- * by auto. apply system_step_psent_norevert. Qed.
+
+(* a received message must be already in the last network state *)
+Fact system_step_received_inversion_full [src dst msg w w' q]
+  (* TODO well, this is not very good ... *)
+  (Hfresh1 : forall st src m, Forall (fun p => p.(consumed) = false) (snd (procMsgWithCheck st src m)))
+  (Hfresh2 : forall st t, Forall (fun p => p.(consumed) = false) (snd (procInt st t))) : 
+  In (mkP src dst msg true) (sentMsgs w') -> system_step q w w' -> 
+  exists used, In (mkP src dst msg used) (sentMsgs w).
+Proof.
+  intros H Hstep.
+  inversion Hstep; subst; eauto using Reflexive_pkt_le; simpl in *.
+  1: destruct (procMsgWithCheck _ _ _) eqn:E in *.
+  2: destruct (procInt _ _) eqn:E in *.
+  all: try subst; simpl in H.
+  all: autorewrite with psent in H.
+  1: match type of E with procMsgWithCheck ?a ?b ?c = _ => 
+    specialize (Hfresh1 a b c); rewrite Forall_forall, E in Hfresh1; simpl in Hfresh1 end. 
+  2: match type of E with procInt ?a ?b = _ => 
+    specialize (Hfresh2 a b); rewrite Forall_forall, E in Hfresh2; simpl in Hfresh2 end. 
+  2-3: destruct H as [ H | ]; eauto.
+  3: discriminate.
+  2: specialize (Hfresh2 _ H); simpl in Hfresh2; discriminate.
+  destruct H as [ H | ].
+  1: specialize (Hfresh1 _ H); simpl in Hfresh1; discriminate.
+  apply In_consume_conv_full in H; try assumption.
+Qed.
 
 (* two multistep propositions *)
 

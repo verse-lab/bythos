@@ -997,6 +997,44 @@ Definition echo_exists_before_ready p psent : Prop :=
   | _ => True
   end.
 
+Definition is_invariant_step_under (P Q : World -> Prop) : Prop :=
+  forall q w w', P w -> P w' -> Q w -> system_step q w w' -> Q w'.
+
+Lemma echo_exists_before_ready_is_invariant :
+  is_invariant_step_under (fun w => id_coh w /\
+    lift_state_inv node_state_invariants w /\
+    lift_node_inv node_psent_fwd_invariants w /\
+    lift_pkt_inv node_psent_bwd_invariants_sent (sentMsgs w) (localState w) /\
+    lift_pkt_inv node_psent_bwd_invariants_recv (sentMsgs w) (localState w))
+  (fun w => forall p, In p (sentMsgs w) -> echo_exists_before_ready p (sentMsgs w)).
+Proof with saturate_assumptions.
+  hnf. intros qq ?? Hback (Hcoh & Hst & Hfwd & Hbwds & Hbwdr) H Hstep.
+  intros [ src dst msg used ] Hin. 
+  hnf in Hbwds. specialize (Hbwds _ Hin).
+  hnf. destruct msg as [ | | q r v ]; try apply I. intros Hnonbyz.
+  pick readymsg_sent_bwd as_ Hr by_ (destruct Hbwds)...
+  pose proof (Hst src) as Hst'. 
+  pick getready_coh_some as_ Hr2 by_ (destruct Hst').
+  specialize (Hr2 _ _ _ Hr). 
+  unfold th_echo4ready, th_ready4ready in Hr2. pose proof t0_lt_N_minus_2t0 as Ht0.
+  pick msgcnt_coh as_ Hnodup by_ (destruct Hst').
+  destruct Hr2 as [ Hr2 | Hr2 ].
+  (* there must be a non-faulty sender in both cases *)
+  all: match type of Hr2 with _ <= ?ll => assert (t0 < ll) as (n & Hnonbyz' & Hin')%at_least_one_nonfaulty by lia end;
+    try solve [ eapply (Hnodup (EchoMsg _ _ _)) | eapply (Hnodup (ReadyMsg _ _ _)) ].
+  all: specialize (Hfwd _ Hnonbyz).
+  all: pick msgcnt_recv_fwd as_ Hr3 by_ (destruct Hfwd); specialize (Hr3 _ _ Hin'); rewrite Hcoh in Hr3.
+  - (* easy, base case *)
+    eauto.
+  - (* inductive case *)
+    (* exploiting the network model ... *)
+    eapply system_step_received_inversion_full in Hr3; try eassumption.
+    (* TODO must fix this *)
+    2-3: admit.
+    destruct Hr3 as (? & Hr3%H). hnf in Hr3. saturate_assumptions. 
+    destruct Hr3 as (? & ? & ? & Hr3). eapply system_step_psent_norevert_full in Hr3; eauto.
+Admitted.
+
 End Main_Proof.
 
 End RBInvariant.
