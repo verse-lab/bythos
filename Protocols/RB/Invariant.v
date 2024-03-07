@@ -270,21 +270,13 @@ Definition psent_effect (st : State) [tag] (s : state_mnt_type st tag) (n : Addr
   end.
 
 (* hmm, need dependent list in this case *)
-
+(* during construction, the state at the beginning gets closer to the one at the end *)
 Inductive state_mnt_type_list : State -> State -> Type :=
   | MNTnil : forall st, state_mnt_type_list st st
   | MNTcons : forall st tag (d : state_mnt_type st tag) st', 
     state_mnt_type_list (state_mnt d) st' ->
     state_mnt_type_list st st'.
 
-(*
-(* HMM the backwards one is more intuitive? *)
-Inductive state_mnt_type_list : State -> State -> Type :=
-  | MNTnil : forall st, state_mnt_type_list st st
-  | MNTcons : forall st st' (d : state_mnt_type st'), 
-    state_mnt_type_list st st' ->
-    state_mnt_type_list st (state_mnt d).
-*)
 (* from the experience in the backward proofs, it seems beneficial to write this as a recursive function
     instead of an inductive predicate *)
 
@@ -295,50 +287,7 @@ Fixpoint psent_effect_star (n : Address) (psent : PacketSoup) [st st'] (l : stat
   | MNTcons d l' =>
     psent_effect d n psent /\ psent_effect_star n psent l' (* TODO setting implicit during definition? *)
   end.
-(*
-(* small scale temporal logic? *)
-(* FIXME: the checkers here are too ad-hoc. any way to improve them? *)
-Fixpoint eventually_vote q r v [st st'] (l : state_mnt_type_list st st') : Prop :=
-  match l with
-  | MNTnil _ => False
-  | MNTcons d l' =>
-    match d with
-    | Mvoted _ q' r' v' _ _ => (q = q' /\ r = r' /\ v = v') \/ eventually_vote q r v l'
-    | _ => eventually_vote q r v l'
-    end
-  end.
 
-Fixpoint eventually_output q r v [st st'] (l : state_mnt_type_list st st') : Prop :=
-  match l with
-  | MNTnil _ => False
-  | MNTcons d l' =>
-    match d with
-    | Moutput _ q' r' v' _ => (q = q' /\ r = r' /\ v = v') \/ eventually_output q r v l'
-    | _ => eventually_output q r v l'
-    end
-  end.
-
-Fixpoint promise_check [st st'] (l : state_mnt_type_list st st') : Prop :=
-  match l with
-  | MNTnil _ => True
-  | MNTcons d l' =>
-    (match d with
-    | Mmsgcnt _ q msg _ _ =>
-      let: st_ := state_mnt d in
-      match msg with
-      | EchoMsg q r v =>
-        th_echo4ready <= length (st_.(msgcnt) msg) -> st_.(voted) (q, r) = None ->
-          eventually_vote q r v l'
-      | ReadyMsg q r v =>
-        (th_ready4ready <= length (st_.(msgcnt) msg) -> st_.(voted) (q, r) = None ->
-          eventually_vote q r v l') /\
-        (th_ready4output <= length (st_.(msgcnt) msg) -> eventually_output q r v l')
-      | _ => False
-      end
-    | _ => True
-    end) /\ promise_check l'
-  end.
-*)
 Local Ltac state_analyze_select f :=
   match f with
   | sent => uconstr:(Msent)
@@ -350,23 +299,15 @@ Local Ltac state_analyze_select f :=
 
 (* need to add st' as an argument, since the size of state components in the goal will only increase;
     so do recursion on the st' here *)
-(* this constructs the sequence in the reversed order ... 
-    the refl check of record update is so good that this bug is not exposed *)
-(*
-Ltac state_analyze' st' :=
-  match st' with
-  | set ?f _ ?st =>
-    let ctor := state_analyze_select f in
-    unshelve eapply MNTcons; [ eapply ctor; try eassumption | ]; 
-      simpl; state_analyze' st
-  | _ => try solve [ apply (MNTnil _) ]
-  end.
-*)
 
 Ltac state_analyze' st' :=
   match st' with
   | set ?f _ ?st =>
     let ctor := state_analyze_select f in
+    (* this constructs the sequence in the reversed order ... 
+      the refl check of record update is so good that this bug is not exposed *)
+    (* unshelve eapply MNTcons; [ eapply ctor; try eassumption | ]; 
+      simpl; state_analyze' st *)
     state_analyze' st;
     match goal with 
     | |- state_mnt_type_list _ _ =>
@@ -396,9 +337,14 @@ Ltac state_analyze :=
 
 Local Hint Rewrite -> In_consume : psent.
 
+(* implication-shaped invariants (therefore async) *)
+(* the below are pointed *)
+
 (* in the dependency graph, the update of voted happens after the change of msgcnt
-    and this dependency is tracked in the basic block, so it is OK to prove here *)
-(* but for the none case, the dependency is reversed *)
+    and this dependency is tracked in the basic block, so the "some" invariant can
+    be proved by induction on state_mnt_type_list; 
+    but for the "none" case, the dependency is reversed *)
+(* but now they are proved together, anyway *)
 Definition getready_coh_some st : Prop :=
   forall q r v, 
     st.(voted) (q, r) = Some v ->
@@ -573,99 +519,9 @@ Proof.
   apply state_invariants in Hstep. hnf in Hstep. specialize (Hstep n).
   destruct Hstep; hnf in *; congruence.
 Qed.
-(*
-(* after proving "state_invariants_pre", we can give meaning to the shape check *)
-Fact eventually_vote_effect q r v st st' l (H : @eventually_vote q r v st st' l) :
-  st'.(voted) (q, r) = Some v.
-Proof. 
-  induction l; simpl in H; try contradiction. 
-  destruct d; try tauto. destruct H; try tauto.
-  destruct_and? H. subst.
-  simpl in l. pick voted_persistent as_ Hp by_ (pose proof (state_invariants_pre l) as []).
-  apply Hp. simpl. now rewrite map_update_refl.
-Qed.
 
-Fact eventually_output_effect q r v st st' l (H : @eventually_output q r v st st' l) :
-  In v (st'.(output) (q, r)).
-Proof. 
-  induction l; simpl in H; try contradiction. 
-  destruct d; try tauto. destruct H; try tauto.
-  destruct_and? H. subst.
-  simpl in l. pick output_persistent as_ Hp by_ (pose proof (state_invariants_pre l) as []).
-  apply Hp. simpl. rewrite map_update_refl, In_set_add_simple. auto.
-Qed.
-*)
 (* length is also monotonic, but can be reduced to In + NoDup, so it is not included above *)
 
-(* implication-shaped invariants (therefore async) *)
-(* the above are pointed *)
-
-(*
-#[export] Instance Transitive_node_state_invariants_2 : Transitive node_state_invariants_2.
-Proof.
-  hnf. intros ??? H H0. destruct H, H0. constructor.
-  all: hnf; intuition.
-Qed.
-*)
-
-(*
-Tactic Notation "solvetac" tactic(tac) :=
-  constructor; hnf; unfold getready_coh_fwd, getready_coh_bwd1, getready_coh_bwd2, getoutput_coh; tac.
-
-#[export] Instance Reflexive_node_state_invariants_2 : Reflexive node_state_invariants_2.
-Proof. solvetac auto. Qed.
-
-(* let's try proving the things above directly, to see whether direct style proving is indeed difficult *)
-(* the proof skeleton is basically the same *)
-Fact invariants_2 q w w' (Hstep : system_step q w w') :
-  forall n, node_state_invariants_2 (w @ n) (w' @ n).
-Proof.
-  intros n.
-  inversion_step' Hstep; clear Hstep; intros; try reflexivity.
-  - unfold upd.
-    destruct (Address_eqdec _ _) as [ <- | Hneq ]; [ | reflexivity ].
-    destruct (procMsg _ _ _) as [ (st', ms) | ] eqn:E in Ef.
-    2: injection_pair Ef; reflexivity.
-    destruct (w @ dst) as [ dst' sent echoed voted cnt output ].
-    unfold procMsg in E.
-    destruct (is_InitialMsg msg) eqn:Edecide.
-    + destruct msg as [ r v | | ]; try discriminate.
-      destruct (echoed (src, r)) eqn:EE; try discriminate.
-      revert E Ef; intros [= <- <-] [= <- <-].
-      solvetac auto.
-    + simpl_via_is_InitialMsg_false msg.
-      destruct (in_dec _ _ _) as [ Hin | Hnotin ] in E; try discriminate.
-      revert E; intros [= <- <-].
-      unfold routine_check in Ef; simpl in Ef.
-      destruct msg as [ | q r v | q r v ]; simpl in Ef; try discriminate.
-      all: destruct (andb _ _) eqn:EE in Ef; simpl in Ef; injection_pair Ef; 
-        [ apply andb_true_iff in EE; destruct EE as (EE & Eth%Nat.leb_le),
-            (voted (q, r)) eqn:?; try discriminate 
-        | apply andb_false_iff in EE; rewrite Nat.leb_gt in EE ].
-      3-4: destruct (Nat.leb _ _) eqn:Eth2 in |- *; 
-        [ apply Nat.leb_le in Eth2 | apply Nat.leb_nle in Eth2 ].
-      all: solvetac
-        (match goal with |- (_ /\ _ /\ _) -> _ => intros (Ha & Hb & Hc) | _ => intros H end;
-          intros; split_and?; intros;
-        simpl in *; unfold map_update in *; destruct_eqdec! as_ ?; simplify_eq;
-        simpl in *; try solve [ eauto | tauto | intuition ]).
-      all: try rewrite In_set_add_simple in *.
-      all: try solve 
-        [ rewrite H; split; auto; lia (* for th_ready4output goals without v = v *)
-        | rewrite H; eqsolve (* for th_ready4output goals with v = v *)
-        | rewrite H in EE; simpl in EE; eqsolve (* for lt goals *)
-        | match goal with
-          | |- context[?n1 <= S ?n2] => pose proof (fun H => Nat.le_trans n1 _ _ H (le_S _ _ (le_n n2)))
-          end; firstorder (* for le or le goals *) ].
-  - unfold upd.
-    destruct (Address_eqdec _ _) as [ -> | Hneq ]; try reflexivity.
-    destruct t as [ r ].
-    destruct (w @ n) as [ dst' sent echoed voted cnt output ].
-    simpl in E.
-    destruct (sent r) eqn:?; injection_pair E; try reflexivity.
-    solvetac auto.
-Qed.
-*)
 End State_Monotone_Proofs.
 
 (* TODO naming issue: the "forward"/"backward" invariants should be named as 
@@ -720,16 +576,11 @@ Definition msgcnt_recv_fwd psent st : Prop :=
 
 Definition msgcnt_recv_bwd p stmap : Prop :=
   match p with
-  (* | mkP src dst m true => *)
   | mkP src dst (EchoMsg _ _ _) true
   | mkP src dst (ReadyMsg _ _ _) true =>
-    (* match m with
-    | EchoMsg _ _ _ | ReadyMsg _ _ _ => *)
-      is_byz dst = false ->
-        let: st := stmap dst in
-        In src (st.(msgcnt) p.(msg))
-    (* | _ => True
-    end *)
+    is_byz dst = false ->
+      let: st := stmap dst in
+      In src (st.(msgcnt) p.(msg))
   | _ => True
   end.
 
@@ -949,7 +800,6 @@ Ltac psent_mnt_solve :=
   end.
 
 Ltac psent_analyze :=
-  (* let l := fresh "l" in *)
   try rewrite sendout0;
   match goal with
   | |- exists (_ : ?t), psent_mnt _ ?psent' /\ _ =>
@@ -961,8 +811,6 @@ Ltac psent_analyze :=
     (* | _ => try apply broadcast_all_fresh *)
     | _ => idtac
     end
-    (* evar (l : t); exists l;
-    split; [ try rewrite sentout0; psent_analyze' l | ] *)
   end.
 
 Fact psent_mnt_sound q w w' (Hstep : system_step q w w') 
