@@ -28,6 +28,17 @@ Definition is_InitialMsg (m : Message) :=
 
 Global Arguments is_InitialMsg !_ /.
 
+(* well, certainly not reusable *)
+Tactic Notation "simpl_via_is_InitialMsg_false" constr(msg) :=
+  repeat match goal with
+  | H : context[match msg with InitialMsg _ _ => _ | EchoMsg _ _ _ | ReadyMsg _ _ _ => ?ee end] |- _ =>
+    replace (match msg with InitialMsg _ _ => _ | EchoMsg _ _ _ | ReadyMsg _ _ _ => ee end)
+      with ee in H by (destruct msg; try discriminate; reflexivity)
+  | |- context[match msg with InitialMsg _ _ => _ | EchoMsg _ _ _ | ReadyMsg _ _ _ => ?ee end] =>
+    replace (match msg with InitialMsg _ _ => _ | EchoMsg _ _ _ | ReadyMsg _ _ _ => ee end)
+      with ee by (destruct msg; try discriminate; reflexivity)
+  end.
+
 Tactic Notation "simpl_pkt" :=
   simpl dst in *; simpl src in *; simpl msg in *; simpl consumed in *.
 
@@ -111,16 +122,6 @@ Tactic Notation "destruct_localState" ident(w) ident(n)
 Tactic Notation "destruct_localState" ident(w) ident(n) "as_" simple_intropattern(pat) :=
   let E := fresh "E" in
   destruct_localState w n as_ pat eqn_ E; clear E.
-
-Tactic Notation "simpl_via_is_InitialMsg_false" constr(msg) :=
-  repeat match goal with
-  | H : context[match msg with InitialMsg _ _ => _ | EchoMsg _ _ _ | ReadyMsg _ _ _ => ?ee end] |- _ =>
-    replace (match msg with InitialMsg _ _ => _ | EchoMsg _ _ _ | ReadyMsg _ _ _ => ee end)
-      with ee in H by (destruct msg; try discriminate; reflexivity)
-  | |- context[match msg with InitialMsg _ _ => _ | EchoMsg _ _ _ | ReadyMsg _ _ _ => ?ee end] =>
-    replace (match msg with InitialMsg _ _ => _ | EchoMsg _ _ _ | ReadyMsg _ _ _ => ee end)
-      with ee by (destruct msg; try discriminate; reflexivity)
-  end.
 
 Tactic Notation "eqsolve" := solve [ intuition congruence | intuition discriminate ].
 
@@ -213,8 +214,8 @@ Inductive state_mnt_type (st : State) : Type :=
   | Mvoted : forall q r v,
     st.(voted) (q, r) = None ->
     (* TODO is this useful anymore? *)
-    (th_echo4ready <= S (length (st.(msgcnt) (EchoMsg q r v))) \/
-     th_ready4ready <= S (length (st.(msgcnt) (ReadyMsg q r v)))) -> state_mnt_type st
+    (th_echo4ready <= length (st.(msgcnt) (EchoMsg q r v)) \/
+     th_ready4ready <= length (st.(msgcnt) (ReadyMsg q r v))) -> state_mnt_type st
   | Moutput : forall q r vs',
     let: omap := st.(output) in
     incl (omap (q, r)) vs' -> (* over approximation; actually it should be set_add *)
@@ -295,6 +296,9 @@ Local Ltac state_analyze_select f :=
 
 (* need to add st' as an argument, since the size of state components in the goal will only increase;
     so do recursion on the st' here *)
+(* this constructs the sequence in the reversed order ... 
+    the refl check of record update is so good that this bug is not exposed *)
+(*
 Ltac state_analyze' st' :=
   match st' with
   | set ?f _ ?st =>
@@ -302,6 +306,20 @@ Ltac state_analyze' st' :=
     unshelve eapply MNTcons; [ eapply ctor; try eassumption | ]; 
       simpl; state_analyze' st
   | _ => try solve [ apply (MNTnil _) ]
+  end.
+*)
+
+Ltac state_analyze' st' :=
+  match st' with
+  | set ?f _ ?st =>
+    let ctor := state_analyze_select f in
+    state_analyze' st;
+    match goal with 
+    | |- state_mnt_type_list _ _ =>
+      unshelve eapply MNTcons; [ eapply ctor; try eassumption | ]; simpl
+    | _ => idtac
+    end
+  | _ => idtac
   end.
 
 Ltac psent_effect_star_solver :=
@@ -313,10 +331,10 @@ Ltac state_analyze :=
   try rewrite sendout0;
   match goal with
   | |- exists (_ : state_mnt_type_list _ ?st'), _ =>
-    unshelve eexists; [ state_analyze' st' | ];
+    unshelve eexists; [ state_analyze' st'; try solve [ apply (MNTnil _) ] | ];
     match goal with
     | |- @psent_effect_star _ _ _ _ _ => psent_effect_star_solver
-    | _ => basic_solver
+    | _ => try basic_solver
     end
   end.
 
@@ -351,7 +369,6 @@ Proof with (try (now exists (MNTnil _))).
             (voted (q, r)) eqn:?; try discriminate | ].
       3-4: destruct (Nat.leb _ _) eqn:Eth2 in |- *; [ apply Nat.leb_le in Eth2 | ].
       all: state_analyze.
-      all: unfold map_update in Eth; rewrite eqdec_refl in Eth; simpl in Eth; auto.
   - unfold upd.
     destruct (Address_eqdec _ _) as [ <- | Hneq ]...
     destruct t as [ r ].
