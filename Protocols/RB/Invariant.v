@@ -338,7 +338,7 @@ Ltac state_analyze :=
 Local Hint Rewrite -> In_consume : psent.
 
 (* implication-shaped invariants (therefore async) *)
-(* the below are pointed *)
+(* "msgcnt_coh" is pointed, so proved in another batch *)
 
 (* in the dependency graph, the update of voted happens after the change of msgcnt
     and this dependency is tracked in the basic block, so the "some" invariant can
@@ -370,7 +370,7 @@ Definition getoutput_coh_bwd st : Prop :=
 Definition lift_point_to_edge {A : Type} (P : A -> Prop) : A -> A -> Prop :=
   fun st st' => P st -> P st'.
 
-Record node_state_invariants_2 st st' : Prop := {
+Record node_state_invariants_pre st st' : Prop := {
   _ : lift_point_to_edge getready_coh_some st st';
   _ : lift_point_to_edge getready_coh_none st st';
   _ : lift_point_to_edge getoutput_coh_fwd st st';
@@ -383,7 +383,7 @@ Record node_state_invariants_2 st st' : Prop := {
 
 Fact state_mnt_sound q w w' (Hstep : system_step q w w') :
   forall n, exists l : state_mnt_type_list (w @ n) (w' @ n), 
-    psent_effect_star n (sentMsgs w') l /\ node_state_invariants_2 (w @ n) (w' @ n).
+    psent_effect_star n (sentMsgs w') l /\ node_state_invariants_pre (w @ n) (w' @ n).
 Proof with (try (now exists (MNTnil _))).
   inversion_step' Hstep; clear Hstep; intros...
   - unfold upd.
@@ -455,9 +455,7 @@ Definition output_persistent st st' : Prop :=
 
 Definition id_persistent st st' : Prop := st.(id) = st'.(id).
 
-(* TODO how to break/form invariants easily? *)
-Record node_state_invariants st st' : Prop := {
-  _ : lift_point_to_edge msgcnt_coh st st';
+Record node_persistent_invariants st st' : Prop := {
   _ : sent_persistent st st';
   _ : echoed_persistent st st';
   _ : msgcnt_persistent st st';
@@ -466,17 +464,17 @@ Record node_state_invariants st st' : Prop := {
   _ : id_persistent st st';
 }.
 
-#[export] Instance Transitive_node_state_invariants : Transitive node_state_invariants.
+#[export] Instance Transitive_node_persistent_invariants : Transitive node_persistent_invariants.
 Proof.
   hnf. intros ??? H H0. destruct H, H0. constructor.
   all: hnf; intuition.
   - congruence.
 Qed.
 
-Fact state_invariants_pre_pre st tag (d : state_mnt_type st tag) :
-  node_state_invariants st (state_mnt d).
+Fact persistent_invariants_pre_pre st tag (d : state_mnt_type st tag) :
+  node_persistent_invariants st (state_mnt d) /\ lift_point_to_edge msgcnt_coh st (state_mnt d).
 Proof.
-  constructor.
+  split; [ constructor | ].
   all: match goal with |- lift_point_to_edge ?def _ _ => unfold def | _ => idtac end; hnf.
   (* heuristics: auto; if auto does not work then eauto; hypothesis has what you need *)
   all: intros; destruct d; subst; simpl in *; eauto; try hypothesis.
@@ -488,12 +486,14 @@ Proof.
     apply (H (ReadyMsg _ _ _)).
 Qed.
 
-Fact state_invariants_pre st st' (l : state_mnt_type_list st st') :
-  node_state_invariants st st'.
+Fact persistent_invariants_pre st st' (l : state_mnt_type_list st st') :
+  node_persistent_invariants st st' /\ lift_point_to_edge msgcnt_coh st st'.
 Proof.
   induction l.
-  - constructor; hnf; auto.
-  - pose proof (state_invariants_pre_pre d).
+  - split; [ constructor | ]; hnf; auto.
+  - destruct IHl.
+    pose proof (persistent_invariants_pre_pre d) as (? & ?).
+    split; [ | hnf in *; intuition ].
     etransitivity; eauto.
 Qed.
 
@@ -501,13 +501,13 @@ Qed.
 Definition lift_state_pair_inv (P : State -> State -> Prop) : World -> World -> Prop :=
   fun w w' => forall n, P (w @ n) (w' @ n).
 
-Fact state_invariants q w w' (Hstep : system_step q w w') :
-  lift_state_pair_inv node_state_invariants w w'.
+Fact persistent_invariants q w w' (Hstep : system_step q w w') :
+  lift_state_pair_inv node_persistent_invariants w w'.
 Proof.
   intros n.
   eapply state_mnt_sound with (n:=n) in Hstep.
   destruct Hstep as (l & _).
-  eapply state_invariants_pre; eauto.
+  eapply persistent_invariants_pre; eauto.
 Qed.
 
 Definition id_coh w : Prop := forall n, (w @ n).(id) = n.
@@ -516,11 +516,37 @@ Fact id_coh_is_invariant : is_invariant_step id_coh.
 Proof.
   hnf; intros ??? H Hstep.
   hnf in H |- *; intros n; specialize (H n).
-  apply state_invariants in Hstep. hnf in Hstep. specialize (Hstep n).
+  apply persistent_invariants in Hstep. hnf in Hstep. specialize (Hstep n).
   destruct Hstep; hnf in *; congruence.
 Qed.
 
 (* length is also monotonic, but can be reduced to In + NoDup, so it is not included above *)
+
+(* reformulate *)
+Record node_state_invariants st : Prop := {
+  _ : msgcnt_coh st;
+  _ : getready_coh_some st;
+  _ : getready_coh_none st;
+  _ : getoutput_coh_fwd st;
+  _ : getoutput_coh_bwd st;
+}.
+
+Definition lift_state_inv (P : State -> Prop) : World -> Prop := fun w => forall n, P (w @ n).
+
+Fact state_invariants : is_invariant_step (lift_state_inv node_state_invariants).
+Proof.
+  hnf. intros ??? H Hstep.
+  hnf in H |- *. intros n. specialize (H n).
+  pose proof (state_mnt_sound Hstep n) as (l & _ & Hinv_pre).
+  pose proof (persistent_invariants_pre l) as (_ & H1).
+  constructor.
+  all: match goal with |- ?def _ => pick def as_ H' by_ (destruct H); 
+    match def with
+    | msgcnt_coh => hnf in H1
+    | _ => pick def as_ H'' by_ (destruct Hinv_pre)
+    end; now saturate_assumptions
+  end.
+Qed.
 
 End State_Monotone_Proofs.
 
@@ -616,7 +642,7 @@ Record node_psent_fwd_invariants psent st : Prop := {
 Tactic Notation "saturate" :=
   match goal with
     Hstep : system_step _ _ _ |- _ =>
-    pose proof (state_invariants Hstep) as Hinv; 
+    pose proof (persistent_invariants Hstep) as Hinv; 
     match goal with
       H : context[localState _ ?n] |- _ =>
       is_var n; specialize (Hinv n); destruct Hinv
@@ -870,7 +896,7 @@ Fact bwd_invariants_id_pre q w w' (Hstep : system_step q w w') p :
   node_psent_bwd_invariants_recv p (localState w')).
 Proof.
   destruct p as [ src dst msg used ].
-  pose proof (state_invariants Hstep) as Hinv. (* use persistent properties to solve *)
+  pose proof (persistent_invariants Hstep) as Hinv. (* use persistent properties to solve *)
   split; intros H.
   1: intros used'; simpl.
   all: constructor.
