@@ -410,7 +410,7 @@ Proof.
   - congruence.
 Qed.
 
-Fact invariants_pre_pre st (d : state_mnt_type st) :
+Fact state_invariants_pre_pre st (d : state_mnt_type st) :
   node_state_invariants st (state_mnt d).
 Proof.
   constructor.
@@ -425,12 +425,12 @@ Proof.
     apply (H (ReadyMsg _ _ _)).
 Qed.
 
-Fact invariants_pre st st' (l : state_mnt_type_list st st') :
+Fact state_invariants_pre st st' (l : state_mnt_type_list st st') :
   node_state_invariants st st'.
 Proof.
   induction l.
   - constructor; hnf; auto.
-  - pose proof (invariants_pre_pre d).
+  - pose proof (state_invariants_pre_pre d).
     etransitivity; eauto.
 Qed.
 
@@ -438,13 +438,13 @@ Qed.
 Definition lift_state_pair_inv (P : State -> State -> Prop) : World -> World -> Prop :=
   fun w w' => forall n, P (w @ n) (w' @ n).
 
-Fact invariants q w w' (Hstep : system_step q w w') :
+Fact state_invariants q w w' (Hstep : system_step q w w') :
   lift_state_pair_inv node_state_invariants w w'.
 Proof.
   intros n.
   eapply state_mnt_sound with (n:=n) in Hstep.
   destruct Hstep as (l & _).
-  eapply invariants_pre; eauto.
+  eapply state_invariants_pre; eauto.
 Qed.
 
 Definition id_coh w : Prop := forall n, (w @ n).(id) = n.
@@ -453,7 +453,7 @@ Fact id_coh_is_invariant : is_invariant_step id_coh.
 Proof.
   hnf; intros ??? H Hstep.
   hnf in H |- *; intros n; specialize (H n).
-  apply invariants in Hstep. hnf in Hstep. specialize (Hstep n).
+  apply state_invariants in Hstep. hnf in Hstep. specialize (Hstep n).
   destruct Hstep; hnf in *; congruence.
 Qed.
 
@@ -659,7 +659,7 @@ Record node_psent_fwd_invariants psent st : Prop := {
 Tactic Notation "saturate" :=
   match goal with
     Hstep : system_step _ _ _ |- _ =>
-    pose proof (invariants Hstep) as Hinv; 
+    pose proof (state_invariants Hstep) as Hinv; 
     match goal with
       H : context[localState _ ?n] |- _ =>
       is_var n; specialize (Hinv n); destruct Hinv
@@ -916,7 +916,7 @@ Fact bwd_invariants_id_pre q w w' (Hstep : system_step q w w') p :
   node_psent_bwd_invariants_recv p (localState w')).
 Proof.
   destruct p as [ src dst msg used ].
-  pose proof (invariants Hstep) as Hinv. (* use persistent properties to solve *)
+  pose proof (state_invariants Hstep) as Hinv. (* use persistent properties to solve *)
   split; intros H.
   1: intros used'; simpl.
   all: constructor.
