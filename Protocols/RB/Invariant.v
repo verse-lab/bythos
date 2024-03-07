@@ -184,6 +184,7 @@ Tactic Notation "saturate_assumptions" :=
 Ltac isSome_rewrite :=
   repeat match goal with
   | H : ?a = _, H0 : context[isSome ?a] |- _ => rewrite H in H0; simpl in H0
+  | H : ?a = _ |- context[isSome ?a] => rewrite H; simpl
   end.
 
 Create HintDb RBinv.
@@ -774,16 +775,11 @@ Fixpoint state_effect [psent : PacketSoup] (stmap : StateMap) (l : psent_mnt_typ
     end
   end.
 
-Local Hint Extern 100 (is_true (isSome ?a)) => 
-  (match goal with
-  | H : ?a = _ |- _ => rewrite H
-  end) : RBinv.
-
 Ltac state_effect_solve :=
   match goal with
   | |- @state_effect _ _ _ => simpl; eauto; 
     repeat (first [ rewrite upd_refl; simpl | rewrite map_update_refl; simpl ]);
-    auto with RBinv (* use the above heuristic tactic *)
+    try isSome_rewrite; auto
   | _ => idtac
   end.
 
@@ -907,8 +903,9 @@ Proof.
   (* TODO this is bad. *)
   match goal with 
     H : is_true (isSome (?f ?st ?key)), H0 : context[?st] |- is_true (isSome _) => 
-    destruct (f st key) eqn:E in H; try discriminate; apply H0 in E; auto with RBinv
+    destruct (f st key) eqn:E in H; try discriminate; apply H0 in E
   end.
+  now isSome_rewrite.
 Qed.
 
 Corollary bwd_invariants_id q w w' (Hstep : system_step q w w') psent :
