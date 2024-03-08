@@ -49,11 +49,6 @@ Tactic Notation "simpl_pkt" :=
 Tactic Notation "simpl_world" :=
   simpl localState in *; simpl sentMsgs in *.
 
-Tactic Notation "injection_pair" hyp(H) :=
-  match type of H with
-    (?a, ?b) = (?c, ?d) => is_var c; is_var d; injection H as <-; try subst c; try subst d
-  end.
-
 Tactic Notation "inversion_step_" hyp(H) ident(Heq) :=
   (* conventional naming *)
   let n := fresh "n" in
@@ -397,8 +392,7 @@ Proof with (try (now exists (MNTnil _))).
   inversion_step' Hstep; clear Hstep; intros...
   - unfold upd.
     destruct (Address_eqdec _ _) as [ <- | Hneq ]...
-    destruct (procMsg _ _ _) as [ (st', ms) | ] eqn:E in Ef.
-    2: injection_pair Ef...
+    destruct (procMsg _ _ _) as [ (st', ms) | ] eqn:E in Ef; simplify_eq...
     destruct (w @ dst) as [ dst' sent echoed voted cnt output ].
     unfold procMsg in E.
     destruct (is_InitialMsg msg) eqn:Edecide.
@@ -411,7 +405,7 @@ Proof with (try (now exists (MNTnil _))).
       unfold routine_check in Ef. simpl in Ef.
       (* fine-grained discussion; avoid repetition as much as possible *)
       destruct msg as [ | q r v | q r v ]; simpl in Ef; try discriminate.
-      all: destruct (andb _ _) eqn:EE in Ef; simpl in Ef; injection_pair Ef; 
+      all: destruct (andb _ _) eqn:EE in Ef; simpl in Ef; simplify_eq;
         [ apply andb_true_iff in EE; destruct EE as (EE & Eth%Nat.leb_le),
             (voted (q, r)) eqn:?; try discriminate
         | apply andb_false_iff in EE; rewrite Nat.leb_gt in EE ].
@@ -431,7 +425,7 @@ Proof with (try (now exists (MNTnil _))).
     destruct t as [ r ].
     destruct (w @ n) as [ dst' sent echoed voted cnt output ].
     simpl in E.
-    destruct (sent r) eqn:?; injection_pair E...
+    destruct (sent r) eqn:?; simplify_eq...
     state_analyze.
     constructor; hnf; intros HH; hnf in HH |- *; intuition.
 Qed.
@@ -864,7 +858,7 @@ Proof.
       1: simplify_eq; destruct msg; try discriminate; psent_analyze.
       unfold routine_check in Ef; simpl in Ef.
       destruct msg as [ | q r v | q r v ]; simpl in Ef; try discriminate.
-      all: destruct (andb _ _) eqn:EE in Ef; simpl in Ef; injection_pair Ef; 
+      all: destruct (andb _ _) eqn:EE in Ef; simpl in Ef; simplify_eq;
         [ apply andb_true_iff in EE; destruct EE as (EE & Eth%Nat.leb_le),
             (voted (q, r)) eqn:?; try discriminate | ].
       3-4: destruct (Nat.leb _ _) eqn:Eth2 in |- *; [ apply Nat.leb_le in Eth2 | ].
