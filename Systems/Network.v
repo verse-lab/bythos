@@ -12,8 +12,25 @@ Module Type ByzSetting (Export A : NetAddr).
 
 Parameter is_byz : Address -> bool.
 
-(* this module is not intended to be instantiated, so let's include a Definition here anyway *)
+(* this module is not intended to be instantiated, so let's include things here anyway *)
 Definition num_byz := length (List.filter is_byz valid_nodes).
+
+Fact filter_byz_upper_bound [l : list Address] (Hnodup : List.NoDup l) :
+  length (filter is_byz l) <= num_byz.
+Proof.
+  unfold num_byz.
+  apply NoDup_incl_length; auto using NoDup_filter.
+  intros ? (Hin & Hbyz)%filter_In.
+  apply filter_In; auto using Address_is_finite.
+Qed.
+
+Corollary filter_nonbyz_lower_bound [l : list Address] (Hnodup : List.NoDup l) :
+  length l - num_byz <= length (filter (fun n => negb (is_byz n)) l).
+Proof.
+  pose proof (filter_length is_byz l).
+  pose proof (filter_byz_upper_bound Hnodup).
+  lia.
+Qed.
 
 End ByzSetting.
 
@@ -34,20 +51,11 @@ Axiom num_byz_le_t0 : num_byz <= t0.
 
 (* this will not be instantiated, so anyway *)
 
-Fact num_byz_bound [l : list Address] (Hnodup : List.NoDup l) :
-  length (filter is_byz l) <= num_byz.
-Proof.
-  unfold num_byz.
-  apply NoDup_incl_length; auto using NoDup_filter.
-  intros ? (Hin & Hbyz)%filter_In.
-  apply filter_In; auto using Address_is_finite.
-Qed.
-
 Fact at_least_one_nonfaulty [l : list Address] (Hnodup : List.NoDup l)
   (Hlen : t0 < length l) : exists n, is_byz n = false /\ In n l.
 Proof.
   pose proof (filter_length is_byz l).
-  pose proof (num_byz_bound Hnodup).
+  pose proof (filter_byz_upper_bound Hnodup).
   pose proof num_byz_le_t0.
   destruct (filter (fun _ => _) l) as [ | n l0 ] eqn:E in H.
   1: simpl in H; lia.
@@ -56,6 +64,14 @@ Proof.
   apply filter_In in HH.
   exists n.
   now rewrite <- negb_true_iff.
+Qed.
+
+Lemma filter_nonbyz_lower_bound_t0 [l : list Address] (Hnodup : List.NoDup l) :
+  length l - t0 <= length (filter (fun n => negb (is_byz n)) l).
+Proof.
+  pose proof (filter_nonbyz_lower_bound Hnodup).
+  pose proof num_byz_le_t0.
+  lia.
 Qed.
 
 End RestrictedByzSetting.
@@ -133,6 +149,16 @@ Proof.
   do 2 (split; try assumption).
   do 2 eexists.
   split; [ reflexivity | assumption ].
+Qed.
+
+(* shape monotinicity of state map; really weak, almost says nothing useful *)
+Fact localState_mnt [q w w'] (H : system_step q w w') :
+  localState w' = localState w \/ exists n st, localState w' = upd n st (localState w).
+Proof.
+  inversion H; try subst; auto.
+  1: rewrite (surjective_pairing (procMsgWithCheck _ _ _)) in *.
+  2: rewrite (surjective_pairing (procInt _ _)) in *.
+  all: simpl in *; subst; simpl; eauto.
 Qed.
 
 (* put the two properties here, since they are only related to the packet soup

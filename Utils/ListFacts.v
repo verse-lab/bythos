@@ -169,3 +169,11 @@ Definition Ineq [A : Type] (l1 l2 : list A) : Prop := forall x, In x l1 <-> In x
 
 #[export] Instance Equivalence_Ineq {A : Type} : Equivalence (@Ineq A).
 Proof. constructor; hnf; unfold Ineq in *; firstorder. Qed.
+
+Fact in_dec_is_left [A : Type] [A_eqdec : forall a1 a2 : A, {a1 = a2} + {a1 <> a2}]
+  [a : A] (l : list A) : (if in_dec A_eqdec a l then true else false) = true <-> In a l.
+Proof. destruct (in_dec _ _ _); intuition discriminate. Qed.
+(*
+Fact list_ifnil_destruct [A : Type] (l : list A) : {l = nil} + {l <> nil}.
+Proof. destruct l; [ now left | now right ]. Qed.
+*)

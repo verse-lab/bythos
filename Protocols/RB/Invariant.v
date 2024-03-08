@@ -17,7 +17,7 @@ Global Tactic Notation "pick" constr(def) "as_" ident(H) :=
   | match goal with
     | H0 : context[def] |- _ => rename H0 into H; hnf in H
     end ];
-  unfold def in H.
+  tryif (is_const def) then (unfold def in H) else idtac.
 
 (* TODO need improvement *)
 Global Tactic Notation "pick" constr(def) "as_" ident(H) "by_" tactic2(tac) :=
@@ -31,6 +31,16 @@ Global Tactic Notation "saturate_assumptions" :=
     H : ?P -> ?Q |- _ => 
     match type of P with
       Prop => specialize (H ltac:(try apply I; try reflexivity; assumption))
+    end
+  end.
+
+Global Tactic Notation "eqsolve" := solve [ intuition congruence | intuition discriminate ].
+
+Global Tactic Notation "hypothesis" :=
+  match goal with
+    H : ?e |- _ => 
+    match type of e with
+      Prop => solve [ simple apply H ]
     end
   end.
 
@@ -54,10 +64,10 @@ Fact is_invariant_step_under_weaken [P]
   (Hinv : is_invariant_step P) Q : is_invariant_step_under (fun w => P w /\ Q w).
 Proof. hnf in *. intros ??? (Hp & Hq) Hstep. split; [ firstorder | ]. eapply H; eauto. Qed. 
 *)
-(*
-Fact is_invariant_step_under_intro_l [P Q R] (H : is_invariant_step_under P (fun w => Q w /\ R w))
-  (Hinv : is_invariant_step Q) : is_invariant_step (fun w => P w /\ Q w).
-*)
+Fact is_invariant_step_under_intro_l [P Q R] (H : is_invariant_step_under (fun w => P w /\ Q w) R)
+  (H0 : is_invariant_step_under P Q) : is_invariant_step_under P (fun w => Q w /\ R w).
+Proof. hnf in *. naive_solver. Qed.
+
 Fact is_invariant_step_under_split [P Q R] (Hl : is_invariant_step_under P Q)
   (Hr : is_invariant_step_under P R) : is_invariant_step_under P (fun w => Q w /\ R w).
 Proof. hnf in *. firstorder. Qed.
@@ -168,16 +178,6 @@ Tactic Notation "destruct_localState" ident(w) ident(n)
 Tactic Notation "destruct_localState" ident(w) ident(n) "as_" simple_intropattern(pat) :=
   let E := fresh "E" in
   destruct_localState w n as_ pat eqn_ E; clear E.
-
-Tactic Notation "eqsolve" := solve [ intuition congruence | intuition discriminate ].
-
-Tactic Notation "hypothesis" :=
-  match goal with
-    H : ?e |- _ => 
-    match type of e with
-      Prop => solve [ simple apply H ]
-    end
-  end.
 
 Tactic Notation "destruct_eqdec_raw" constr(eqdec) constr(a) constr(b) simple_intropattern(pat) :=
   match type of eqdec with
@@ -1064,10 +1064,163 @@ Proof with saturate_assumptions.
   - (* easy, base case *)
     eauto.
   - (* inductive case *)
-    (* exploiting the network model ... *)
+    (* HMM exploiting the network model ... *)
     eapply system_step_received_inversion_full in Hr3; try eassumption; auto using procMsgWithCheck_fresh, procInt_fresh.
     destruct Hr3 as (? & Hr3%H). hnf in Hr3. saturate_assumptions. 
     destruct Hr3 as (? & ? & ? & Hr3). eapply system_step_psent_norevert_full in Hr3; eauto.
+Qed.
+
+(* now we have World-level invariants *)
+
+Definition first_vote_due_to_echo w : Prop :=
+  forall q r, 
+    (* examining all nodes ... luckily Address is set to be finite *)
+    let: l := List.filter (fun n => (negb (is_byz n)) && (isSome ((w @ n).(voted) (q, r)))) valid_nodes in
+    match l with
+    | nil => True
+    | _ => exists n', In n' l /\ 
+      (match (w @ n').(voted) (q, r) with 
+      | Some v => th_echo4ready <= length ((w @ n').(msgcnt) (EchoMsg q r v))
+      | None => False (* dead branch *)
+      end)
+    end.
+
+(* TODO the proof is not very nice ... *)
+Lemma first_vote_due_to_echo_is_invariant :
+  is_invariant_step_under (fun w => id_coh w /\
+    lift_state_inv node_state_invariants w /\
+    lift_node_inv node_psent_fwd_invariants w /\
+    lift_pkt_inv node_psent_bwd_invariants_sent w /\
+    lift_pkt_inv node_psent_bwd_invariants_recv w) first_vote_due_to_echo.
+Proof.
+  intros qq ?? (_ & Hst_back & _ & Hbwds_back & _) (Hcoh & Hst & Hfwd & _ & Hbwdr) H Hstep q r. 
+  hnf in H. specialize (H q r).
+  match goal with |- context[List.filter ?a ?b] => destruct (List.filter a b) as [ | n' l' ] eqn:E'; try exact I end.
+  match type of H with context[List.filter ?a ?b] => destruct (List.filter a b) as [ | n l ] eqn:E in H end.
+  - destruct l' as [ | m' l' ].
+    + exists n'. apply and_wlog_r; [ simpl; tauto | rewrite <- E'; intros (_ & Hcheck%andb_true_iff)%filter_In ].
+      rewrite negb_true_iff in Hcheck. destruct Hcheck as (Hnonbyz_n' & Hv_).
+      clear E'. destruct (voted (w' @ n') (q, r)) as [ v' | ] eqn:E'; [ | discriminate ].
+      pick voted_coh_some as_ Hv' by_ (pose proof (Hst n') as []). apply Hv' in E'.
+      destruct E' as [ E' | E' ]; auto.
+      (* HMM again, exploiting the network model ... but still cumbersome *)
+      (* basically saying that if there is some node in the Ready msgcnt, 
+        then by inverting the message, we know that it must have voted 
+        in the previous state, which leads to contradiction *)
+      (* TODO the following steps are still repeating ... *)
+      unfold th_ready4ready in E'. pose proof t0_lt_N_minus_2t0 as Ht0.
+      pick msgcnt_coh as_ Hnodup by_ (pose proof (Hst n') as []). 
+      match type of E' with _ <= ?ll => assert (t0 < ll) as (n & Hnonbyz_n & Hin')%at_least_one_nonfaulty by lia end.
+      2: eapply (Hnodup (ReadyMsg _ _ _)).
+      pick msgcnt_recv_fwd as_ Hr3 by_ (pose proof (Hfwd _ Hnonbyz_n') as []). specialize (Hr3 _ _ Hin'). rewrite Hcoh in Hr3.
+      eapply system_step_received_inversion_full in Hr3; try eassumption; auto using procMsgWithCheck_fresh, procInt_fresh.
+      destruct Hr3 as (? & Hr3). 
+      pick readymsg_sent_bwd as_ Hr4 by_ (pose proof (Hbwds_back _ Hr3) as []). saturate_assumptions. 
+      pose proof (in_nil (a:=n)) as Htmp1. pose proof (Address_is_finite n) as Htmp2.
+      rewrite <- E, -> ! filter_In, -> ! andb_true_iff, -> Hr4, -> Hnonbyz_n in Htmp1. eqsolve. 
+    + (* l' must be nil, since there will not be two nodes changing in one transition *)
+      pose proof (or_introl eq_refl : In n' (n' :: m' :: l')) as Htmp. 
+      pose proof (or_intror (or_introl eq_refl) : In m' (n' :: m' :: l')) as Htmp0.
+      rewrite <- E', -> ! filter_In, -> ! andb_true_iff in Htmp, Htmp0.
+      destruct_and? Htmp. destruct_and? Htmp0.
+      pose proof (in_nil (a:=n')) as Htmp1. pose proof (in_nil (a:=m')) as Htmp2.
+      rewrite <- E, -> ! filter_In, -> ! andb_true_iff in Htmp1, Htmp2.
+      pose proof (localState_mnt Hstep) as [ Ew | (nn & st & Ew) ]; try rewrite Ew in *.
+      1: eqsolve.
+      pose proof valid_nodes_NoDup as HH. eapply NoDup_filter in HH. rewrite E', ! NoDup_cons_iff in HH. simpl in HH.
+      unfold upd in *. destruct_eqdec! as_ ?; simplify_eq; try eqsolve.
+  - rewrite <- E in H. clear E n l. rewrite <- E'. clear E' n' l'.
+    destruct H as (n & (Hin & Hcheck%andb_true_iff)%filter_In & He). 
+    destruct (voted (w @ n) (q, r)) as [ v | ] eqn:E; [ | eqsolve ].
+    pick voted_persistent as_ Hv by_ (pose proof (persistent_invariants Hstep n) as []). apply Hv in E.
+    exists n. rewrite filter_In, E, andb_true_iff. split; auto.
+    etransitivity; [ apply He | ]. apply NoDup_incl_length.
+    + pick msgcnt_coh as_ Htmp by_ (pose proof (Hst_back n) as []). apply (Htmp (EchoMsg _ _ _)).
+    + pick msgcnt_persistent as_ Htmp by_ (pose proof (persistent_invariants Hstep n) as []). hnf. apply (Htmp (EchoMsg _ _ _)).
+Qed.
+
+Definition vote_uniqueness w : Prop :=
+  forall src r dst1 dst2 v1 v2, 
+    is_byz dst1 = false -> is_byz dst2 = false ->
+    (* no matter if src is byz or not *)
+    (w @ dst1).(voted) (src, r) = Some v1 ->
+    (w @ dst2).(voted) (src, r) = Some v2 ->
+    v1 = v2.
+
+Lemma vote_uniqueness_is_invariant :
+  is_invariant_step_under (fun w => (id_coh w /\
+    lift_state_inv node_state_invariants w /\
+    lift_node_inv node_psent_fwd_invariants w /\
+    lift_pkt_inv node_psent_bwd_invariants_sent w /\
+    lift_pkt_inv node_psent_bwd_invariants_recv w) /\
+    first_vote_due_to_echo w) vote_uniqueness.
+Proof.
+  (* H would only be useful in the previous World, so we can only use Hfve in the previous World *)
+  intros qq ?? ((_ & Hst_back & _ & Hbwds_back & _) & Hfve) ((Hcoh & Hst & Hfwd & Hbwds & Hbwdr) & _) H Hstep src r. specialize (H src r).
+  enough (forall dst1 dst2 v1 v2, dst1 <> dst2 -> is_byz dst1 = false -> is_byz dst2 = false ->
+    (w @ dst1).(voted) (src, r) = None -> (w @ dst2).(voted) (src, r) = Some v2 ->
+    (w' @ dst1).(voted) (src, r) = Some v1 -> (w' @ dst2).(voted) (src, r) = Some v2 ->
+    v1 = v2) as Hsymgoal.
+  1:{ (* de-symmetrize; have some high-level discussion first, to know that at most one node will change *)
+    pose proof (localState_mnt Hstep) as [ Ew | (nn & st & Ew) ]; hnf in H |- *; rewrite Ew in *; try hypothesis.
+    intros dst1 dst2.
+    pick voted_persistent as_ Hv1 by_ (pose proof (persistent_invariants Hstep dst1) as []).
+    pick voted_persistent as_ Hv2 by_ (pose proof (persistent_invariants Hstep dst2) as []). (* prepare *)
+    unfold upd. destruct_eqdec! as_ ?; simplify_eq; try hypothesis; try congruence.
+    2: destruct (voted (w @ dst2) (src, r)) as [ vv | ] eqn:E; [ pose proof E as E'%Hv2 | specialize (Hsymgoal dst2 dst1) ].
+    1: destruct (voted (w @ dst1) (src, r)) as [ vv | ] eqn:E; [ pose proof E as E'%Hv1 | specialize (Hsymgoal dst1 dst2) ].
+    all: try (rewrite Ew, upd_refl in E'; rewrite E'; clear E').
+    all: intros; simplify_eq; 
+      try solve [ now apply (H dst1 dst2 v1 v2) | symmetry; now apply (H dst2 dst1 v2 v1) ].
+    all: unfold upd in Hsymgoal; destruct_eqdec! as_ ?; simplify_eq. (* ... *)
+    now apply Hsymgoal. symmetry. now apply Hsymgoal. } 
+  intros dst1 dst2 v1 v2 Hneq Hnonbyz_dst1 Hnonbyz_dst2 Hv1 Hv2 Hv1' Hv2'.
+  pick voted_coh_some as_ Hle by_ (pose proof (Hst dst1) as []). specialize (Hle _ _ _ Hv1').
+  destruct Hle as [ Hle | Hle ].
+  - (* use first_vote_due_to_echo_is_invariant, and then use quorum intersection *)
+    hnf in Hfve. specialize (Hfve src r).
+    match type of Hfve with context[List.filter ?a ?b] => remember (List.filter a b) as l eqn:El end.
+    (* l <> nil *)
+    assert (In dst2 l) as Hlnotnil.
+    1:{ subst l. apply filter_In. rewrite -> ! andb_true_iff, -> Hv2, -> Hnonbyz_dst2. auto using Address_is_finite. }
+    destruct l as [ | aa ll ] eqn:Etmp; [ simpl in Hlnotnil; contradiction | rewrite <- Etmp in *; clear Etmp aa ll Hlnotnil; subst l ].
+    (* TODO a repeating step *)
+    destruct Hfve as (n' & (Hin & Hcheck%andb_true_iff)%filter_In & He).
+    destruct (voted (w @ n') (src, r)) as [ v' | ] eqn:E; [ destruct Hcheck as (Hnonbyz_n'%negb_true_iff & _) | eqsolve ].
+    (* FIXME: extract the following to be another separate proof *)
+    unfold th_echo4ready in He, Hle.
+    pick msgcnt_coh as_ Hnodup1 by_ (pose proof (Hst dst1) as []). specialize (Hnodup1 (EchoMsg src r v1)). 
+    pick msgcnt_coh as_ Hnodup2 by_ (pose proof (Hst n') as []). specialize (Hnodup2 (EchoMsg src r v')).
+    simpl in Hnodup1, Hnodup2.
+    (* this is awkward. *)
+    (* FIXME: add length as persistent *)
+    apply Nat.le_trans with (p:=length (msgcnt (w' @ n') (EchoMsg src r v'))) in He.
+    2:{ apply NoDup_incl_length.
+      - pick msgcnt_coh as_ Hnodup_ by_ (pose proof (Hst_back n') as []). apply (Hnodup_ (EchoMsg _ _ _)).
+      - pick msgcnt_persistent as_ Htmp by_ (pose proof (persistent_invariants Hstep n') as []). hnf. apply (Htmp (EchoMsg _ _ _)). }
+    (* the basic idea is to find a non-faulty node in the quorum intersection that equivocate, and then prove False *)
+    pose proof (quorum_intersection Hnodup1 Hnodup2 Hle He) as Hq. pose proof t0_lt_N_minus_2t0 as Ht0.
+    match type of Hq with _ <= ?ll => assert (t0 < ll) as (n & Hnonbyz_n & (Hin2' & Hin1'%in_dec_is_left)%filter_In)%at_least_one_nonfaulty by lia end.
+    2: now apply List.NoDup_filter.
+    (* TODO the following step has some overlap with a previous proof *)
+    pick msgcnt_recv_fwd as_ Hsent1 by_ (pose proof (Hfwd _ Hnonbyz_dst1) as []). specialize (Hsent1 _ _ Hin1'). 
+    pick msgcnt_recv_fwd as_ Hsent2 by_ (pose proof (Hfwd _ Hnonbyz_n') as []). specialize (Hsent2 _ _ Hin2').
+    rewrite Hcoh in Hsent1, Hsent2.
+    pick echomsg_sent_bwd as_ Hvv1 by_ (pose proof (Hbwds _ Hsent1) as []).
+    pick echomsg_sent_bwd as_ Hvv2 by_ (pose proof (Hbwds _ Hsent2) as []).
+    saturate_assumptions. rewrite Hvv1 in Hvv2. simplify_eq. eapply (H n' dst2); eauto.
+  - (* inductive case *)
+    (* HMM again, exploiting the network model ... but still cumbersome *)
+    (* TODO the following steps are still repeating ... *)
+    unfold th_ready4ready in Hle. pose proof t0_lt_N_minus_2t0 as Ht0.
+    pick msgcnt_coh as_ Hnodup by_ (pose proof (Hst dst1) as []). 
+    match type of Hle with _ <= ?ll => assert (t0 < ll) as (n & Hnonbyz_n & Hin')%at_least_one_nonfaulty by lia end.
+    2: eapply (Hnodup (ReadyMsg _ _ _)).
+    pick msgcnt_recv_fwd as_ Hr3 by_ (pose proof (Hfwd _ Hnonbyz_dst1) as []). specialize (Hr3 _ _ Hin'). rewrite Hcoh in Hr3.
+    eapply system_step_received_inversion_full in Hr3; try eassumption; auto using procMsgWithCheck_fresh, procInt_fresh.
+    destruct Hr3 as (? & Hr3). 
+    pick readymsg_sent_bwd as_ Hr4 by_ (pose proof (Hbwds_back _ Hr3) as []). saturate_assumptions. 
+    eapply (H n dst2); eauto.
 Qed.
 
 End Main_Proof.

@@ -15,8 +15,6 @@ Import ssrbool. (* anyway *)
 
 Module Export RBInv := RBInvariant A R V VBFT BTh BSett.
 
-Section Main_Proof.
-
 Set Implicit Arguments. (* anyway *)
 
 Definition is_safety (P : World -> Prop) : Prop := forall w, reachable w -> P w.
@@ -41,23 +39,23 @@ Fact grounded_invariants : is_grounded_invariant
     lift_node_inv node_psent_fwd_invariants w /\
     lift_pkt_inv node_psent_bwd_invariants_sent w /\
     lift_pkt_inv node_psent_bwd_invariants_recv w) /\
-    forall p, In p (sentMsgs w) -> echo_exists_before_ready p (sentMsgs w)).
+    (forall p, In p (sentMsgs w) -> echo_exists_before_ready p (sentMsgs w)) /\
+    (first_vote_due_to_echo w /\ vote_uniqueness w)).
 Proof.
   hnf. split.
   - unfold initWorld, initState, Init.
     pose proof th_echo4ready_gt_0. pose proof th_ready4ready_gt_0. pose proof th_ready4output_gt_0. (* prepare *)
-    split_and?; hnf; simpl; intros; try contradiction; auto.
-    all: constructor; hnf; simpl; intros; try solve [ discriminate | contradiction | constructor; auto | lia | auto ].
+    split_and?; hnf; simpl; intros; try eqsolve; auto.
+    1-2: constructor; hnf; simpl; intros; try solve [ discriminate | contradiction | constructor; auto | lia | auto ].
     + destruct msg0; auto; try constructor.
+    + destruct (List.filter _ _) as [ | a l ] eqn:E; auto.
+      (* FIXME: facilitate the proofs about filter? *)
+      pose proof (or_introl eq_refl : In a (a :: l)) as HH. rewrite <- E, -> filter_In, -> andb_true_iff, -> negb_true_iff in HH. eqsolve.
   - (* HMM proof mode? or just auto? *)
-    auto using is_invariant_step_under_closed, is_invariant_step_under_split, is_invariant_step_under_clear,
-      echo_exists_before_ready_is_invariant, id_coh_is_invariant, state_invariants, fwd_invariants, bwd_invariants.
-    (*
-    apply is_invariant_step_under_closed; [ apply echo_exists_before_ready_is_invariant | ].
-    apply is_invariant_step_under_closed; [ | apply id_coh_is_invariant ].
-    apply is_invariant_step_under_split; [ apply is_invariant_step_under_clear, state_invariants | ].
-    apply is_invariant_step_under_split; [ apply fwd_invariants | apply bwd_invariants ].
-    *)
+    auto using is_invariant_step_under_closed, is_invariant_step_under_split, 
+      is_invariant_step_under_clear, is_invariant_step_under_intro_l, 
+      id_coh_is_invariant, state_invariants, fwd_invariants, bwd_invariants, 
+      echo_exists_before_ready_is_invariant, first_vote_due_to_echo_is_invariant, vote_uniqueness_is_invariant.
 Qed.
 
 End Grounded_Invariants.
@@ -68,7 +66,7 @@ Ltac saturate :=
   match goal with
     H : reachable ?w |- _ => 
     pose proof (grounded_invariant_is_safety grounded_invariants) as Htmp; specialize (Htmp _ H);
-    simpl in Htmp; destruct Htmp as ((Hcoh & Hst & Hfwd & Hbwds & Hbwdr) & Heebr)
+    simpl in Htmp; destruct Htmp as ((Hcoh & Hst & Hfwd & Hbwds & Hbwdr) & Heebr & (_ (* not useful here *) & Hvu))
   end.
 
 Definition integrity w : Prop :=
@@ -77,7 +75,7 @@ Definition integrity w : Prop :=
     In v ((w @ dst).(output) (src, r)) ->
     (w @ src).(sent) r /\ value_bft src r = v.
 
-Definition uniqueness w : Prop :=
+Definition output_uniqueness w : Prop :=
   forall dst1 dst2 src r v1 v2, 
     is_byz dst1 = false -> is_byz dst2 = false ->
     (* no matter if src is byz or not *)
@@ -85,11 +83,13 @@ Definition uniqueness w : Prop :=
     In v2 ((w @ dst2).(output) (src, r)) ->
     v1 = v2.
 
-Definition unique_output w : Prop :=
+Definition single_output w : Prop :=
   forall dst src r, 
     is_byz dst = false ->
     (* no matter if src is byz or not *)
     length ((w @ dst).(output) (src, r)) <= 1.
+
+Section Main_Proof.
 
 Lemma integrity_is_safety : is_safety integrity.
 Proof.
@@ -108,7 +108,7 @@ Proof.
   pick initialmsg_sent_bwd as_ H5 by_ (pose proof (Hbwds _ H4) as []). now saturate_assumptions.
 Qed.
 
-Lemma uniqueness_is_safety : is_safety uniqueness.
+Lemma output_uniqueness_is_safety : is_safety output_uniqueness.
 Proof.
   hnf. intros w Hr. saturate.
   hnf. intros dst1 dst2 src r v1 v2 Hnonbyz_dst1 Hnonbyz_dst2 Hin1 Hin2.
@@ -122,9 +122,8 @@ Proof.
   simpl in Hnodup1, Hnodup2.
   (* the basic idea is to find a non-faulty node in the quorum intersection that equivocate, and then prove False *)
   pose proof (quorum_intersection Hnodup1 Hnodup2 Hle1 Hle2) as Hq. pose proof t0_lt_N_minus_2t0 as Ht0.
-  match type of Hq with _ <= ?ll => assert (t0 < ll) as (n & Hnonbyz_n & (Hin2' & Hin1_)%filter_In)%at_least_one_nonfaulty by lia end.
+  match type of Hq with _ <= ?ll => assert (t0 < ll) as (n & Hnonbyz_n & (Hin2' & Hin1'%in_dec_is_left)%filter_In)%at_least_one_nonfaulty by lia end.
   2: now apply List.NoDup_filter.
-  destruct (in_dec _ _ _) as [ Hin1' | ] in Hin1_; try discriminate.
   (* TODO the following step has some overlap with a previous proof *)
   pick msgcnt_recv_fwd as_ Hsent1 by_ (pose proof (Hfwd _ Hnonbyz_dst1) as []). specialize (Hsent1 _ _ Hin1'). 
   pick msgcnt_recv_fwd as_ Hsent2 by_ (pose proof (Hfwd _ Hnonbyz_dst2) as []). specialize (Hsent2 _ _ Hin2').
@@ -134,14 +133,14 @@ Proof.
   saturate_assumptions. congruence.
 Qed.
 
-Lemma unique_output_is_safety : is_safety unique_output.
+Lemma unique_output_is_safety : is_safety single_output.
 Proof.
   hnf. intros w Hr. saturate.
   hnf. intros dst src r Hnonbyz_dst.
   remember (output _ _) as l eqn:E in |- *.
   destruct l as [ | x [ | y l ] ]; simpl; auto.
   (* by using uniqueness_is_safety and setting dst1 = dst2 = dst *)
-  pose proof (uniqueness_is_safety Hr src r x y Hnonbyz_dst Hnonbyz_dst
+  pose proof (output_uniqueness_is_safety Hr src r x y Hnonbyz_dst Hnonbyz_dst
     ltac:(rewrite <- E; simpl; tauto) ltac:(rewrite <- E; simpl; tauto)) as ->.
   pick output_coh as_ Hnodup by_ (pose proof (Hst dst) as []). specialize (Hnodup src r). 
   rewrite <- E, -> ! NoDup_cons_iff in Hnodup. simpl in Hnodup. tauto.
