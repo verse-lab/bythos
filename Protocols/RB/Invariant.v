@@ -349,13 +349,13 @@ Local Hint Rewrite -> In_consume : psent.
     be proved by induction on state_mnt_type_list; 
     but for the "none" case, the dependency is reversed *)
 (* but now they are proved together, anyway *)
-Definition getready_coh_some st : Prop :=
+Definition voted_coh_some st : Prop :=
   forall q r v, 
     st.(voted) (q, r) = Some v ->
     (th_echo4ready <= length (st.(msgcnt) (EchoMsg q r v)) \/ 
      th_ready4ready <= length (st.(msgcnt) (ReadyMsg q r v))).
 
-Definition getready_coh_none st : Prop :=
+Definition voted_coh_none st : Prop :=
   forall q r v,
     st.(voted) (q, r) = None ->
     length (st.(msgcnt) (EchoMsg q r v)) < th_echo4ready /\
@@ -375,8 +375,8 @@ Definition lift_point_to_edge {A : Type} (P : A -> Prop) : A -> A -> Prop :=
   fun st st' => P st -> P st'.
 
 Record node_state_invariants_pre st st' : Prop := {
-  _ : lift_point_to_edge getready_coh_some st st';
-  _ : lift_point_to_edge getready_coh_none st st';
+  _ : lift_point_to_edge voted_coh_some st st';
+  _ : lift_point_to_edge voted_coh_none st st';
   _ : lift_point_to_edge getoutput_coh_fwd st st';
   _ : lift_point_to_edge getoutput_coh_bwd st st';
 }.
@@ -535,8 +535,8 @@ Qed.
 Record node_state_invariants st : Prop := {
   _ : msgcnt_coh st;
   _ : output_coh st;
-  _ : getready_coh_some st;
-  _ : getready_coh_none st;
+  _ : voted_coh_some st;
+  _ : voted_coh_none st;
   _ : getoutput_coh_fwd st;
   _ : getoutput_coh_bwd st;
 }.
@@ -1029,7 +1029,7 @@ Proof with saturate_assumptions.
   hnf. destruct msg as [ | | q r v ]; try apply I. intros Hnonbyz.
   pick readymsg_sent_bwd as_ Hr by_ (destruct Hbwds)...
   pose proof (Hst src) as Hst'. 
-  pick getready_coh_some as_ Hr2 by_ (destruct Hst').
+  pick voted_coh_some as_ Hr2 by_ (destruct Hst').
   specialize (Hr2 _ _ _ Hr). 
   unfold th_echo4ready, th_ready4ready in Hr2. pose proof t0_lt_N_minus_2t0 as Ht0.
   pick msgcnt_coh as_ Hnodup by_ (destruct Hst').
