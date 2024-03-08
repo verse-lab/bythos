@@ -361,12 +361,12 @@ Definition voted_coh_none st : Prop :=
     length (st.(msgcnt) (EchoMsg q r v)) < th_echo4ready /\
     length (st.(msgcnt) (ReadyMsg q r v)) < th_ready4ready.
 
-Definition getoutput_coh_fwd st : Prop :=
+Definition output_coh_fwd st : Prop :=
   forall q r v, 
     In v (st.(output) (q, r)) ->
     th_ready4output <= length (st.(msgcnt) (ReadyMsg q r v)).
 
-Definition getoutput_coh_bwd st : Prop :=
+Definition output_coh_bwd st : Prop :=
   forall q r v, 
     th_ready4output <= length (st.(msgcnt) (ReadyMsg q r v)) ->
     In v (st.(output) (q, r)).
@@ -377,8 +377,8 @@ Definition lift_point_to_edge {A : Type} (P : A -> Prop) : A -> A -> Prop :=
 Record node_state_invariants_pre st st' : Prop := {
   _ : lift_point_to_edge voted_coh_some st st';
   _ : lift_point_to_edge voted_coh_none st st';
-  _ : lift_point_to_edge getoutput_coh_fwd st st';
-  _ : lift_point_to_edge getoutput_coh_bwd st st';
+  _ : lift_point_to_edge output_coh_fwd st st';
+  _ : lift_point_to_edge output_coh_bwd st st';
 }.
 
 (* for each node (ignoring whether faulty/non-faulty here),
@@ -537,8 +537,8 @@ Record node_state_invariants st : Prop := {
   _ : output_coh st;
   _ : voted_coh_some st;
   _ : voted_coh_none st;
-  _ : getoutput_coh_fwd st;
-  _ : getoutput_coh_bwd st;
+  _ : output_coh_fwd st;
+  _ : output_coh_bwd st;
 }.
 
 Definition lift_state_inv (P : State -> Prop) : World -> Prop := fun w => forall n, P (w @ n).
