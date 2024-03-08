@@ -425,6 +425,40 @@ Proof.
         simpl; rewrite In_sendout, In_consume; simpl; tauto.
 Qed.
 
+(* some other things; not quite related with network semantics, but I do not know anywhere to put *)
+
+(* maybe this lemma has been well formalized in other Coq libraries ... *)
+Lemma set_intersection_size [l1 l2 : list Address] (Hnodup1 : NoDup l1) (Hnodup2 : NoDup l2)
+  [a] (Hsize1 : a <= length l1) (Hsize2 : a <= length l2) :
+  (a + a - N) <= length (filter (fun n => In_dec Address_eqdec n l1) l2).
+Proof.
+  destruct (partition (fun n => In_dec Address_eqdec n l1) l2) as (l12, l2') eqn:Epar.
+  epose proof (partition_filter _ l2) as Htmp.
+  rewrite -> Epar, -> pair_equal_spec in Htmp.
+  destruct Htmp as (El12 & El2').
+  rewrite <- El12.
+  cut (((length l2) - (length l12)) + (length l1) <= N).
+  1: lia.
+  pose proof Epar as Elengthpar.
+  apply partition_length in Elengthpar.
+  replace ((length l2) - (length l12)) with (length l2') by lia.
+  unfold N.
+  rewrite <- app_length.
+  apply NoDup_incl_length.
+  - subst l2'.
+    apply NoDup_app; auto.
+    + now apply NoDup_filter.
+    + intros x y (Hin1' & HH)%filter_In Hin2' <-.
+      now destruct (in_dec Address_eqdec x l1).
+  - intros ? _.
+    now apply Address_is_finite.
+Qed.
+
+Corollary quorum_intersection [l1 l2 : list Address] (Hnodup1 : NoDup l1) (Hnodup2 : NoDup l2)
+  (Hsize1 : N - t0 <= length l1) (Hsize2 : N - t0 <= length l2) :
+  (N - (t0 + t0)) <= length (filter (fun n => In_dec Address_eqdec n l1) l2).
+Proof. etransitivity. 2: eapply set_intersection_size; eassumption. lia. Qed.
+
 End Network.
 
 Module NetworkImpl (Export A : NetAddr) (Export M : MessageType) 

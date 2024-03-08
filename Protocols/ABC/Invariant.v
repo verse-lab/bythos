@@ -2849,42 +2849,6 @@ Proof.
   eqsolve.
 Qed.
 
-Lemma quorum_intersection ns1 ns2 
-  (Hnsigs_nodup1 : NoDup ns1)
-  (Hsize1 : N - t0 <= (length ns1))
-  (Hnsigs_nodup2 : NoDup ns2)
-  (Hsize2 : N - t0 <= (length ns2)) :
-  (N - (t0 + t0)) <= length (filter (fun n => In_dec Address_eqdec n ns1) ns2). 
-Proof.
-  (* now show that: at least (2t0-N) distinct nodes are in culprit proof *)
-  (* should partition only by the address since signs can be different for different values *)
-  destruct (partition (fun n => In_dec Address_eqdec n ns1) ns2) as (ns12, ns2') eqn:Epar.
-  epose proof (partition_filter _ ns2) as Htmp.
-  rewrite -> Epar in Htmp.
-  match type of Htmp with (?a, ?b) = (?c, ?d) => 
-    assert (a = c) as Ens12 by eqsolve; 
-    assert (b = d) as Ens2' by eqsolve
-  end.
-  clear Htmp.
-  rewrite <- Ens12.
-  (* maybe this part has been well formalized in other Coq libraries ... *)
-    cut (((length ns2) - (length ns12)) + (length ns1) <= N).
-    1: lia.
-    pose proof Epar as Elengthpar.
-    apply partition_length in Elengthpar.
-    replace ((length ns2) - (length ns12)) with (length ns2') by lia.
-    unfold N.
-    rewrite <- app_length.
-    apply NoDup_incl_length.
-    + subst ns2'.
-      apply NoDup_app; auto.
-      * now apply NoDup_filter.
-      * intros x y (Hin1' & HH)%filter_In Hin2' <-.
-        now destruct (in_dec Address_eqdec x ns1).
-    + intros a _.
-      now apply Address_is_finite.
-Qed.
-
 Section Proof_of_Agreement.
 
   (*

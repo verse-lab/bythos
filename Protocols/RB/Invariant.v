@@ -7,6 +7,33 @@ From ABCProtocol.Protocols.RB Require Export Network.
 From RecordUpdate Require Import RecordUpdate.
 From stdpp Require Import tactics. (* anyway *)
 
+Global Tactic Notation "pick" constr(def) "as_" ident(H) :=
+  first
+  [ match goal with
+    | H0 : def _ |- _ => rename H0 into H
+    | H0 : def _ _ |- _ => rename H0 into H
+    | H0 : def _ _ _ |- _ => rename H0 into H
+    end
+  | match goal with
+    | H0 : context[def] |- _ => rename H0 into H; hnf in H
+    end ];
+  unfold def in H.
+
+(* TODO need improvement *)
+Global Tactic Notation "pick" constr(def) "as_" ident(H) "by_" tactic2(tac) :=
+  let a := fresh "eprop" in
+  evar (a : Prop); assert a as H; subst a; 
+    [ tac; (let Htmp := fresh "Htmp" in pick def as_ Htmp; exact Htmp) | ].
+
+(* HMM more aggressive (plus backtracking) version? *)
+Global Tactic Notation "saturate_assumptions" :=
+  repeat match goal with
+    H : ?P -> ?Q |- _ => 
+    match type of P with
+      Prop => specialize (H ltac:(try apply I; try reflexivity; assumption))
+    end
+  end.
+
 Module RBInvariant (A : NetAddr) (R : RBTag) (V : Signable) (VBFT : ValueBFT A R V)
   (BTh : ClassicByzThreshold A) (BSett : RestrictedByzSetting A BTh).
 
@@ -18,6 +45,26 @@ Module Export RBN := RBNetwork A R V VBFT BTh BSett.
 (* experimental *)
 Definition is_invariant_step_under (P Q : World -> Prop) : Prop :=
   forall q w w', P w -> P w' -> Q w -> system_step q w w' -> Q w'.
+
+Fact is_invariant_step_under_clear [P] (Hinv : is_invariant_step P) Q : 
+  is_invariant_step_under Q P.
+Proof. hnf in *. firstorder. Qed.
+(*
+Fact is_invariant_step_under_weaken [P]
+  (Hinv : is_invariant_step P) Q : is_invariant_step_under (fun w => P w /\ Q w).
+Proof. hnf in *. intros ??? (Hp & Hq) Hstep. split; [ firstorder | ]. eapply H; eauto. Qed. 
+*)
+(*
+Fact is_invariant_step_under_intro_l [P Q R] (H : is_invariant_step_under P (fun w => Q w /\ R w))
+  (Hinv : is_invariant_step Q) : is_invariant_step (fun w => P w /\ Q w).
+*)
+Fact is_invariant_step_under_split [P Q R] (Hl : is_invariant_step_under P Q)
+  (Hr : is_invariant_step_under P R) : is_invariant_step_under P (fun w => Q w /\ R w).
+Proof. hnf in *. firstorder. Qed.
+
+Fact is_invariant_step_under_closed [P Q] (H : is_invariant_step_under P Q)
+  (Hinv : is_invariant_step P) : is_invariant_step (fun w => P w /\ Q w).
+Proof. hnf in *. intros ??? (Hp & Hq) Hstep. split; [ firstorder | ]. eapply H; eauto. Qed. 
 
 Section Main_Proof.
 
@@ -153,32 +200,6 @@ Tactic Notation "destruct_eqdec!" "as_" simple_intropattern(pat) :=
   repeat match goal with 
   | H : context[if ?eqdec ?a ?b then _ else _] |- _ => destruct_eqdec_raw eqdec a b pat
   end; try destruct_eqdec as_ pat.
-
-Tactic Notation "pick" constr(def) "as_" ident(H) :=
-  first
-  [ match goal with
-    | H0 : def _ |- _ => rename H0 into H
-    | H0 : def _ _ |- _ => rename H0 into H
-    | H0 : def _ _ _ |- _ => rename H0 into H
-    end
-  | match goal with
-    | H0 : context[def] |- _ => rename H0 into H; hnf in H
-    end ];
-  unfold def in H.
-
-(* TODO need improvement *)
-Tactic Notation "pick" constr(def) "as_" ident(H) "by_" tactic2(tac) :=
-  let a := fresh "eprop" in
-  evar (a : Prop); assert a as H; subst a; [ tac; pick def as_ H; exact H | ].
-
-(* HMM more aggressive (plus backtracking) version? *)
-Tactic Notation "saturate_assumptions" :=
-  repeat match goal with
-    H : ?P -> ?Q |- _ => 
-    match type of P with
-      Prop => specialize (H ltac:(try apply I; try reflexivity; assumption))
-    end
-  end.
 
 Ltac isSome_rewrite :=
   repeat match goal with
@@ -925,6 +946,7 @@ Proof.
   all: now eapply (bwd_invariants_id_pre Hstep _) in H; eauto.
 Qed.
 
+(* FIXME: the two bunches can be proved separatedly, so this lemma is weaker than it should be *)
 Fact bwd_invariants :
   is_invariant_step_under id_coh (* needed, since will use psent_mnt_sound *)
     (fun w => lift_pkt_inv node_psent_bwd_invariants_sent w

@@ -124,6 +124,9 @@ Proof. unfold th_echo4ready. pose proof t0_lt_N. lia. Qed.
 Fact th_ready4ready_gt_0 : 0 < th_ready4ready.
 Proof. unfold th_ready4ready. pose proof t0_lt_N_minus_2t0. lia. Qed.
 
+Fact th_ready4output_gt_0 : 0 < th_ready4output.
+Proof th_echo4ready_gt_0.
+
 Definition check_ready_condition (st : State) (msg : Message) : bool :=
   let: Node n smap emap vmap cnt omap := st in
   match msg with
