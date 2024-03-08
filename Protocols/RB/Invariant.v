@@ -1000,6 +1000,25 @@ Definition echo_exists_before_ready p psent : Prop :=
 Definition is_invariant_step_under (P Q : World -> Prop) : Prop :=
   forall q w w', P w -> P w' -> Q w -> system_step q w w' -> Q w'.
 
+(* this is nonsense ... *)
+Fact procMsgWithCheck_fresh st src m :
+  Forall (fun p => p.(consumed) = false) (snd (procMsgWithCheck st src m)).
+Proof.
+  unfold procMsgWithCheck.
+  destruct st as [ n sent echoed voted msgcnt output ], m as [ r v | q r v | q r v ]; simpl.
+  1: destruct (echoed (src, r)); simpl; auto using broadcast_all_fresh.
+  all: destruct (in_dec _ _ _) in |- *; auto.
+  all: unfold routine_check; simpl; destruct (andb _ _); simpl; auto using broadcast_all_fresh.
+Qed.
+
+Fact procInt_fresh st t :
+  Forall (fun p => p.(consumed) = false) (snd (procInt st t)).
+Proof.
+  unfold procInt.
+  destruct st as [ n sent echoed voted msgcnt output ], t as [ r ]; simpl.
+  destruct (sent r); simpl; auto using broadcast_all_fresh.
+Qed.
+
 Lemma echo_exists_before_ready_is_invariant :
   is_invariant_step_under (fun w => id_coh w /\
     lift_state_inv node_state_invariants w /\
@@ -1028,12 +1047,10 @@ Proof with saturate_assumptions.
     eauto.
   - (* inductive case *)
     (* exploiting the network model ... *)
-    eapply system_step_received_inversion_full in Hr3; try eassumption.
-    (* TODO must fix this *)
-    2-3: admit.
+    eapply system_step_received_inversion_full in Hr3; try eassumption; auto using procMsgWithCheck_fresh, procInt_fresh.
     destruct Hr3 as (? & Hr3%H). hnf in Hr3. saturate_assumptions. 
     destruct Hr3 as (? & ? & ? & Hr3). eapply system_step_psent_norevert_full in Hr3; eauto.
-Admitted.
+Qed.
 
 End Main_Proof.
 
