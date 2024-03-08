@@ -15,6 +15,10 @@ Import ssrbool. (* anyway *)
 
 Module Export RBN := RBNetwork A R V VBFT BTh BSett.
 
+(* experimental *)
+Definition is_invariant_step_under (P Q : World -> Prop) : Prop :=
+  forall q w w', P w -> P w' -> Q w -> system_step q w w' -> Q w'.
+
 Section Main_Proof.
 
 Set Implicit Arguments. (* anyway *)
@@ -659,10 +663,9 @@ Tactic Notation "saturate" :=
 
 (* while you can certainly prove these individually, proving them together can save some time *)
 (* this proof would depend on id_coh to unify the internal/external identifiers *)
-Fact fwd_invariants : is_invariant_step (fun w => id_coh w /\ lift_node_inv node_psent_fwd_invariants w).
+Fact fwd_invariants : is_invariant_step_under id_coh (lift_node_inv node_psent_fwd_invariants).
 Proof.
-  hnf; intros qq ?? (Hcoh & H) Hstep.
-  apply and_wlog_r; [ eapply id_coh_is_invariant; eauto | intros Hcoh' ].
+  hnf; intros qq ?? Hcoh Hcoh' H Hstep.
   unfold lift_node_inv in *.
   intros n Hnonbyz; specialize (H _ Hnonbyz).
   specialize (Hcoh n); specialize (Hcoh' n). (* unify *)
@@ -876,8 +879,11 @@ Proof.
     intros ?; autorewrite with psent; simpl; tauto.
 Qed.
 
-Definition lift_pkt_inv (P : Packet -> StateMap -> Prop) : PacketSoup -> StateMap -> Prop :=
+Definition lift_pkt_inv' (P : Packet -> StateMap -> Prop) : PacketSoup -> StateMap -> Prop :=
   fun psent stmap => forall p, In p psent -> P p stmap.
+
+Definition lift_pkt_inv (P : Packet -> StateMap -> Prop) : World -> Prop :=
+  Eval unfold lift_pkt_inv' in fun w => lift_pkt_inv' P (sentMsgs w) (localState w).
 
 (* this bunch can pass the base case easily, since it does no work for existing packets *)
 Record node_psent_bwd_invariants_sent p stmap : Prop := {
@@ -916,22 +922,21 @@ Proof.
 Qed.
 
 Corollary bwd_invariants_id q w w' (Hstep : system_step q w w') psent :
-  (lift_pkt_inv node_psent_bwd_invariants_sent psent (localState w) ->
-  lift_pkt_inv node_psent_bwd_invariants_sent psent (localState w')) /\
-  (lift_pkt_inv node_psent_bwd_invariants_recv psent (localState w) ->
-  lift_pkt_inv node_psent_bwd_invariants_recv psent (localState w')).
+  (lift_pkt_inv' node_psent_bwd_invariants_sent psent (localState w) ->
+  lift_pkt_inv' node_psent_bwd_invariants_sent psent (localState w')) /\
+  (lift_pkt_inv' node_psent_bwd_invariants_recv psent (localState w) ->
+  lift_pkt_inv' node_psent_bwd_invariants_recv psent (localState w')).
 Proof.
   split; intros H; hnf in H |- *; intros [ src dst msg used ] Hin; specialize (H _ Hin).
   all: now eapply (bwd_invariants_id_pre Hstep _) in H; eauto.
 Qed.
 
 Fact bwd_invariants :
-  is_invariant_step (fun w => id_coh w /\ (* needed, since will use psent_mnt_sound *)
-    (lift_pkt_inv node_psent_bwd_invariants_sent (sentMsgs w) (localState w)
-      /\ lift_pkt_inv node_psent_bwd_invariants_recv (sentMsgs w) (localState w))).
+  is_invariant_step_under id_coh (* needed, since will use psent_mnt_sound *)
+    (fun w => lift_pkt_inv node_psent_bwd_invariants_sent w
+      /\ lift_pkt_inv node_psent_bwd_invariants_recv w).
 Proof.
-  hnf; intros q ?? (Hcoh & H) Hstep.
-  apply and_wlog_r; [ eapply id_coh_is_invariant; eauto | intros Hcoh' ].
+  hnf; intros q ?? Hcoh Hcoh' H Hstep. unfold lift_pkt_inv in H |- *. 
   (* get the effect *)
   pose proof Hstep as Hstep_.
   apply psent_mnt_sound in Hstep; try assumption.
@@ -997,9 +1002,6 @@ Definition echo_exists_before_ready p psent : Prop :=
   | _ => True
   end.
 
-Definition is_invariant_step_under (P Q : World -> Prop) : Prop :=
-  forall q w w', P w -> P w' -> Q w -> system_step q w w' -> Q w'.
-
 (* this is nonsense ... *)
 Fact procMsgWithCheck_fresh st src m :
   Forall (fun p => p.(consumed) = false) (snd (procMsgWithCheck st src m)).
@@ -1023,8 +1025,8 @@ Lemma echo_exists_before_ready_is_invariant :
   is_invariant_step_under (fun w => id_coh w /\
     lift_state_inv node_state_invariants w /\
     lift_node_inv node_psent_fwd_invariants w /\
-    lift_pkt_inv node_psent_bwd_invariants_sent (sentMsgs w) (localState w) /\
-    lift_pkt_inv node_psent_bwd_invariants_recv (sentMsgs w) (localState w))
+    lift_pkt_inv node_psent_bwd_invariants_sent w /\
+    lift_pkt_inv node_psent_bwd_invariants_recv w)
   (fun w => forall p, In p (sentMsgs w) -> echo_exists_before_ready p (sentMsgs w)).
 Proof with saturate_assumptions.
   hnf. intros qq ?? Hback (Hcoh & Hst & Hfwd & Hbwds & Hbwdr) H Hstep.
