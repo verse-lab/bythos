@@ -44,6 +44,34 @@ Global Tactic Notation "hypothesis" :=
     end
   end.
 
+Global Ltac isSome_rewrite :=
+  repeat match goal with
+  | H : ?a = _, H0 : context[ssrbool.isSome ?a] |- _ => rewrite H in H0; simpl in H0
+  | H : ?a = _ |- context[ssrbool.isSome ?a] => rewrite H; simpl
+  end.
+
+Global Tactic Notation "destruct_eqdec_raw" constr(eqdec) constr(a) constr(b) simple_intropattern(pat) :=
+  match type of eqdec with
+    forall _ : _, forall _ : _, sumbool (eq _ _) (not (eq _ _)) =>
+    destruct (eqdec a b) as [ pat | ] +
+    destruct (eqdec a b) as [ | ]
+  end.
+
+Global Tactic Notation "destruct_eqdec" "in_" hyp(H) "as_" simple_intropattern(pat) :=
+  repeat match type of H with
+    context[if ?eqdec ?a ?b then _ else _] => destruct_eqdec_raw eqdec a b pat
+  end.
+
+Global Tactic Notation "destruct_eqdec" "as_" simple_intropattern(pat) :=
+  repeat match goal with
+    |- context[if ?eqdec ?a ?b then _ else _] => destruct_eqdec_raw eqdec a b pat
+  end.
+
+Global Tactic Notation "destruct_eqdec!" "as_" simple_intropattern(pat) :=
+  repeat match goal with 
+  | H : context[if ?eqdec ?a ?b then _ else _] |- _ => destruct_eqdec_raw eqdec a b pat
+  end; try destruct_eqdec as_ pat.
+
 Module RBInvariant (A : NetAddr) (R : RBTag) (V : Signable) (VBFT : ValueBFT A R V)
   (BTh : ClassicByzThreshold A) (BSett : RestrictedByzSetting A BTh).
 
@@ -178,34 +206,6 @@ Tactic Notation "destruct_localState" ident(w) ident(n)
 Tactic Notation "destruct_localState" ident(w) ident(n) "as_" simple_intropattern(pat) :=
   let E := fresh "E" in
   destruct_localState w n as_ pat eqn_ E; clear E.
-
-Tactic Notation "destruct_eqdec_raw" constr(eqdec) constr(a) constr(b) simple_intropattern(pat) :=
-  match type of eqdec with
-    forall _ : _, forall _ : _, sumbool (eq _ _) (not (eq _ _)) =>
-    destruct (eqdec a b) as [ pat | ] +
-    destruct (eqdec a b) as [ | ]
-  end.
-
-Tactic Notation "destruct_eqdec" "in_" hyp(H) "as_" simple_intropattern(pat) :=
-  repeat match type of H with
-    context[if ?eqdec ?a ?b then _ else _] => destruct_eqdec_raw eqdec a b pat
-  end.
-
-Tactic Notation "destruct_eqdec" "as_" simple_intropattern(pat) :=
-  repeat match goal with
-    |- context[if ?eqdec ?a ?b then _ else _] => destruct_eqdec_raw eqdec a b pat
-  end.
-
-Tactic Notation "destruct_eqdec!" "as_" simple_intropattern(pat) :=
-  repeat match goal with 
-  | H : context[if ?eqdec ?a ?b then _ else _] |- _ => destruct_eqdec_raw eqdec a b pat
-  end; try destruct_eqdec as_ pat.
-
-Ltac isSome_rewrite :=
-  repeat match goal with
-  | H : ?a = _, H0 : context[isSome ?a] |- _ => rewrite H in H0; simpl in H0
-  | H : ?a = _ |- context[isSome ?a] => rewrite H; simpl
-  end.
 
 Create HintDb RBinv.
 
@@ -1013,21 +1013,6 @@ Qed.
 
 End Backward.
 
-(* should be useful ... intensionally inductive? *)
-(* serve as a way to tell that "at least some of the ready messages are the consequences of echo messages" *)
-(* in paper proof, this invariant might be mentioned as "consider the first non-faulty node who broadcast
-    ready messages"; but that would involve the notion of time, which is not convenient to formalize
-    and use in the safety proofs *)
-
-Definition echo_exists_before_ready p psent : Prop :=
-  match p with
-  | mkP src dst (ReadyMsg q r v) used =>
-    is_byz src = false ->
-      exists src' dst', is_byz src' = false /\ 
-        In (mkP src' dst' (EchoMsg q r v) true) psent
-  | _ => True
-  end.
-
 (* this is nonsense ... *)
 Fact procMsgWithCheck_fresh st src m :
   Forall (fun p => p.(consumed) = false) (snd (procMsgWithCheck st src m)).
@@ -1047,19 +1032,44 @@ Proof.
   destruct (sent r); simpl; auto using broadcast_all_fresh.
 Qed.
 
+(* should be useful ... intensionally inductive? *)
+(* serve as a way to tell that "at least some of the ready messages are the consequences of echo messages" *)
+(* in paper proof, this invariant might be mentioned as "consider the first non-faulty node who broadcast
+    ready messages"; but that would involve the notion of time, which is not convenient to formalize
+    and use in the safety proofs *)
+(*
+Definition echo_exists_before_ready p psent : Prop :=
+  match p with
+  | mkP src dst (ReadyMsg q r v) used =>
+    is_byz src = false ->
+      exists src' dst', is_byz src' = false /\ 
+        In (mkP src' dst' (EchoMsg q r v) true) psent
+  | _ => True
+  end.
+*)
+(* considering the following proofs, another form will be more convenient *)
+Definition echo_exists_before_ready psent st : Prop :=
+  forall q r v, 
+    st.(voted) (q, r) = Some v ->
+      exists src' dst', is_byz src' = false /\ 
+        In (mkP src' dst' (EchoMsg q r v) true) psent.
+
 Lemma echo_exists_before_ready_is_invariant :
   is_invariant_step_under (fun w => id_coh w /\
     lift_state_inv node_state_invariants w /\
     lift_node_inv node_psent_fwd_invariants w /\
     lift_pkt_inv node_psent_bwd_invariants_sent w /\
     lift_pkt_inv node_psent_bwd_invariants_recv w)
-  (fun w => forall p, In p (sentMsgs w) -> echo_exists_before_ready p (sentMsgs w)).
+  (lift_node_inv echo_exists_before_ready).
 Proof with saturate_assumptions.
-  hnf. intros qq ?? Hback (Hcoh & Hst & Hfwd & Hbwds & Hbwdr) H Hstep.
+  hnf. intros qq ?? (_ & _ & _ & Hbwds_back & _) (Hcoh & Hst & Hfwd & Hbwds & Hbwdr) H Hstep.
+  (*
   intros [ src dst msg used ] Hin. 
   hnf in Hbwds. specialize (Hbwds _ Hin).
   hnf. destruct msg as [ | | q r v ]; try apply I. intros Hnonbyz.
   pick readymsg_sent_bwd as_ Hr by_ (destruct Hbwds)...
+  *)
+  hnf. intros src Hnonbyz. hnf. intros q r v Hr.
   pose proof (Hst src) as Hst'. 
   pick voted_coh_some as_ Hr2 by_ (destruct Hst').
   specialize (Hr2 _ _ _ Hr). 
@@ -1076,8 +1086,9 @@ Proof with saturate_assumptions.
   - (* inductive case *)
     (* HMM exploiting the network model ... *)
     eapply system_step_received_inversion_full in Hr3; try eassumption; auto using procMsgWithCheck_fresh, procInt_fresh.
-    destruct Hr3 as (? & Hr3%H). hnf in Hr3. saturate_assumptions. 
-    destruct Hr3 as (? & ? & ? & Hr3). eapply system_step_psent_norevert_full in Hr3; eauto.
+    destruct Hr3 as (? & Hr3). 
+    pick readymsg_sent_bwd as_ Hr4 by_ (pose proof (Hbwds_back _ Hr3) as [])... apply H in Hr4; auto.
+    destruct Hr4 as (? & ? & ? & Hr4). eapply system_step_psent_norevert_full in Hr4; eauto.
 Qed.
 
 (* now we have World-level invariants *)

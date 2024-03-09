@@ -39,7 +39,7 @@ Fact grounded_invariants : is_grounded_invariant
     lift_node_inv node_psent_fwd_invariants w /\
     lift_pkt_inv node_psent_bwd_invariants_sent w /\
     lift_pkt_inv node_psent_bwd_invariants_recv w) /\
-    (forall p, In p (sentMsgs w) -> echo_exists_before_ready p (sentMsgs w)) /\
+    (lift_node_inv echo_exists_before_ready w) /\
     (first_vote_due_to_echo w /\ vote_uniqueness w)).
 Proof.
   hnf. split.
@@ -76,7 +76,13 @@ Ltac saturate :=
     simpl in Htmp; destruct Htmp as ((Hcoh & Hst & Hfwd & Hbwds & Hbwdr) & Heebr & (_ (* not useful here *) & Hvu))
   end.
 
-Definition integrity w : Prop :=
+Definition vote_integrity w : Prop :=
+  forall dst src r v, 
+    is_byz dst = false -> is_byz src = false ->
+    (w @ dst).(voted) (src, r) = Some v ->
+    (w @ src).(sent) r /\ value_bft src r = v.
+
+Definition output_integrity w : Prop :=
   forall dst src r v, 
     is_byz dst = false -> is_byz src = false ->
     In v ((w @ dst).(output) (src, r)) ->
@@ -98,7 +104,17 @@ Definition single_output w : Prop :=
 
 Section Main_Proof.
 
-Lemma integrity_is_safety : is_safety integrity.
+Lemma vote_integrity_is_safety : is_safety vote_integrity.
+Proof.
+  hnf. intros w Hr. saturate.
+  hnf. intros dst src r v Hnonbyz_dst Hnonbyz_src H2.
+  apply Heebr (* also a step *) in H2; auto. hnf in H2. saturate_assumptions. destruct H2 as (src' & dst' & Hnonbyz_src' & Hin'').
+  pick echomsg_sent_bwd as_ H3 by_ (pose proof (Hbwds _ Hin'') as []). saturate_assumptions.
+  pick initialmsg_recv_fwd as_ H4 by_ (pose proof (Hfwd _ Hnonbyz_src') as []). specialize (H4 _ _ _ H3). rewrite Hcoh in H4.
+  pick initialmsg_sent_bwd as_ H5 by_ (pose proof (Hbwds _ H4) as []). now saturate_assumptions.
+Qed.
+
+Lemma output_integrity_is_safety : is_safety output_integrity.
 Proof.
   hnf. intros w Hr. saturate.
   hnf. intros dst src r v Hnonbyz_dst Hnonbyz_src Hin.
@@ -109,10 +125,9 @@ Proof.
   match type of H1 with _ <= ?ll => assert (t0 < ll) as (n & Hnonbyz_n & Hin')%at_least_one_nonfaulty by lia end.
   2: eapply (Hnodup (ReadyMsg _ _ _)).
   pick msgcnt_recv_fwd as_ H2 by_ (pose proof (Hfwd _ Hnonbyz_dst) as []). specialize (H2 _ _ Hin'). rewrite Hcoh in H2.
-  apply Heebr (* also a step *) in H2. hnf in H2. saturate_assumptions. destruct H2 as (src' & dst' & Hnonbyz_src' & Hin'').
-  pick echomsg_sent_bwd as_ H3 by_ (pose proof (Hbwds _ Hin'') as []). saturate_assumptions.
-  pick initialmsg_recv_fwd as_ H4 by_ (pose proof (Hfwd _ Hnonbyz_src') as []). specialize (H4 _ _ _ H3). rewrite Hcoh in H4.
-  pick initialmsg_sent_bwd as_ H5 by_ (pose proof (Hbwds _ H4) as []). now saturate_assumptions.
+  pick readymsg_sent_bwd as_ H4 by_ (pose proof (Hbwds _ H2) as []). saturate_assumptions.
+  (* use vote_integrity *)
+  apply vote_integrity_is_safety in Hr. apply Hr in H4; auto.
 Qed.
 
 Lemma output_uniqueness_is_safety : is_safety output_uniqueness.
