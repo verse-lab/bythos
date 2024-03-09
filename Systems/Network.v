@@ -51,7 +51,7 @@ Axiom num_byz_le_t0 : num_byz <= t0.
 
 (* this will not be instantiated, so anyway *)
 
-Fact at_least_one_nonfaulty [l : list Address] (Hnodup : List.NoDup l)
+Lemma at_least_one_nonfaulty [l : list Address] (Hnodup : List.NoDup l)
   (Hlen : t0 < length l) : exists n, is_byz n = false /\ In n l.
 Proof.
   pose proof (filter_length is_byz l).
@@ -73,6 +73,10 @@ Proof.
   pose proof num_byz_le_t0.
   lia.
 Qed.
+
+Corollary nonbyz_lower_bound :
+  N - t0 <= length (filter (fun n => negb (is_byz n)) valid_nodes).
+Proof. apply filter_nonbyz_lower_bound_t0, valid_nodes_NoDup. Qed.
 
 End RestrictedByzSetting.
 

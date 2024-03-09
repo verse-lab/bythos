@@ -2,11 +2,12 @@ From Coq Require Import List Bool Lia ListSet Permutation PeanoNat.
 From Coq Require ssrbool ssreflect.
 Import (coercions) ssrbool.
 Import ssreflect.SsrSyntax.
-From ABCProtocol.Protocols.ABC Require Export Network.
+From ABCProtocol.Systems Require Export Network.
 
-(* suppress warning about coercion *)
-From ABCProtocol.Utils Require TLAmore. 
-Export -(coercions) TLAmore. (* need to separate Require and Import; otherwise Coqdep will complain *)
+From ABCProtocol.Utils Require Export TLAmore. 
+(* used this to suppress warning about coercion, but now anyway *)
+(* this would require some time ... *)
+(* Export -(coercions) TLAmore. (* need to separate Require and Import; otherwise Coqdep will complain *) *)
 
 Module Liveness (Export A : NetAddr) (Export M : MessageType)
   (Export BTh : ByzThreshold A) (Export BSett : ByzSetting A) 
