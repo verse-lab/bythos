@@ -34,7 +34,7 @@ Import A R V.
 Inductive Message_ := 
   | InitialMsg (r : Round) (v : Value)
   | EchoMsg (orig : Address) (r : Round) (v : Value)
-  | ReadyMsg (orig : Address) (r : Round) (v : Value)
+  | VoteMsg (orig : Address) (r : Round) (v : Value)
 .
 
 Definition Message := Message_.

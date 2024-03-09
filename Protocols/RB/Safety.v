@@ -39,12 +39,12 @@ Fact grounded_invariants : is_grounded_invariant
     lift_node_inv node_psent_fwd_invariants w /\
     lift_pkt_inv node_psent_bwd_invariants_sent w /\
     lift_pkt_inv node_psent_bwd_invariants_recv w) /\
-    (lift_node_inv echo_exists_before_ready w) /\
+    (lift_node_inv echo_exists_before_vote w) /\
     (first_vote_due_to_echo w /\ vote_uniqueness w)).
 Proof.
   hnf. split.
   - unfold initWorld, initState, Init.
-    pose proof th_echo4ready_gt_0. pose proof th_ready4ready_gt_0. pose proof th_ready4output_gt_0. (* prepare *)
+    pose proof th_echo4vote_gt_0. pose proof th_vote4vote_gt_0. pose proof th_vote4output_gt_0. (* prepare *)
     split_and?; hnf; simpl; intros; try eqsolve; auto.
     1-2: constructor; hnf; simpl; intros; try solve [ discriminate | contradiction | constructor; auto | lia | auto ].
     + destruct msg0; auto; try constructor.
@@ -55,7 +55,7 @@ Proof.
     auto using is_invariant_step_under_closed, is_invariant_step_under_split, 
       is_invariant_step_under_clear, is_invariant_step_under_intro_l, 
       id_coh_is_invariant, state_invariants, fwd_invariants, bwd_invariants, 
-      echo_exists_before_ready_is_invariant, first_vote_due_to_echo_is_invariant, vote_uniqueness_is_invariant.
+      echo_exists_before_vote_is_invariant, first_vote_due_to_echo_is_invariant, vote_uniqueness_is_invariant.
 Qed.
 
 End Grounded_Invariants.
@@ -120,12 +120,12 @@ Proof.
   hnf. intros dst src r v Hnonbyz_dst Hnonbyz_src Hin.
   pick output_coh_fwd as_ H1 by_ (pose proof (Hst dst) as []). specialize (H1 _ _ _ Hin). 
   (* TODO the following two steps have some overlap with a previous proof *)
-  unfold th_ready4output in H1. pose proof t0_lt_N_minus_2t0 as Ht0.
+  unfold th_vote4output in H1. pose proof t0_lt_N_minus_2t0 as Ht0.
   pick msgcnt_coh as_ Hnodup by_ (pose proof (Hst dst) as []). 
   match type of H1 with _ <= ?ll => assert (t0 < ll) as (n & Hnonbyz_n & Hin')%at_least_one_nonfaulty by lia end.
-  2: eapply (Hnodup (ReadyMsg _ _ _)).
+  2: eapply (Hnodup (VoteMsg _ _ _)).
   pick msgcnt_recv_fwd as_ H2 by_ (pose proof (Hfwd _ Hnonbyz_dst) as []). specialize (H2 _ _ Hin'). rewrite Hcoh in H2.
-  pick readymsg_sent_bwd as_ H4 by_ (pose proof (Hbwds _ H2) as []). saturate_assumptions.
+  pick votemsg_sent_bwd as_ H4 by_ (pose proof (Hbwds _ H2) as []). saturate_assumptions.
   (* use vote_integrity *)
   apply vote_integrity_is_safety in Hr. apply Hr in H4; auto.
 Qed.
@@ -138,9 +138,9 @@ Proof.
   pick output_coh_fwd as_ Hle1 by_ (pose proof (Hst dst1) as []). specialize (Hle1 _ _ _ Hin1).
   pick output_coh_fwd as_ Hle2 by_ (pose proof (Hst dst2) as []). specialize (Hle2 _ _ _ Hin2). 
   (* TODO the following step has some overlap with a previous proof *)
-  unfold th_ready4output in Hle1, Hle2.
-  pick msgcnt_coh as_ Hnodup1 by_ (pose proof (Hst dst1) as []). specialize (Hnodup1 (ReadyMsg src r v1)).
-  pick msgcnt_coh as_ Hnodup2 by_ (pose proof (Hst dst2) as []). specialize (Hnodup2 (ReadyMsg src r v2)).
+  unfold th_vote4output in Hle1, Hle2.
+  pick msgcnt_coh as_ Hnodup1 by_ (pose proof (Hst dst1) as []). specialize (Hnodup1 (VoteMsg src r v1)).
+  pick msgcnt_coh as_ Hnodup2 by_ (pose proof (Hst dst2) as []). specialize (Hnodup2 (VoteMsg src r v2)).
   simpl in Hnodup1, Hnodup2.
   (* the basic idea is to find a non-faulty node in the quorum intersection that equivocate, and then prove False *)
   pose proof (quorum_intersection Hnodup1 Hnodup2 Hle1 Hle2) as Hq. pose proof t0_lt_N_minus_2t0 as Ht0.
@@ -150,8 +150,8 @@ Proof.
   pick msgcnt_recv_fwd as_ Hsent1 by_ (pose proof (Hfwd _ Hnonbyz_dst1) as []). specialize (Hsent1 _ _ Hin1'). 
   pick msgcnt_recv_fwd as_ Hsent2 by_ (pose proof (Hfwd _ Hnonbyz_dst2) as []). specialize (Hsent2 _ _ Hin2').
   rewrite Hcoh in Hsent1, Hsent2.
-  pick readymsg_sent_bwd as_ Hv1 by_ (pose proof (Hbwds _ Hsent1) as []).
-  pick readymsg_sent_bwd as_ Hv2 by_ (pose proof (Hbwds _ Hsent2) as []).
+  pick votemsg_sent_bwd as_ Hv1 by_ (pose proof (Hbwds _ Hsent1) as []).
+  pick votemsg_sent_bwd as_ Hv2 by_ (pose proof (Hbwds _ Hsent2) as []).
   saturate_assumptions. congruence.
 Qed.
 

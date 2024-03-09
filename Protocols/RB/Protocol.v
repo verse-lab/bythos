@@ -74,8 +74,8 @@ Definition procInt (st : State) (tr : InternalTransition) : State * list Packet 
 
 (* TODO do things still work if we consider short-circuiting?
     it seems like the following heuristic will break when the triggering message is
-    Echo, but by short-circuiting the node collects enough Ready messages and thus 
-    the subsequent triggering message becomes Ready. *)
+    Echo, but by short-circuiting the node collects enough Vote messages and thus 
+    the subsequent triggering message becomes Vote. *)
 
 Definition procMsg (st : State) (src : Address) (msg : Message) : option (State * list Packet) :=
   let: Node n smap emap vmap cnt omap := st in
@@ -114,62 +114,62 @@ Definition procMsg (st : State) (src : Address) (msg : Message) : option (State 
 
 (* some auxiliary definitions for the monitor *)
 
-Definition th_echo4ready := N - t0.
-Definition th_ready4ready := N - (t0 + t0).
-Definition th_ready4output := N - t0.
+Definition th_echo4vote := N - t0.
+Definition th_vote4vote := N - (t0 + t0).
+Definition th_vote4output := N - t0.
 
-Fact th_echo4ready_gt_0 : 0 < th_echo4ready.
-Proof. unfold th_echo4ready. pose proof t0_lt_N. lia. Qed.
+Fact th_echo4vote_gt_0 : 0 < th_echo4vote.
+Proof. unfold th_echo4vote. pose proof t0_lt_N. lia. Qed.
 
-Fact th_ready4ready_gt_0 : 0 < th_ready4ready.
-Proof. unfold th_ready4ready. pose proof t0_lt_N_minus_2t0. lia. Qed.
+Fact th_vote4vote_gt_0 : 0 < th_vote4vote.
+Proof. unfold th_vote4vote. pose proof t0_lt_N_minus_2t0. lia. Qed.
 
-Fact th_ready4output_gt_0 : 0 < th_ready4output.
-Proof th_echo4ready_gt_0.
+Fact th_vote4output_gt_0 : 0 < th_vote4output.
+Proof th_echo4vote_gt_0.
 
-Definition check_ready_condition (st : State) (msg : Message) : bool :=
+Definition check_vote_condition (st : State) (msg : Message) : bool :=
   let: Node n smap emap vmap cnt omap := st in
   match msg with
   | EchoMsg q r _ =>
-    (* should have not sent ready message before *)
+    (* should have not sent vote message before *)
     negb (ssrbool.isSome (vmap (q, r))) &&
     (* reach the threshold *)
-    (th_echo4ready <=? length (cnt msg))
-  | ReadyMsg q r _ =>
-    (* should have not sent ready message before *)
+    (th_echo4vote <=? length (cnt msg))
+  | VoteMsg q r _ =>
+    (* should have not sent vote message before *)
     negb (ssrbool.isSome (vmap (q, r))) &&
     (* reach the threshold *)
-    (th_ready4ready <=? length (cnt msg))
+    (th_vote4vote <=? length (cnt msg))
   | _ => false
   end.
 
 Definition check_output_condition (st : State) (msg : Message) : bool :=
   match msg with
-  | ReadyMsg _ _ _ =>
+  | VoteMsg _ _ _ =>
     (* allow setting the output multiple times? seems fine *)
     (* reach the threshold *)
-    (th_ready4output <=? length (st.(msgcnt) msg))
+    (th_vote4output <=? length (st.(msgcnt) msg))
   | _ => false
   end.
 
 Definition update_voted_by_msg (st : State) (m : Message) : State * list Packet :=
   match m with
-  | EchoMsg q r v | ReadyMsg q r v =>
+  | EchoMsg q r v | VoteMsg q r v =>
     let: vmap' := map_update AddrRdPair_eqdec (q, r) (Some v) st.(voted) in
-    (st <| voted := vmap' |>, broadcast st.(id) (ReadyMsg q r v))
+    (st <| voted := vmap' |>, broadcast st.(id) (VoteMsg q r v))
   | _ => (st, nil) (* illegal *)
   end.
 
 Definition update_output_by_msg (m : Message) output :=
   match m with
-  | ReadyMsg q r v =>
+  | VoteMsg q r v =>
     map_update AddrRdPair_eqdec (q, r) (set_add_simple Value_eqdec v (output (q, r))) output
   | _ => output (* illegal *)
   end.
 
 Definition routine_check (st : State) (msg : Message) : State * list Packet :=
   let: (st', pkts) := 
-    if check_ready_condition st msg
+    if check_vote_condition st msg
     then update_voted_by_msg st msg
     else (st, nil) in
   (* TODO this consequencing is ad-hoc ... maybe having some combinator would be better *)

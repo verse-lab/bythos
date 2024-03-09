@@ -61,7 +61,7 @@ Section Proof_of_Global_Liveness.
 
   (* the structure of Round 1 and Round 2 are similar, so some conclusions might be reused *)
   Definition pkts_needed size w nonbyz_senders pkts :=
-    pkts_needed size w nonbyz_senders pkts (ReadyMsg src r v) (fun w n => (w @ n).(voted) (src, r) = Some v).
+    pkts_needed size w nonbyz_senders pkts (VoteMsg src r v) (fun w n => (w @ n).(voted) (src, r) = Some v).
 
   Lemma pkts_needed_by_voted_nodes w size (H_w_reachable : reachable w)
     nonbyz_senders (Hf_nonbyz : forall n, In n nonbyz_senders -> is_byz n = false)
@@ -72,7 +72,7 @@ Section Proof_of_Global_Liveness.
     saturate. 
     exists (List.filter (fun p => 
       match p.(msg) with
-      | ReadyMsg _ _ _ =>
+      | VoteMsg _ _ _ =>
         (is_left (in_dec Address_eqdec (P.src p) nonbyz_senders)) && (negb (is_byz p.(dst)))
       | _ => false
       end) (sentMsgs w)).
@@ -83,7 +83,7 @@ Section Proof_of_Global_Liveness.
     - intros n1 Hin1_backup. 
       pose proof Hin1_backup as Hnonbyz_n1%Hf_nonbyz. pose proof Hin1_backup as Hv%Hallvoted. split_and?; auto.
       intros n2 Hnonbyz_n2.
-      pick readymsg_sent_fwd as_ Hsent1' by_ (pose proof (Hfwd _ Hnonbyz_n1) as []). specialize (Hsent1' _ _ _ Hv n2). rewrite Hcoh in Hsent1'.
+      pick votemsg_sent_fwd as_ Hsent1' by_ (pose proof (Hfwd _ Hnonbyz_n1) as []). specialize (Hsent1' _ _ _ Hv n2). rewrite Hcoh in Hsent1'.
       destruct Hsent1'. eexists. apply filter_In. 
       simpl. split; [ eassumption | unfold is_left; now rewrite andb_true_iff, negb_true_iff, in_dec_is_left ].
   Qed.
@@ -98,7 +98,7 @@ Section Proof_of_Global_Liveness.
   Definition pkts_needed_in_round_1 nonbyz_senders pkts : Prop :=
     Eval unfold pkts_needed in pkts_needed (N - (t0 + t0)) w nonbyz_senders pkts.
 
-  (* in the first round, there are (N-2t0) non-faulty nodes broadcasting Ready messages *)
+  (* in the first round, there are (N-2t0) non-faulty nodes broadcasting Vote messages *)
   Lemma round_1_pkts :
     exists nonbyz_senders pkts, pkts_needed_in_round_1 nonbyz_senders pkts.
   Proof.
@@ -106,15 +106,15 @@ Section Proof_of_Global_Liveness.
     destruct Hstart as (n & Hnonbyz_n & Hr).
     (* TODO the following two steps are familiar ... *)
     pick output_coh_fwd as_ H1 by_ (pose proof (Hst n) as []). specialize (H1 _ _ _ Hr).
-    unfold th_ready4output in H1.
-    pick msgcnt_coh as_ Hnodup by_ (pose proof (Hst n) as []). specialize (Hnodup (ReadyMsg src r v)). simpl in Hnodup.
+    unfold th_vote4output in H1.
+    pick msgcnt_coh as_ Hnodup by_ (pose proof (Hst n) as []). specialize (Hnodup (VoteMsg src r v)). simpl in Hnodup.
     pose proof (filter_nonbyz_lower_bound_t0 Hnodup) as Hlen.
     match type of Hlen with _ <= length ?ll => exists ll end.
     apply pkts_needed_by_voted_nodes; auto using NoDup_filter; try lia.
     all: intros n1 (Hin1 & Hnonbyz%negb_true_iff)%filter_In; auto.
     (* TODO the following two steps has some overlap with a previous proof *)
     pick msgcnt_recv_fwd as_ Hsent1 by_ (pose proof (Hfwd _ Hnonbyz_n) as []). specialize (Hsent1 _ _ Hin1). rewrite Hcoh in Hsent1.
-    pick readymsg_sent_bwd as_ Hv1 by_ (pose proof (Hbwds _ Hsent1) as []). now saturate_assumptions.
+    pick votemsg_sent_bwd as_ Hv1 by_ (pose proof (Hbwds _ Hsent1) as []). now saturate_assumptions.
   Qed.
 
   (* universally quantified *)
@@ -125,12 +125,12 @@ Section Proof_of_Global_Liveness.
   Definition round_1_end w' :=
     forall n1, In n1 nonbyz_senders -> 
       forall n2, is_byz n2 = false ->
-        In (mkP n1 n2 (ReadyMsg src r v) true) (sentMsgs w').
+        In (mkP n1 n2 (VoteMsg src r v) true) (sentMsgs w').
 
   Fact round_1_end_suffcond w' (Hincl : incl (map receive_pkt pkts) (sentMsgs w')) :
     round_1_end w'.
   Proof.
-    hnf in Hround1. pick ReadyMsg as_ HH by_ (destruct_and? Hround1).
+    hnf in Hround1. pick VoteMsg as_ HH by_ (destruct_and? Hround1).
     hnf. intros n1 Hin1 n2 Hnonbyz_n2. specialize (HH _ Hin1).
     destruct HH as (_ & _ & HH). specialize (HH _ Hnonbyz_n2). destruct HH as (? & HH). now apply (in_map receive_pkt), Hincl in HH.
   Qed.
@@ -158,10 +158,10 @@ Section Proof_of_Global_Liveness.
       eapply (Hvu src r n nn); eassumption.
     - (* prove contradiction using the message size *)
       pick voted_coh_none as_ Hp by_ (pose proof (Hst n) as []). apply Hp with (v:=v) in Ev'.
-      assert (incl nonbyz_senders (msgcnt (w0 @ n) (ReadyMsg src r v))) as Hincl.
+      assert (incl nonbyz_senders (msgcnt (w0 @ n) (VoteMsg src r v))) as Hincl.
       { hnf. intros nn Hin. specialize (Hw0 _ Hin n Hnonbyz_n).
         pick msgcnt_recv_bwd as_ Hr by_ (pose proof (Hbwdr _ Hw0) as []). saturate_assumptions. now simpl in Hr. }
-      apply NoDup_incl_length in Hincl; try assumption. unfold th_ready4ready in Ev'. destruct Ev'. lia.
+      apply NoDup_incl_length in Hincl; try assumption. unfold th_vote4vote in Ev'. destruct Ev'. lia.
   Qed.
 
   End Round1.
@@ -176,7 +176,7 @@ Section Proof_of_Global_Liveness.
 
   Let nonbyz_senders := (List.filter (fun n => negb (is_byz n)) valid_nodes).
 
-  (* in the second round, there are (N-t0) non-faulty nodes broadcasting Ready messages *)
+  (* in the second round, there are (N-t0) non-faulty nodes broadcasting Vote messages *)
   Lemma round_2_pkts :
     exists pkts, pkts_needed_in_round_2 nonbyz_senders pkts.
   Proof.
@@ -190,12 +190,12 @@ Section Proof_of_Global_Liveness.
   Hypotheses (Hround2 : pkts_needed_in_round_2 nonbyz_senders pkts).
 
   Definition round_2_end w' :=
-    Eval unfold mutual_receiving in mutual_receiving (ReadyMsg src r v) w'.
+    Eval unfold mutual_receiving in mutual_receiving (VoteMsg src r v) w'.
 
   Fact round_2_end_suffcond w' (Hincl : incl (map receive_pkt pkts) (sentMsgs w')) :
     round_2_end w'.
   Proof.
-    hnf in Hround2. pick ReadyMsg as_ HH by_ (destruct_and? Hround2).
+    hnf in Hround2. pick VoteMsg as_ HH by_ (destruct_and? Hround2).
     hnf. intros n1 Hin1 n2 Hnonbyz_n2. 
     specialize (HH n1 ltac:(unfold nonbyz_senders; rewrite filter_In, negb_true_iff; auto using Address_is_finite)).
     destruct HH as (_ & _ & HH). specialize (HH _ Hnonbyz_n2). destruct HH as (? & HH). now apply (in_map receive_pkt), Hincl in HH.
@@ -209,12 +209,12 @@ Section Proof_of_Global_Liveness.
 
     hnf in Hw0 |- *. intros n Hnonbyz_n. 
     pick output_coh_bwd as_ Hp by_ (pose proof (Hst n) as []). apply Hp.
-    assert (incl nonbyz_senders (msgcnt (w0 @ n) (ReadyMsg src r v))) as Hincl.
+    assert (incl nonbyz_senders (msgcnt (w0 @ n) (VoteMsg src r v))) as Hincl.
     { hnf. intros nn (_ & Hnonbyz_nn%negb_true_iff)%filter_In. specialize (Hw0 _ Hnonbyz_nn n Hnonbyz_n).
       pick msgcnt_recv_bwd as_ Hr by_ (pose proof (Hbwdr _ Hw0) as []). saturate_assumptions. now simpl in Hr. }
     unfold nonbyz_senders in Hincl. 
     apply NoDup_incl_length in Hincl; auto using NoDup_filter, valid_nodes_NoDup.
-    unfold th_ready4output. pose proof nonbyz_lower_bound. lia.
+    unfold th_vote4output. pose proof nonbyz_lower_bound. lia.
   Qed.
 
   End Round2.
@@ -360,7 +360,7 @@ Section Proof_of_Validity1.
       assert (incl nonbyz_senders (msgcnt (w0 @ n) (EchoMsg src r (value_bft src r)))) as Hincl.
       { hnf. subst nonbyz_senders. intros nn (_ & Hnonbyz_nn%negb_true_iff)%filter_In. specialize (Hw0 nn ltac:(assumption) n ltac:(assumption)).
         pick msgcnt_recv_bwd as_ Hr by_ (pose proof (Hbwdr _ Hw0) as []). saturate_assumptions. now simpl in Hr. }
-      apply NoDup_incl_length in Hincl; try assumption. unfold th_echo4ready in Ev'. destruct Ev'. lia.
+      apply NoDup_incl_length in Hincl; try assumption. unfold th_echo4vote in Ev'. destruct Ev'. lia.
   Qed.
 
   End Round2.

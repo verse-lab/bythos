@@ -120,11 +120,11 @@ Global Arguments is_InitialMsg !_ /.
 (* well, certainly not reusable *)
 Tactic Notation "simpl_via_is_InitialMsg_false" constr(msg) :=
   repeat match goal with
-  | H : context[match msg with InitialMsg _ _ => _ | EchoMsg _ _ _ | ReadyMsg _ _ _ => ?ee end] |- _ =>
-    replace (match msg with InitialMsg _ _ => _ | EchoMsg _ _ _ | ReadyMsg _ _ _ => ee end)
+  | H : context[match msg with InitialMsg _ _ => _ | EchoMsg _ _ _ | VoteMsg _ _ _ => ?ee end] |- _ =>
+    replace (match msg with InitialMsg _ _ => _ | EchoMsg _ _ _ | VoteMsg _ _ _ => ee end)
       with ee in H by (destruct msg; try discriminate; reflexivity)
-  | |- context[match msg with InitialMsg _ _ => _ | EchoMsg _ _ _ | ReadyMsg _ _ _ => ?ee end] =>
-    replace (match msg with InitialMsg _ _ => _ | EchoMsg _ _ _ | ReadyMsg _ _ _ => ee end)
+  | |- context[match msg with InitialMsg _ _ => _ | EchoMsg _ _ _ | VoteMsg _ _ _ => ?ee end] =>
+    replace (match msg with InitialMsg _ _ => _ | EchoMsg _ _ _ | VoteMsg _ _ _ => ee end)
       with ee by (destruct msg; try discriminate; reflexivity)
   end.
 
@@ -251,10 +251,10 @@ Inductive state_mnt_type (st : State) : state_mnt_type_tag -> Type :=
   | Mvoted : forall q r v,
     st.(voted) (q, r) = None ->
     (* this seems to readily encode the dependency! *)
-    (th_echo4ready <= length (st.(msgcnt) (EchoMsg q r v)) \/
-     th_ready4ready <= length (st.(msgcnt) (ReadyMsg q r v))) -> state_mnt_type st MTvoted
+    (th_echo4vote <= length (st.(msgcnt) (EchoMsg q r v)) \/
+     th_vote4vote <= length (st.(msgcnt) (VoteMsg q r v))) -> state_mnt_type st MTvoted
   | Moutput : forall q r v,
-    th_ready4output <= length (st.(msgcnt) (ReadyMsg q r v)) ->
+    th_vote4output <= length (st.(msgcnt) (VoteMsg q r v)) ->
     state_mnt_type st MToutput
 .
 
@@ -290,7 +290,7 @@ Definition psent_effect (st : State) [tag] (s : state_mnt_type st tag) (n : Addr
   | Mmsgcnt _ q msg _ _ =>
     In (mkP q n msg true) psent
   | Mvoted _ q r v _ _ =>
-    incl (broadcast st.(id) (ReadyMsg q r v)) psent
+    incl (broadcast st.(id) (VoteMsg q r v)) psent
   | Moutput _ q r v _ => True
   end.
 
@@ -373,23 +373,23 @@ Local Hint Rewrite -> In_consume : psent.
 Definition voted_coh_some st : Prop :=
   forall q r v, 
     st.(voted) (q, r) = Some v ->
-    (th_echo4ready <= length (st.(msgcnt) (EchoMsg q r v)) \/ 
-     th_ready4ready <= length (st.(msgcnt) (ReadyMsg q r v))).
+    (th_echo4vote <= length (st.(msgcnt) (EchoMsg q r v)) \/ 
+     th_vote4vote <= length (st.(msgcnt) (VoteMsg q r v))).
 
 Definition voted_coh_none st : Prop :=
   forall q r v,
     st.(voted) (q, r) = None ->
-    length (st.(msgcnt) (EchoMsg q r v)) < th_echo4ready /\
-    length (st.(msgcnt) (ReadyMsg q r v)) < th_ready4ready.
+    length (st.(msgcnt) (EchoMsg q r v)) < th_echo4vote /\
+    length (st.(msgcnt) (VoteMsg q r v)) < th_vote4vote.
 
 Definition output_coh_fwd st : Prop :=
   forall q r v, 
     In v (st.(output) (q, r)) ->
-    th_ready4output <= length (st.(msgcnt) (ReadyMsg q r v)).
+    th_vote4output <= length (st.(msgcnt) (VoteMsg q r v)).
 
 Definition output_coh_bwd st : Prop :=
   forall q r v, 
-    th_ready4output <= length (st.(msgcnt) (ReadyMsg q r v)) ->
+    th_vote4output <= length (st.(msgcnt) (VoteMsg q r v)) ->
     In v (st.(output) (q, r)).
 
 Definition lift_point_to_edge {A : Type} (P : A -> Prop) : A -> A -> Prop :=
@@ -511,7 +511,7 @@ Proof.
   - destruct msg0; try contradiction.
     all: constructor; try assumption.
     apply (H (EchoMsg _ _ _)).
-    apply (H (ReadyMsg _ _ _)).
+    apply (H (VoteMsg _ _ _)).
   - apply NoDup_set_add_simple, H.
 Qed.
 
@@ -640,20 +640,20 @@ Definition msgcnt_recv_fwd psent st : Prop :=
 Definition msgcnt_recv_bwd p stmap : Prop :=
   match p with
   | mkP src dst (EchoMsg _ _ _) true
-  | mkP src dst (ReadyMsg _ _ _) true =>
+  | mkP src dst (VoteMsg _ _ _) true =>
     is_byz dst = false ->
       let: st := stmap dst in
       In src (st.(msgcnt) p.(msg))
   | _ => True
   end.
 
-Definition readymsg_sent_fwd psent st : Prop :=
+Definition votemsg_sent_fwd psent st : Prop :=
   forall q r v, st.(voted) (q, r) = Some v -> forall n, exists used, 
-    In (mkP st.(id) n (ReadyMsg q r v) used) psent.
+    In (mkP st.(id) n (VoteMsg q r v) used) psent.
 
-Definition readymsg_sent_bwd p stmap : Prop :=
+Definition votemsg_sent_bwd p stmap : Prop :=
   match p with
-  | mkP src dst (ReadyMsg q r v) used =>
+  | mkP src dst (VoteMsg q r v) used =>
     is_byz src = false ->
       let: st := stmap src in
       (* the only possibility of voting is this *)
@@ -672,7 +672,7 @@ Record node_psent_fwd_invariants psent st : Prop := {
   _ : initialmsg_recv_fwd psent st;
   _ : echomsg_sent_fwd psent st;
   _ : msgcnt_recv_fwd psent st;
-  _ : readymsg_sent_fwd psent st;
+  _ : votemsg_sent_fwd psent st;
 }.
 
 (* TODO generalize to arbitrary bundle? *)
@@ -777,13 +777,13 @@ Definition state_effect_bcast (n : Address) (m : Message) (stmap : StateMap) : P
   match m with
   | InitialMsg r v => value_bft n r = v /\ (stmap n).(sent) r
   | EchoMsg q r v => (stmap n).(echoed) (q, r) = Some v
-  | ReadyMsg q r v => (stmap n).(voted) (q, r) = Some v
+  | VoteMsg q r v => (stmap n).(voted) (q, r) = Some v
   end.
 
 Definition state_effect_recv (src n : Address) (m : Message) (stmap : StateMap) : Prop :=
   match m with
   | InitialMsg r _ => (stmap n).(echoed) (src, r)
-  | EchoMsg _ _ _ | ReadyMsg _ _ _ => In src ((stmap n).(msgcnt) m)
+  | EchoMsg _ _ _ | VoteMsg _ _ _ => In src ((stmap n).(msgcnt) m)
   end.
 
 (* here, stmap refers to the updated state map *)
@@ -914,7 +914,7 @@ Definition lift_pkt_inv (P : Packet -> StateMap -> Prop) : World -> Prop :=
 Record node_psent_bwd_invariants_sent p stmap : Prop := {
   _ : initialmsg_sent_bwd p stmap;
   _ : echomsg_sent_bwd p stmap;
-  _ : readymsg_sent_bwd p stmap;
+  _ : votemsg_sent_bwd p stmap;
 }.
 
 (* this bunch can pass the cons case easily, since it does no work for fresh packets *)
@@ -1033,14 +1033,14 @@ Proof.
 Qed.
 
 (* should be useful ... intensionally inductive? *)
-(* serve as a way to tell that "at least some of the ready messages are the consequences of echo messages" *)
+(* serve as a way to tell that "at least some of the vote messages are the consequences of echo messages" *)
 (* in paper proof, this invariant might be mentioned as "consider the first non-faulty node who broadcast
-    ready messages"; but that would involve the notion of time, which is not convenient to formalize
+    vote messages"; but that would involve the notion of time, which is not convenient to formalize
     and use in the safety proofs *)
 (*
-Definition echo_exists_before_ready p psent : Prop :=
+Definition echo_exists_before_vote p psent : Prop :=
   match p with
-  | mkP src dst (ReadyMsg q r v) used =>
+  | mkP src dst (VoteMsg q r v) used =>
     is_byz src = false ->
       exists src' dst', is_byz src' = false /\ 
         In (mkP src' dst' (EchoMsg q r v) true) psent
@@ -1048,37 +1048,37 @@ Definition echo_exists_before_ready p psent : Prop :=
   end.
 *)
 (* considering the following proofs, another form will be more convenient *)
-Definition echo_exists_before_ready psent st : Prop :=
+Definition echo_exists_before_vote psent st : Prop :=
   forall q r v, 
     st.(voted) (q, r) = Some v ->
       exists src' dst', is_byz src' = false /\ 
         In (mkP src' dst' (EchoMsg q r v) true) psent.
 
-Lemma echo_exists_before_ready_is_invariant :
+Lemma echo_exists_before_vote_is_invariant :
   is_invariant_step_under (fun w => id_coh w /\
     lift_state_inv node_state_invariants w /\
     lift_node_inv node_psent_fwd_invariants w /\
     lift_pkt_inv node_psent_bwd_invariants_sent w /\
     lift_pkt_inv node_psent_bwd_invariants_recv w)
-  (lift_node_inv echo_exists_before_ready).
+  (lift_node_inv echo_exists_before_vote).
 Proof with saturate_assumptions.
   hnf. intros qq ?? (_ & _ & _ & Hbwds_back & _) (Hcoh & Hst & Hfwd & Hbwds & Hbwdr) H Hstep.
   (*
   intros [ src dst msg used ] Hin. 
   hnf in Hbwds. specialize (Hbwds _ Hin).
   hnf. destruct msg as [ | | q r v ]; try apply I. intros Hnonbyz.
-  pick readymsg_sent_bwd as_ Hr by_ (destruct Hbwds)...
+  pick votemsg_sent_bwd as_ Hr by_ (destruct Hbwds)...
   *)
   hnf. intros src Hnonbyz. hnf. intros q r v Hr.
   pose proof (Hst src) as Hst'. 
   pick voted_coh_some as_ Hr2 by_ (destruct Hst').
   specialize (Hr2 _ _ _ Hr). 
-  unfold th_echo4ready, th_ready4ready in Hr2. pose proof t0_lt_N_minus_2t0 as Ht0.
+  unfold th_echo4vote, th_vote4vote in Hr2. pose proof t0_lt_N_minus_2t0 as Ht0.
   pick msgcnt_coh as_ Hnodup by_ (destruct Hst').
   destruct Hr2 as [ Hr2 | Hr2 ].
   (* there must be a non-faulty sender in both cases *)
   all: match type of Hr2 with _ <= ?ll => assert (t0 < ll) as (n & Hnonbyz' & Hin')%at_least_one_nonfaulty by lia end;
-    try solve [ eapply (Hnodup (EchoMsg _ _ _)) | eapply (Hnodup (ReadyMsg _ _ _)) ].
+    try solve [ eapply (Hnodup (EchoMsg _ _ _)) | eapply (Hnodup (VoteMsg _ _ _)) ].
   all: specialize (Hfwd _ Hnonbyz).
   all: pick msgcnt_recv_fwd as_ Hr3 by_ (destruct Hfwd); specialize (Hr3 _ _ Hin'); rewrite Hcoh in Hr3.
   - (* easy, base case *)
@@ -1087,7 +1087,7 @@ Proof with saturate_assumptions.
     (* HMM exploiting the network model ... *)
     eapply system_step_received_inversion_full in Hr3; try eassumption; auto using procMsgWithCheck_fresh, procInt_fresh.
     destruct Hr3 as (? & Hr3). 
-    pick readymsg_sent_bwd as_ Hr4 by_ (pose proof (Hbwds_back _ Hr3) as [])... apply H in Hr4; auto.
+    pick votemsg_sent_bwd as_ Hr4 by_ (pose proof (Hbwds_back _ Hr3) as [])... apply H in Hr4; auto.
     destruct Hr4 as (? & ? & ? & Hr4). eapply system_step_psent_norevert_full in Hr4; eauto.
 Qed.
 
@@ -1101,7 +1101,7 @@ Definition first_vote_due_to_echo w : Prop :=
     | nil => True
     | _ => exists n', In n' l /\ 
       (match (w @ n').(voted) (q, r) with 
-      | Some v => th_echo4ready <= length ((w @ n').(msgcnt) (EchoMsg q r v))
+      | Some v => th_echo4vote <= length ((w @ n').(msgcnt) (EchoMsg q r v))
       | None => False (* dead branch *)
       end)
     end.
@@ -1125,18 +1125,18 @@ Proof.
       pick voted_coh_some as_ Hv' by_ (pose proof (Hst n') as []). apply Hv' in E'.
       destruct E' as [ E' | E' ]; auto.
       (* HMM again, exploiting the network model ... but still cumbersome *)
-      (* basically saying that if there is some node in the Ready msgcnt, 
+      (* basically saying that if there is some node in the Vote msgcnt, 
         then by inverting the message, we know that it must have voted 
         in the previous state, which leads to contradiction *)
       (* TODO the following steps are still repeating ... *)
-      unfold th_ready4ready in E'. pose proof t0_lt_N_minus_2t0 as Ht0.
+      unfold th_vote4vote in E'. pose proof t0_lt_N_minus_2t0 as Ht0.
       pick msgcnt_coh as_ Hnodup by_ (pose proof (Hst n') as []). 
       match type of E' with _ <= ?ll => assert (t0 < ll) as (n & Hnonbyz_n & Hin')%at_least_one_nonfaulty by lia end.
-      2: eapply (Hnodup (ReadyMsg _ _ _)).
+      2: eapply (Hnodup (VoteMsg _ _ _)).
       pick msgcnt_recv_fwd as_ Hr3 by_ (pose proof (Hfwd _ Hnonbyz_n') as []). specialize (Hr3 _ _ Hin'). rewrite Hcoh in Hr3.
       eapply system_step_received_inversion_full in Hr3; try eassumption; auto using procMsgWithCheck_fresh, procInt_fresh.
       destruct Hr3 as (? & Hr3). 
-      pick readymsg_sent_bwd as_ Hr4 by_ (pose proof (Hbwds_back _ Hr3) as []). saturate_assumptions. 
+      pick votemsg_sent_bwd as_ Hr4 by_ (pose proof (Hbwds_back _ Hr3) as []). saturate_assumptions. 
       pose proof (in_nil (a:=n)) as Htmp1. pose proof (Address_is_finite n) as Htmp2.
       rewrite <- E, -> ! filter_In, -> ! andb_true_iff, -> Hr4, -> Hnonbyz_n in Htmp1. eqsolve. 
     + (* l' must be nil, since there will not be two nodes changing in one transition *)
@@ -1209,7 +1209,7 @@ Proof.
     destruct Hfve as (n' & (Hin & Hcheck%andb_true_iff)%filter_In & He).
     destruct (voted (w @ n') (src, r)) as [ v' | ] eqn:E; [ destruct Hcheck as (Hnonbyz_n'%negb_true_iff & _) | eqsolve ].
     (* FIXME: extract the following to be another separate proof *)
-    unfold th_echo4ready in He, Hle.
+    unfold th_echo4vote in He, Hle.
     pick msgcnt_coh as_ Hnodup1 by_ (pose proof (Hst dst1) as []). specialize (Hnodup1 (EchoMsg src r v1)). 
     pick msgcnt_coh as_ Hnodup2 by_ (pose proof (Hst n') as []). specialize (Hnodup2 (EchoMsg src r v')).
     simpl in Hnodup1, Hnodup2.
@@ -1233,14 +1233,14 @@ Proof.
   - (* inductive case *)
     (* HMM again, exploiting the network model ... but still cumbersome *)
     (* TODO the following steps are still repeating ... *)
-    unfold th_ready4ready in Hle. pose proof t0_lt_N_minus_2t0 as Ht0.
+    unfold th_vote4vote in Hle. pose proof t0_lt_N_minus_2t0 as Ht0.
     pick msgcnt_coh as_ Hnodup by_ (pose proof (Hst dst1) as []). 
     match type of Hle with _ <= ?ll => assert (t0 < ll) as (n & Hnonbyz_n & Hin')%at_least_one_nonfaulty by lia end.
-    2: eapply (Hnodup (ReadyMsg _ _ _)).
+    2: eapply (Hnodup (VoteMsg _ _ _)).
     pick msgcnt_recv_fwd as_ Hr3 by_ (pose proof (Hfwd _ Hnonbyz_dst1) as []). specialize (Hr3 _ _ Hin'). rewrite Hcoh in Hr3.
     eapply system_step_received_inversion_full in Hr3; try eassumption; auto using procMsgWithCheck_fresh, procInt_fresh.
     destruct Hr3 as (? & Hr3). 
-    pick readymsg_sent_bwd as_ Hr4 by_ (pose proof (Hbwds_back _ Hr3) as []). saturate_assumptions. 
+    pick votemsg_sent_bwd as_ Hr4 by_ (pose proof (Hbwds_back _ Hr3) as []). saturate_assumptions. 
     eapply (H n dst2); eauto.
 Qed.
 
