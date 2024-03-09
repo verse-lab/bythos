@@ -82,6 +82,7 @@ Include NetworkImpl A M BTh BSett P0 PSOp ACP Ns ACAdv.
 
 (* tries to pack all coherent props into a record *)
 Record Coh (w : World) : Prop := mkCoh {
+  (* trick: ignore whether n is Byzantine or not *)
   id_coh: forall n, (localState w n).(id) = n;
   (* unrelated_intact: forall n, ~ valid_node n -> holds n w (fun st => st = Init n); *)
 }.
