@@ -177,3 +177,6 @@ Proof. destruct (in_dec _ _ _); intuition discriminate. Qed.
 Fact list_ifnil_destruct [A : Type] (l : list A) : {l = nil} + {l <> nil}.
 Proof. destruct l; [ now left | now right ]. Qed.
 *)
+Fact length_gt_0_notnil [A : Type] [l : list A] (H : 0 < length l) :
+  l <> nil /\ exists a, In a l.
+Proof. destruct l; [ inversion H | ]. simpl. split; try discriminate; eauto. Qed.

@@ -540,6 +540,16 @@ Proof.
   eapply persistent_invariants_pre; eauto.
 Qed.
 
+Fact persistent_invariants_trace [w l] (Htrace : system_trace w l) :
+  lift_state_pair_inv node_persistent_invariants w (final_world w l).
+Proof.
+  revert w Htrace. induction l as [ | (q, w') l' IH ]; simpl; intros.
+  - rewrite final_world_nil. hnf. intros ?. constructor; hnf; auto.
+  - rewrite final_world_cons. destruct Htrace as (Hstep%persistent_invariants & Htrace).
+    specialize (IH _ Htrace). hnf in IH, Hstep |- *. intros n. specialize (Hstep n). specialize (IH n).
+    etransitivity; eauto.
+Qed. 
+
 Definition id_coh w : Prop := forall n, (w @ n).(id) = n.
 
 Fact id_coh_is_invariant : is_invariant_step id_coh.

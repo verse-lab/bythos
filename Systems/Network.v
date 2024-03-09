@@ -370,6 +370,9 @@ Proof. now hnf. Qed.
 Fact reachable_is_invariant : is_invariant_step reachable.
 Proof. intros ? ? ? ? ?. eapply ReachableStep; eauto. Qed.
 
+Fact reachable_by_trace [w l] (H : system_trace w l) (Hr : reachable w) : reachable (final_world w l).
+Proof. pose proof (reachable_is_invariant) as HH. rewrite <- is_invariant_step_trace in HH. eapply HH; eauto. Qed.
+
 Corollary psent_norevert_is_invariant p : is_invariant_step (fun w => In (receive_pkt p) (sentMsgs w)).
 Proof. hnf. intros ???. apply system_step_psent_norevert. Qed.
 

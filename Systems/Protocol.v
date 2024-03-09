@@ -39,12 +39,13 @@ Proof.
 Qed.
 
 Fact t0_lt_N_minus_2t0 : t0 < N - (t0 + t0).
-Proof. pose proof t0_times_3_lt_N; lia. Qed.
+Proof. pose proof t0_times_3_lt_N. lia. Qed.
+
+Corollary N_minus_2t0_gt_0 : 0 < N - (t0 + t0).
+Proof. pose proof t0_lt_N_minus_2t0. lia. Qed.
 
 Fact t0_lt_N : t0 < N.
 Proof. pose proof t0_times_3_lt_N. lia. Qed.
-
-(* TODO some quorum-related things *)
 
 End ClassicByzThreshold.
 

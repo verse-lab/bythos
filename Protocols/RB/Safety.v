@@ -63,6 +63,13 @@ End Grounded_Invariants.
 (* useful *)
 Ltac saturate :=
   let Htmp := fresh "Htmp" in
+  let Hcoh := fresh "Hcoh" in
+  let Hst := fresh "Hst" in
+  let Hfwd := fresh "Hfwd" in
+  let Hbwds := fresh "Hbwds" in
+  let Hbwdr := fresh "Hbwdr" in
+  let Heebr := fresh "Heebr" in
+  let Hvu := fresh "Hvu" in
   match goal with
     H : reachable ?w |- _ => 
     pose proof (grounded_invariant_is_safety grounded_invariants) as Htmp; specialize (Htmp _ H);
