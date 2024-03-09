@@ -1,4 +1,4 @@
-SRC_DIRS := 'coqtla/src' 'coqtla/external'
+SRC_DIRS := 'coqtla/src' 'coqtla/external/stdpp/stdpp' 'coqtla/external/coq-record-update'
 ALL_VFILES := $(shell find $(SRC_DIRS) -name "*.v")
 
 all: default
