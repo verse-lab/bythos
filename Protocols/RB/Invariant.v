@@ -363,31 +363,33 @@ Ltac state_analyze :=
 Local Hint Rewrite -> In_consume : psent.
 
 (* implication-shaped invariants (therefore async) *)
-(* "msgcnt_coh" is pointed, so proved in another batch *)
+(* "msgcnt_nodup" is pointed, so proved in another batch *)
+
+(* having one direction invariants would be preferred, since they can be easily applied/specialized *)
 
 (* in the dependency graph, the update of voted happens after the change of msgcnt
     and this dependency is tracked in the basic block, so the "some" invariant can
     be proved by induction on state_mnt_type_list; 
     but for the "none" case, the dependency is reversed *)
 (* but now they are proved together, anyway *)
-Definition voted_coh_some st : Prop :=
+Definition voted_some st : Prop :=
   forall q r v, 
     st.(voted) (q, r) = Some v ->
     (th_echo4vote <= length (st.(msgcnt) (EchoMsg q r v)) \/ 
      th_vote4vote <= length (st.(msgcnt) (VoteMsg q r v))).
 
-Definition voted_coh_none st : Prop :=
+Definition voted_none st : Prop :=
   forall q r v,
     st.(voted) (q, r) = None ->
     length (st.(msgcnt) (EchoMsg q r v)) < th_echo4vote /\
     length (st.(msgcnt) (VoteMsg q r v)) < th_vote4vote.
 
-Definition output_coh_fwd st : Prop :=
+Definition output_vote_size st : Prop :=
   forall q r v, 
     In v (st.(output) (q, r)) ->
     th_vote4output <= length (st.(msgcnt) (VoteMsg q r v)).
 
-Definition output_coh_bwd st : Prop :=
+Definition vote_size_output st : Prop :=
   forall q r v, 
     th_vote4output <= length (st.(msgcnt) (VoteMsg q r v)) ->
     In v (st.(output) (q, r)).
@@ -396,10 +398,10 @@ Definition lift_point_to_edge {A : Type} (P : A -> Prop) : A -> A -> Prop :=
   fun st st' => P st -> P st'.
 
 Record node_state_invariants_pre st st' : Prop := {
-  _ : lift_point_to_edge voted_coh_some st st';
-  _ : lift_point_to_edge voted_coh_none st st';
-  _ : lift_point_to_edge output_coh_fwd st st';
-  _ : lift_point_to_edge output_coh_bwd st st';
+  _ : lift_point_to_edge voted_some st st';
+  _ : lift_point_to_edge voted_none st st';
+  _ : lift_point_to_edge output_vote_size st st';
+  _ : lift_point_to_edge vote_size_output st st';
 }.
 
 (* for each node (ignoring whether faulty/non-faulty here),
@@ -453,14 +455,14 @@ Qed.
 
 (* use state_mnt as an over-approximation to prove some state-only invariants *)
 
-Definition msgcnt_coh st : Prop :=
+Definition msgcnt_nodup st : Prop :=
   forall msg,
     match msg with
     | InitialMsg _ _ => st.(msgcnt) msg = nil
     | _ => List.NoDup (st.(msgcnt) msg)
     end.
 
-Definition output_coh st : Prop := forall q r, List.NoDup (st.(output) (q, r)).
+Definition output_nodup st : Prop := forall q r, List.NoDup (st.(output) (q, r)).
 
 Definition sent_persistent st st' : Prop := Eval unfold lift_point_to_edge in
   forall r, st.(sent) r -> st'.(sent) r.
@@ -498,8 +500,8 @@ Proof.
 Qed.
 
 Fact persistent_invariants_pre_pre st tag (d : state_mnt_type st tag) :
-  node_persistent_invariants st (state_mnt d) /\ lift_point_to_edge msgcnt_coh st (state_mnt d)
-    /\ lift_point_to_edge output_coh st (state_mnt d).
+  node_persistent_invariants st (state_mnt d) /\ lift_point_to_edge msgcnt_nodup st (state_mnt d)
+    /\ lift_point_to_edge output_nodup st (state_mnt d).
 Proof.
   split_and?.
   1: constructor.
@@ -516,8 +518,8 @@ Proof.
 Qed.
 
 Fact persistent_invariants_pre st st' (l : state_mnt_type_list st st') :
-  node_persistent_invariants st st' /\ lift_point_to_edge msgcnt_coh st st'
-    /\ lift_point_to_edge output_coh st st'.
+  node_persistent_invariants st st' /\ lift_point_to_edge msgcnt_nodup st st'
+    /\ lift_point_to_edge output_nodup st st'.
 Proof.
   induction l.
   - split_and?. 1: constructor. all: hnf; auto.
@@ -564,12 +566,12 @@ Qed.
 
 (* reformulate *)
 Record node_state_invariants st : Prop := {
-  _ : msgcnt_coh st;
-  _ : output_coh st;
-  _ : voted_coh_some st;
-  _ : voted_coh_none st;
-  _ : output_coh_fwd st;
-  _ : output_coh_bwd st;
+  _ : msgcnt_nodup st;
+  _ : output_vote_size st;
+  _ : vote_size_output st;
+  _ : voted_some st;
+  _ : voted_none st;
+  _ : output_nodup st;
 }.
 
 Definition lift_state_inv (P : State -> Prop) : World -> Prop := fun w => forall n, P (w @ n).
@@ -587,15 +589,13 @@ Qed.
 
 End State_Monotone_Proofs.
 
-(* TODO naming issue: the "forward"/"backward" invariants should be named as 
-    local to global/global to local invariants to avoid confusion with
-    the "forward"/"backward" reasoning styles *)
+(* l2h: local to history; h2l: history to local *)
 
-Definition initialmsg_sent_fwd psent st : Prop :=
+Definition initialmsg_sent_l2h psent st : Prop :=
   forall r, st.(sent) r -> forall n, exists used, 
     In (mkP st.(id) n (InitialMsg r (value_bft st.(id) r)) used) psent.
 
-Definition initialmsg_sent_bwd p stmap : Prop :=
+Definition initialmsg_sent_h2l p stmap : Prop :=
   match p with
   | mkP src dst (InitialMsg r v) used =>
     is_byz src = false ->
@@ -605,11 +605,11 @@ Definition initialmsg_sent_bwd p stmap : Prop :=
   | _ => True
   end.
 
-Definition initialmsg_recv_fwd psent st : Prop :=
+Definition initialmsg_recv_l2h psent st : Prop :=
   forall q r v, st.(echoed) (q, r) = Some v ->
     In (mkP q st.(id) (InitialMsg r v) true) psent.
 
-Definition initialmsg_recv_bwd p stmap : Prop :=
+Definition initialmsg_recv_h2l p stmap : Prop :=
   match p with
   | mkP src dst (InitialMsg r v) true =>
     is_byz dst = false ->
@@ -619,11 +619,11 @@ Definition initialmsg_recv_bwd p stmap : Prop :=
   | _ => True
   end.
 
-Definition echomsg_sent_fwd psent st : Prop :=
+Definition echomsg_sent_l2h psent st : Prop :=
   forall q r v, st.(echoed) (q, r) = Some v -> forall n, exists used, 
     In (mkP st.(id) n (EchoMsg q r v) used) psent.
 
-Definition echomsg_sent_bwd p stmap : Prop :=
+Definition echomsg_sent_h2l p stmap : Prop :=
   match p with
   | mkP src dst (EchoMsg q r v) used =>
     is_byz src = false ->
@@ -633,11 +633,11 @@ Definition echomsg_sent_bwd p stmap : Prop :=
   | _ => True
   end.
 
-Definition msgcnt_recv_fwd psent st : Prop :=
+Definition msgcnt_recv_l2h psent st : Prop :=
   forall m q, In q (st.(msgcnt) m) ->
     In (mkP q st.(id) m true) psent.
 
-Definition msgcnt_recv_bwd p stmap : Prop :=
+Definition msgcnt_recv_h2l p stmap : Prop :=
   match p with
   | mkP src dst (EchoMsg _ _ _) true
   | mkP src dst (VoteMsg _ _ _) true =>
@@ -647,11 +647,11 @@ Definition msgcnt_recv_bwd p stmap : Prop :=
   | _ => True
   end.
 
-Definition votemsg_sent_fwd psent st : Prop :=
+Definition votemsg_sent_l2h psent st : Prop :=
   forall q r v, st.(voted) (q, r) = Some v -> forall n, exists used, 
     In (mkP st.(id) n (VoteMsg q r v) used) psent.
 
-Definition votemsg_sent_bwd p stmap : Prop :=
+Definition votemsg_sent_h2l p stmap : Prop :=
   match p with
   | mkP src dst (VoteMsg q r v) used =>
     is_byz src = false ->
@@ -667,12 +667,12 @@ Definition lift_node_inv (P : PacketSoup -> State -> Prop) : World -> Prop :=
   fun w => forall n, is_byz n = false -> P (sentMsgs w) (w @ n).
   (* essentially, making a big conjunction over all non-faulty nodes *)
 
-Record node_psent_fwd_invariants psent st : Prop := {
-  _ : initialmsg_sent_fwd psent st;
-  _ : initialmsg_recv_fwd psent st;
-  _ : echomsg_sent_fwd psent st;
-  _ : msgcnt_recv_fwd psent st;
-  _ : votemsg_sent_fwd psent st;
+Record node_psent_l2h_invariants psent st : Prop := {
+  _ : initialmsg_sent_l2h psent st;
+  _ : initialmsg_recv_l2h psent st;
+  _ : echomsg_sent_l2h psent st;
+  _ : msgcnt_recv_l2h psent st;
+  _ : votemsg_sent_l2h psent st;
 }.
 
 (* TODO generalize to arbitrary bundle? *)
@@ -688,7 +688,7 @@ Tactic Notation "saturate" :=
 
 (* while you can certainly prove these individually, proving them together can save some time *)
 (* this proof would depend on id_coh to unify the internal/external identifiers *)
-Fact fwd_invariants : is_invariant_step_under id_coh (lift_node_inv node_psent_fwd_invariants).
+Fact l2h_invariants : is_invariant_step_under id_coh (lift_node_inv node_psent_l2h_invariants).
 Proof.
   hnf; intros qq ?? Hcoh Hcoh' H Hstep.
   unfold lift_node_inv in *.
@@ -911,23 +911,23 @@ Definition lift_pkt_inv (P : Packet -> StateMap -> Prop) : World -> Prop :=
   Eval unfold lift_pkt_inv' in fun w => lift_pkt_inv' P (sentMsgs w) (localState w).
 
 (* this bunch can pass the base case easily, since it does no work for existing packets *)
-Record node_psent_bwd_invariants_sent p stmap : Prop := {
-  _ : initialmsg_sent_bwd p stmap;
-  _ : echomsg_sent_bwd p stmap;
-  _ : votemsg_sent_bwd p stmap;
+Record node_psent_h2l_invariants_sent p stmap : Prop := {
+  _ : initialmsg_sent_h2l p stmap;
+  _ : echomsg_sent_h2l p stmap;
+  _ : votemsg_sent_h2l p stmap;
 }.
 
 (* this bunch can pass the cons case easily, since it does no work for fresh packets *)
-Record node_psent_bwd_invariants_recv p stmap : Prop := {
-  _ : initialmsg_recv_bwd p stmap;
-  _ : msgcnt_recv_bwd p stmap;
+Record node_psent_h2l_invariants_recv p stmap : Prop := {
+  _ : initialmsg_recv_h2l p stmap;
+  _ : msgcnt_recv_h2l p stmap;
 }.
 
-Fact bwd_invariants_id_pre q w w' (Hstep : system_step q w w') p :
-  (node_psent_bwd_invariants_sent p (localState w) ->
-  forall used, node_psent_bwd_invariants_sent (mkP p.(src) p.(dst) p.(msg) used) (localState w')) /\
-  (node_psent_bwd_invariants_recv p (localState w) ->
-  node_psent_bwd_invariants_recv p (localState w')).
+Fact h2l_invariants_id_pre q w w' (Hstep : system_step q w w') p :
+  (node_psent_h2l_invariants_sent p (localState w) ->
+  forall used, node_psent_h2l_invariants_sent (mkP p.(src) p.(dst) p.(msg) used) (localState w')) /\
+  (node_psent_h2l_invariants_recv p (localState w) ->
+  node_psent_h2l_invariants_recv p (localState w')).
 Proof.
   destruct p as [ src dst msg used ].
   pose proof (persistent_invariants Hstep) as Hinv. (* use persistent properties to solve *)
@@ -946,21 +946,21 @@ Proof.
   now isSome_rewrite.
 Qed.
 
-Corollary bwd_invariants_id q w w' (Hstep : system_step q w w') psent :
-  (lift_pkt_inv' node_psent_bwd_invariants_sent psent (localState w) ->
-  lift_pkt_inv' node_psent_bwd_invariants_sent psent (localState w')) /\
-  (lift_pkt_inv' node_psent_bwd_invariants_recv psent (localState w) ->
-  lift_pkt_inv' node_psent_bwd_invariants_recv psent (localState w')).
+Corollary h2l_invariants_id q w w' (Hstep : system_step q w w') psent :
+  (lift_pkt_inv' node_psent_h2l_invariants_sent psent (localState w) ->
+  lift_pkt_inv' node_psent_h2l_invariants_sent psent (localState w')) /\
+  (lift_pkt_inv' node_psent_h2l_invariants_recv psent (localState w) ->
+  lift_pkt_inv' node_psent_h2l_invariants_recv psent (localState w')).
 Proof.
   split; intros H; hnf in H |- *; intros [ src dst msg used ] Hin; specialize (H _ Hin).
-  all: now eapply (bwd_invariants_id_pre Hstep _) in H; eauto.
+  all: now eapply (h2l_invariants_id_pre Hstep _) in H; eauto.
 Qed.
 
 (* FIXME: the two bunches can be proved separatedly, so this lemma is weaker than it should be *)
-Fact bwd_invariants :
+Fact h2l_invariants :
   is_invariant_step_under id_coh (* needed, since will use psent_mnt_sound *)
-    (fun w => lift_pkt_inv node_psent_bwd_invariants_sent w
-      /\ lift_pkt_inv node_psent_bwd_invariants_recv w).
+    (fun w => lift_pkt_inv node_psent_h2l_invariants_sent w
+      /\ lift_pkt_inv node_psent_h2l_invariants_recv w).
 Proof.
   hnf; intros q ?? Hcoh Hcoh' H Hstep. unfold lift_pkt_inv in H |- *. 
   (* get the effect *)
@@ -973,19 +973,19 @@ Proof.
   all: simpl in Hse, Hpsent.
   (* TODO why we do not need to destruct H here (and only need to destruct later)? can I explain? *)
   - destruct b as [ | p' Hin' ]; simpl in Hpsent; subst psent'.
-    1: split; now apply (bwd_invariants_id Hstep_ psent).
+    1: split; now apply (h2l_invariants_id Hstep_ psent).
     split; [ apply proj1 in H | apply proj2 in H ].
     + hnf in H |- *. intros [ src dst msg used ] Hin. 
       apply (In_consume_conv_full Hin') in Hin. destruct Hin as (used' & Hin).
       specialize (H _ Hin).
-      eapply (bwd_invariants_id_pre Hstep_ _) in H. simpl in H. exact H.
+      eapply (h2l_invariants_id_pre Hstep_ _) in H. simpl in H. exact H.
     + (* check which packet is consumed this time *)
       destruct p' as [ src' dst' msg' used' ].
       hnf in H |- *. intros p Hin%In_consume. simpl in Hin.
       destruct Hin as [ <- | (Hin & _) ].
       2: specialize (H _ Hin).
       1: destruct used'; [ specialize (H _ Hin') | ].
-      1,3: eapply (bwd_invariants_id_pre Hstep_ _) in H; simpl in H; exact H.
+      1,3: eapply (h2l_invariants_id_pre Hstep_ _) in H; simpl in H; exact H.
       (* interesting part *)
       clear H. destruct Hse as (Hnonbyz & Hr).
       destruct msg' as [ r' v' | q' r' v' | q' r' v' ]; simpl in Hr.
@@ -1057,37 +1057,37 @@ Definition echo_exists_before_vote psent st : Prop :=
 Lemma echo_exists_before_vote_is_invariant :
   is_invariant_step_under (fun w => id_coh w /\
     lift_state_inv node_state_invariants w /\
-    lift_node_inv node_psent_fwd_invariants w /\
-    lift_pkt_inv node_psent_bwd_invariants_sent w /\
-    lift_pkt_inv node_psent_bwd_invariants_recv w)
+    lift_node_inv node_psent_l2h_invariants w /\
+    lift_pkt_inv node_psent_h2l_invariants_sent w /\
+    lift_pkt_inv node_psent_h2l_invariants_recv w)
   (lift_node_inv echo_exists_before_vote).
 Proof with saturate_assumptions.
-  hnf. intros qq ?? (_ & _ & _ & Hbwds_back & _) (Hcoh & Hst & Hfwd & Hbwds & Hbwdr) H Hstep.
+  hnf. intros qq ?? (_ & _ & _ & Hh2ls_back & _) (Hcoh & Hst & Hl2h & Hh2ls & Hh2lr) H Hstep.
   (*
   intros [ src dst msg used ] Hin. 
-  hnf in Hbwds. specialize (Hbwds _ Hin).
+  hnf in Hh2ls. specialize (Hh2ls _ Hin).
   hnf. destruct msg as [ | | q r v ]; try apply I. intros Hnonbyz.
-  pick votemsg_sent_bwd as_ Hr by_ (destruct Hbwds)...
+  pick votemsg_sent_h2l as_ Hr by_ (destruct Hh2ls)...
   *)
   hnf. intros src Hnonbyz. hnf. intros q r v Hr.
   pose proof (Hst src) as Hst'. 
-  pick voted_coh_some as_ Hr2 by_ (destruct Hst').
+  pick voted_some as_ Hr2 by_ (destruct Hst').
   specialize (Hr2 _ _ _ Hr). 
   unfold th_echo4vote, th_vote4vote in Hr2. pose proof t0_lt_N_minus_2t0 as Ht0.
-  pick msgcnt_coh as_ Hnodup by_ (destruct Hst').
+  pick msgcnt_nodup as_ Hnodup by_ (destruct Hst').
   destruct Hr2 as [ Hr2 | Hr2 ].
   (* there must be a non-faulty sender in both cases *)
   all: match type of Hr2 with _ <= ?ll => assert (t0 < ll) as (n & Hnonbyz' & Hin')%at_least_one_nonfaulty by lia end;
     try solve [ eapply (Hnodup (EchoMsg _ _ _)) | eapply (Hnodup (VoteMsg _ _ _)) ].
-  all: specialize (Hfwd _ Hnonbyz).
-  all: pick msgcnt_recv_fwd as_ Hr3 by_ (destruct Hfwd); specialize (Hr3 _ _ Hin'); rewrite Hcoh in Hr3.
+  all: specialize (Hl2h _ Hnonbyz).
+  all: pick msgcnt_recv_l2h as_ Hr3 by_ (destruct Hl2h); specialize (Hr3 _ _ Hin'); rewrite Hcoh in Hr3.
   - (* easy, base case *)
     eauto.
   - (* inductive case *)
     (* HMM exploiting the network model ... *)
     eapply system_step_received_inversion_full in Hr3; try eassumption; auto using procMsgWithCheck_fresh, procInt_fresh.
     destruct Hr3 as (? & Hr3). 
-    pick votemsg_sent_bwd as_ Hr4 by_ (pose proof (Hbwds_back _ Hr3) as [])... apply H in Hr4; auto.
+    pick votemsg_sent_h2l as_ Hr4 by_ (pose proof (Hh2ls_back _ Hr3) as [])... apply H in Hr4; auto.
     destruct Hr4 as (? & ? & ? & Hr4). eapply system_step_psent_norevert_full in Hr4; eauto.
 Qed.
 
@@ -1110,11 +1110,11 @@ Definition first_vote_due_to_echo w : Prop :=
 Lemma first_vote_due_to_echo_is_invariant :
   is_invariant_step_under (fun w => id_coh w /\
     lift_state_inv node_state_invariants w /\
-    lift_node_inv node_psent_fwd_invariants w /\
-    lift_pkt_inv node_psent_bwd_invariants_sent w /\
-    lift_pkt_inv node_psent_bwd_invariants_recv w) first_vote_due_to_echo.
+    lift_node_inv node_psent_l2h_invariants w /\
+    lift_pkt_inv node_psent_h2l_invariants_sent w /\
+    lift_pkt_inv node_psent_h2l_invariants_recv w) first_vote_due_to_echo.
 Proof.
-  intros qq ?? (_ & Hst_back & _ & Hbwds_back & _) (Hcoh & Hst & Hfwd & _ & Hbwdr) H Hstep q r. 
+  intros qq ?? (_ & Hst_back & _ & Hh2ls_back & _) (Hcoh & Hst & Hl2h & _ & Hh2lr) H Hstep q r. 
   hnf in H. specialize (H q r).
   match goal with |- context[List.filter ?a ?b] => destruct (List.filter a b) as [ | n' l' ] eqn:E'; try exact I end.
   match type of H with context[List.filter ?a ?b] => destruct (List.filter a b) as [ | n l ] eqn:E in H end.
@@ -1122,7 +1122,7 @@ Proof.
     + exists n'. apply and_wlog_r; [ simpl; tauto | rewrite <- E'; intros (_ & Hcheck%andb_true_iff)%filter_In ].
       rewrite negb_true_iff in Hcheck. destruct Hcheck as (Hnonbyz_n' & Hv_).
       clear E'. destruct (voted (w' @ n') (q, r)) as [ v' | ] eqn:E'; [ | discriminate ].
-      pick voted_coh_some as_ Hv' by_ (pose proof (Hst n') as []). apply Hv' in E'.
+      pick voted_some as_ Hv' by_ (pose proof (Hst n') as []). apply Hv' in E'.
       destruct E' as [ E' | E' ]; auto.
       (* HMM again, exploiting the network model ... but still cumbersome *)
       (* basically saying that if there is some node in the Vote msgcnt, 
@@ -1130,13 +1130,13 @@ Proof.
         in the previous state, which leads to contradiction *)
       (* TODO the following steps are still repeating ... *)
       unfold th_vote4vote in E'. pose proof t0_lt_N_minus_2t0 as Ht0.
-      pick msgcnt_coh as_ Hnodup by_ (pose proof (Hst n') as []). 
+      pick msgcnt_nodup as_ Hnodup by_ (pose proof (Hst n') as []). 
       match type of E' with _ <= ?ll => assert (t0 < ll) as (n & Hnonbyz_n & Hin')%at_least_one_nonfaulty by lia end.
       2: eapply (Hnodup (VoteMsg _ _ _)).
-      pick msgcnt_recv_fwd as_ Hr3 by_ (pose proof (Hfwd _ Hnonbyz_n') as []). specialize (Hr3 _ _ Hin'). rewrite Hcoh in Hr3.
+      pick msgcnt_recv_l2h as_ Hr3 by_ (pose proof (Hl2h _ Hnonbyz_n') as []). specialize (Hr3 _ _ Hin'). rewrite Hcoh in Hr3.
       eapply system_step_received_inversion_full in Hr3; try eassumption; auto using procMsgWithCheck_fresh, procInt_fresh.
       destruct Hr3 as (? & Hr3). 
-      pick votemsg_sent_bwd as_ Hr4 by_ (pose proof (Hbwds_back _ Hr3) as []). saturate_assumptions. 
+      pick votemsg_sent_h2l as_ Hr4 by_ (pose proof (Hh2ls_back _ Hr3) as []). saturate_assumptions. 
       pose proof (in_nil (a:=n)) as Htmp1. pose proof (Address_is_finite n) as Htmp2.
       rewrite <- E, -> ! filter_In, -> ! andb_true_iff, -> Hr4, -> Hnonbyz_n in Htmp1. eqsolve. 
     + (* l' must be nil, since there will not be two nodes changing in one transition *)
@@ -1156,7 +1156,7 @@ Proof.
     pick voted_persistent as_ Hv by_ (pose proof (persistent_invariants Hstep n) as []). apply Hv in E.
     exists n. rewrite filter_In, E, andb_true_iff. split; auto.
     etransitivity; [ apply He | ]. apply NoDup_incl_length.
-    + pick msgcnt_coh as_ Htmp by_ (pose proof (Hst_back n) as []). apply (Htmp (EchoMsg _ _ _)).
+    + pick msgcnt_nodup as_ Htmp by_ (pose proof (Hst_back n) as []). apply (Htmp (EchoMsg _ _ _)).
     + pick msgcnt_persistent as_ Htmp by_ (pose proof (persistent_invariants Hstep n) as []). hnf. apply (Htmp (EchoMsg _ _ _)).
 Qed.
 
@@ -1171,13 +1171,13 @@ Definition vote_uniqueness w : Prop :=
 Lemma vote_uniqueness_is_invariant :
   is_invariant_step_under (fun w => (id_coh w /\
     lift_state_inv node_state_invariants w /\
-    lift_node_inv node_psent_fwd_invariants w /\
-    lift_pkt_inv node_psent_bwd_invariants_sent w /\
-    lift_pkt_inv node_psent_bwd_invariants_recv w) /\
+    lift_node_inv node_psent_l2h_invariants w /\
+    lift_pkt_inv node_psent_h2l_invariants_sent w /\
+    lift_pkt_inv node_psent_h2l_invariants_recv w) /\
     first_vote_due_to_echo w) vote_uniqueness.
 Proof.
   (* H would only be useful in the previous World, so we can only use Hfve in the previous World *)
-  intros qq ?? ((_ & Hst_back & _ & Hbwds_back & _) & Hfve) ((Hcoh & Hst & Hfwd & Hbwds & Hbwdr) & _) H Hstep src r. specialize (H src r).
+  intros qq ?? ((_ & Hst_back & _ & Hh2ls_back & _) & Hfve) ((Hcoh & Hst & Hl2h & Hh2ls & Hh2lr) & _) H Hstep src r. specialize (H src r).
   enough (forall dst1 dst2 v1 v2, dst1 <> dst2 -> is_byz dst1 = false -> is_byz dst2 = false ->
     (w @ dst1).(voted) (src, r) = None -> (w @ dst2).(voted) (src, r) = Some v2 ->
     (w' @ dst1).(voted) (src, r) = Some v1 -> (w' @ dst2).(voted) (src, r) = Some v2 ->
@@ -1196,7 +1196,7 @@ Proof.
     all: unfold upd in Hsymgoal; destruct_eqdec! as_ ?; simplify_eq. (* ... *)
     now apply Hsymgoal. symmetry. now apply Hsymgoal. } 
   intros dst1 dst2 v1 v2 Hneq Hnonbyz_dst1 Hnonbyz_dst2 Hv1 Hv2 Hv1' Hv2'.
-  pick voted_coh_some as_ Hle by_ (pose proof (Hst dst1) as []). specialize (Hle _ _ _ Hv1').
+  pick voted_some as_ Hle by_ (pose proof (Hst dst1) as []). specialize (Hle _ _ _ Hv1').
   destruct Hle as [ Hle | Hle ].
   - (* use first_vote_due_to_echo_is_invariant, and then use quorum intersection *)
     hnf in Hfve. specialize (Hfve src r).
@@ -1210,37 +1210,37 @@ Proof.
     destruct (voted (w @ n') (src, r)) as [ v' | ] eqn:E; [ destruct Hcheck as (Hnonbyz_n'%negb_true_iff & _) | eqsolve ].
     (* FIXME: extract the following to be another separate proof *)
     unfold th_echo4vote in He, Hle.
-    pick msgcnt_coh as_ Hnodup1 by_ (pose proof (Hst dst1) as []). specialize (Hnodup1 (EchoMsg src r v1)). 
-    pick msgcnt_coh as_ Hnodup2 by_ (pose proof (Hst n') as []). specialize (Hnodup2 (EchoMsg src r v')).
+    pick msgcnt_nodup as_ Hnodup1 by_ (pose proof (Hst dst1) as []). specialize (Hnodup1 (EchoMsg src r v1)). 
+    pick msgcnt_nodup as_ Hnodup2 by_ (pose proof (Hst n') as []). specialize (Hnodup2 (EchoMsg src r v')).
     simpl in Hnodup1, Hnodup2.
     (* this is awkward. *)
     (* FIXME: add length as persistent *)
     apply Nat.le_trans with (p:=length (msgcnt (w' @ n') (EchoMsg src r v'))) in He.
     2:{ apply NoDup_incl_length.
-      - pick msgcnt_coh as_ Hnodup_ by_ (pose proof (Hst_back n') as []). apply (Hnodup_ (EchoMsg _ _ _)).
+      - pick msgcnt_nodup as_ Hnodup_ by_ (pose proof (Hst_back n') as []). apply (Hnodup_ (EchoMsg _ _ _)).
       - pick msgcnt_persistent as_ Htmp by_ (pose proof (persistent_invariants Hstep n') as []). hnf. apply (Htmp (EchoMsg _ _ _)). }
     (* the basic idea is to find a non-faulty node in the quorum intersection that equivocate, and then prove False *)
     pose proof (quorum_intersection Hnodup1 Hnodup2 Hle He) as Hq. pose proof t0_lt_N_minus_2t0 as Ht0.
     match type of Hq with _ <= ?ll => assert (t0 < ll) as (n & Hnonbyz_n & (Hin2' & Hin1'%in_dec_is_left)%filter_In)%at_least_one_nonfaulty by lia end.
     2: now apply List.NoDup_filter.
     (* TODO the following step has some overlap with a previous proof *)
-    pick msgcnt_recv_fwd as_ Hsent1 by_ (pose proof (Hfwd _ Hnonbyz_dst1) as []). specialize (Hsent1 _ _ Hin1'). 
-    pick msgcnt_recv_fwd as_ Hsent2 by_ (pose proof (Hfwd _ Hnonbyz_n') as []). specialize (Hsent2 _ _ Hin2').
+    pick msgcnt_recv_l2h as_ Hsent1 by_ (pose proof (Hl2h _ Hnonbyz_dst1) as []). specialize (Hsent1 _ _ Hin1'). 
+    pick msgcnt_recv_l2h as_ Hsent2 by_ (pose proof (Hl2h _ Hnonbyz_n') as []). specialize (Hsent2 _ _ Hin2').
     rewrite Hcoh in Hsent1, Hsent2.
-    pick echomsg_sent_bwd as_ Hvv1 by_ (pose proof (Hbwds _ Hsent1) as []).
-    pick echomsg_sent_bwd as_ Hvv2 by_ (pose proof (Hbwds _ Hsent2) as []).
+    pick echomsg_sent_h2l as_ Hvv1 by_ (pose proof (Hh2ls _ Hsent1) as []).
+    pick echomsg_sent_h2l as_ Hvv2 by_ (pose proof (Hh2ls _ Hsent2) as []).
     saturate_assumptions. rewrite Hvv1 in Hvv2. simplify_eq. eapply (H n' dst2); eauto.
   - (* inductive case *)
     (* HMM again, exploiting the network model ... but still cumbersome *)
     (* TODO the following steps are still repeating ... *)
     unfold th_vote4vote in Hle. pose proof t0_lt_N_minus_2t0 as Ht0.
-    pick msgcnt_coh as_ Hnodup by_ (pose proof (Hst dst1) as []). 
+    pick msgcnt_nodup as_ Hnodup by_ (pose proof (Hst dst1) as []). 
     match type of Hle with _ <= ?ll => assert (t0 < ll) as (n & Hnonbyz_n & Hin')%at_least_one_nonfaulty by lia end.
     2: eapply (Hnodup (VoteMsg _ _ _)).
-    pick msgcnt_recv_fwd as_ Hr3 by_ (pose proof (Hfwd _ Hnonbyz_dst1) as []). specialize (Hr3 _ _ Hin'). rewrite Hcoh in Hr3.
+    pick msgcnt_recv_l2h as_ Hr3 by_ (pose proof (Hl2h _ Hnonbyz_dst1) as []). specialize (Hr3 _ _ Hin'). rewrite Hcoh in Hr3.
     eapply system_step_received_inversion_full in Hr3; try eassumption; auto using procMsgWithCheck_fresh, procInt_fresh.
     destruct Hr3 as (? & Hr3). 
-    pick votemsg_sent_bwd as_ Hr4 by_ (pose proof (Hbwds_back _ Hr3) as []). saturate_assumptions. 
+    pick votemsg_sent_h2l as_ Hr4 by_ (pose proof (Hh2ls_back _ Hr3) as []). saturate_assumptions. 
     eapply (H n dst2); eauto.
 Qed.
 

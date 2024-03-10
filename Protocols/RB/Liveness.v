@@ -83,7 +83,7 @@ Section Proof_of_Global_Liveness.
     - intros n1 Hin1_backup. 
       pose proof Hin1_backup as Hnonbyz_n1%Hf_nonbyz. pose proof Hin1_backup as Hv%Hallvoted. split_and?; auto.
       intros n2 Hnonbyz_n2.
-      pick votemsg_sent_fwd as_ Hsent1' by_ (pose proof (Hfwd _ Hnonbyz_n1) as []). specialize (Hsent1' _ _ _ Hv n2). rewrite Hcoh in Hsent1'.
+      pick votemsg_sent_l2h as_ Hsent1' by_ (pose proof (Hl2h _ Hnonbyz_n1) as []). specialize (Hsent1' _ _ _ Hv n2). rewrite Hcoh in Hsent1'.
       destruct Hsent1'. eexists. apply filter_In. 
       simpl. split; [ eassumption | unfold is_left; now rewrite andb_true_iff, negb_true_iff, in_dec_is_left ].
   Qed.
@@ -105,16 +105,16 @@ Section Proof_of_Global_Liveness.
     unfold pkts_needed_in_round_1. saturate.
     destruct Hstart as (n & Hnonbyz_n & Hr).
     (* TODO the following two steps are familiar ... *)
-    pick output_coh_fwd as_ H1 by_ (pose proof (Hst n) as []). specialize (H1 _ _ _ Hr).
+    pick output_vote_size as_ H1 by_ (pose proof (Hst n) as []). specialize (H1 _ _ _ Hr).
     unfold th_vote4output in H1.
-    pick msgcnt_coh as_ Hnodup by_ (pose proof (Hst n) as []). specialize (Hnodup (VoteMsg src r v)). simpl in Hnodup.
+    pick msgcnt_nodup as_ Hnodup by_ (pose proof (Hst n) as []). specialize (Hnodup (VoteMsg src r v)). simpl in Hnodup.
     pose proof (filter_nonbyz_lower_bound_t0 Hnodup) as Hlen.
     match type of Hlen with _ <= length ?ll => exists ll end.
     apply pkts_needed_by_voted_nodes; auto using NoDup_filter; try lia.
     all: intros n1 (Hin1 & Hnonbyz%negb_true_iff)%filter_In; auto.
     (* TODO the following two steps has some overlap with a previous proof *)
-    pick msgcnt_recv_fwd as_ Hsent1 by_ (pose proof (Hfwd _ Hnonbyz_n) as []). specialize (Hsent1 _ _ Hin1). rewrite Hcoh in Hsent1.
-    pick votemsg_sent_bwd as_ Hv1 by_ (pose proof (Hbwds _ Hsent1) as []). now saturate_assumptions.
+    pick msgcnt_recv_l2h as_ Hsent1 by_ (pose proof (Hl2h _ Hnonbyz_n) as []). specialize (Hsent1 _ _ Hin1). rewrite Hcoh in Hsent1.
+    pick votemsg_sent_h2l as_ Hv1 by_ (pose proof (Hh2ls _ Hsent1) as []). now saturate_assumptions.
   Qed.
 
   (* universally quantified *)
@@ -157,10 +157,10 @@ Section Proof_of_Global_Liveness.
       pick voted_persistent as_ Hp by_ (pose proof (Hps nn) as []). apply Hp in Hvnn.
       eapply (Hvu src r n nn); eassumption.
     - (* prove contradiction using the message size *)
-      pick voted_coh_none as_ Hp by_ (pose proof (Hst n) as []). apply Hp with (v:=v) in Ev'.
+      pick voted_none as_ Hp by_ (pose proof (Hst n) as []). apply Hp with (v:=v) in Ev'.
       assert (incl nonbyz_senders (msgcnt (w0 @ n) (VoteMsg src r v))) as Hincl.
       { hnf. intros nn Hin. specialize (Hw0 _ Hin n Hnonbyz_n).
-        pick msgcnt_recv_bwd as_ Hr by_ (pose proof (Hbwdr _ Hw0) as []). saturate_assumptions. now simpl in Hr. }
+        pick msgcnt_recv_h2l as_ Hr by_ (pose proof (Hh2lr _ Hw0) as []). saturate_assumptions. now simpl in Hr. }
       apply NoDup_incl_length in Hincl; try assumption. unfold th_vote4vote in Ev'. destruct Ev'. lia.
   Qed.
 
@@ -208,10 +208,10 @@ Section Proof_of_Global_Liveness.
     clear H_w_reachable. saturate.
 
     hnf in Hw0 |- *. intros n Hnonbyz_n. 
-    pick output_coh_bwd as_ Hp by_ (pose proof (Hst n) as []). apply Hp.
+    pick vote_size_output as_ Hp by_ (pose proof (Hst n) as []). apply Hp.
     assert (incl nonbyz_senders (msgcnt (w0 @ n) (VoteMsg src r v))) as Hincl.
     { hnf. intros nn (_ & Hnonbyz_nn%negb_true_iff)%filter_In. specialize (Hw0 _ Hnonbyz_nn n Hnonbyz_n).
-      pick msgcnt_recv_bwd as_ Hr by_ (pose proof (Hbwdr _ Hw0) as []). saturate_assumptions. now simpl in Hr. }
+      pick msgcnt_recv_h2l as_ Hr by_ (pose proof (Hh2lr _ Hw0) as []). saturate_assumptions. now simpl in Hr. }
     unfold nonbyz_senders in Hincl. 
     apply NoDup_incl_length in Hincl; auto using NoDup_filter, valid_nodes_NoDup.
     unfold th_vote4output. pose proof nonbyz_lower_bound. lia.
@@ -251,7 +251,7 @@ Section Proof_of_Validity1.
     - apply Forall_forall. intros [ s d m b ] (Hin & Hcheck)%filter_In. simpl in Hcheck.
       unfold is_left in Hcheck. rewrite ! andb_true_iff, ! negb_true_iff in Hcheck. hnf. destruct_eqdec in_ Hcheck as_ ?; try eqsolve. now simplify_eq.
     - intros n Hnonbyz_n.
-      pick initialmsg_sent_fwd as_ H1 by_ (pose proof (Hfwd _ Hnonbyz_src) as []). specialize (H1 _ Hstart n). rewrite Hcoh in H1.
+      pick initialmsg_sent_l2h as_ H1 by_ (pose proof (Hl2h _ Hnonbyz_src) as []). specialize (H1 _ Hstart n). rewrite Hcoh in H1.
       destruct H1 as (b & H1). exists b. unfold is_left. rewrite filter_In, ! andb_true_iff, negb_true_iff. simpl. now rewrite ! eqdec_refl.
   Qed.
 
@@ -280,11 +280,11 @@ Section Proof_of_Validity1.
     clear H_w_reachable. saturate.
 
     hnf in Hw0 |- *. intros n Hnonbyz_n. specialize (Hw0 _ Hnonbyz_n).
-    pick initialmsg_recv_bwd as_ Hp by_ (pose proof (Hbwdr _ Hw0) as []). saturate_assumptions.
+    pick initialmsg_recv_h2l as_ Hp by_ (pose proof (Hh2lr _ Hw0) as []). saturate_assumptions.
     destruct (echoed _ _) as [ v' | ] eqn:Ev' in |- *; [ | isSome_rewrite; discriminate ].
     (* TODO the following two steps are repeating in the integrity proof *)
-    pick initialmsg_recv_fwd as_ H4 by_ (pose proof (Hfwd _ Hnonbyz_n) as []). specialize (H4 _ _ _ Ev'). rewrite Hcoh in H4.
-    pick initialmsg_sent_bwd as_ H5 by_ (pose proof (Hbwds _ H4) as []). saturate_assumptions. now f_equal.
+    pick initialmsg_recv_l2h as_ H4 by_ (pose proof (Hl2h _ Hnonbyz_n) as []). specialize (H4 _ _ _ Ev'). rewrite Hcoh in H4.
+    pick initialmsg_sent_h2l as_ H5 by_ (pose proof (Hh2ls _ H4) as []). saturate_assumptions. now f_equal.
   Qed.
 
   End Round1.
@@ -316,7 +316,7 @@ Section Proof_of_Validity1.
     - intros n1 (_ & Hnonbyz_n1)%filter_In. rewrite negb_true_iff in Hnonbyz_n1.
       hnf in Hstart. specialize (@Hstart _ Hnonbyz_n1). (* TODO why @? *) split_and?; auto.
       intros n2 Hnonbyz_n2.
-      pick echomsg_sent_fwd as_ Hsent1 by_ (pose proof (Hfwd _ Hnonbyz_n1) as []). specialize (Hsent1 _ _ _ Hstart n2). rewrite Hcoh in Hsent1.
+      pick echomsg_sent_l2h as_ Hsent1 by_ (pose proof (Hl2h _ Hnonbyz_n1) as []). specialize (Hsent1 _ _ _ Hstart n2). rewrite Hcoh in Hsent1.
       destruct Hsent1. eexists. apply filter_In. 
       simpl. split; [ eassumption | now rewrite andb_true_iff, ! negb_true_iff ].
   Qed.
@@ -356,10 +356,10 @@ Section Proof_of_Validity1.
       pose proof (vote_integrity_is_safety H_w0_reachable) as Htmp. now eapply (Htmp n src) in Ev'; try eassumption.
     - (* prove contradiction using the message size *)
       (* TODO repeating *)
-      pick voted_coh_none as_ Hp by_ (pose proof (Hst n) as []). apply Hp with (v:=value_bft src r) in Ev'.
+      pick voted_none as_ Hp by_ (pose proof (Hst n) as []). apply Hp with (v:=value_bft src r) in Ev'.
       assert (incl nonbyz_senders (msgcnt (w0 @ n) (EchoMsg src r (value_bft src r)))) as Hincl.
       { hnf. subst nonbyz_senders. intros nn (_ & Hnonbyz_nn%negb_true_iff)%filter_In. specialize (Hw0 nn ltac:(assumption) n ltac:(assumption)).
-        pick msgcnt_recv_bwd as_ Hr by_ (pose proof (Hbwdr _ Hw0) as []). saturate_assumptions. now simpl in Hr. }
+        pick msgcnt_recv_h2l as_ Hr by_ (pose proof (Hh2lr _ Hw0) as []). saturate_assumptions. now simpl in Hr. }
       apply NoDup_incl_length in Hincl; try assumption. unfold th_echo4vote in Ev'. destruct Ev'. lia.
   Qed.
 
