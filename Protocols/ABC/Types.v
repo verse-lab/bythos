@@ -13,35 +13,22 @@ Module Type ACDataTypes (A : NetAddr) (V : Signable) (P : PKI A V) (TSS : Thresh
 
 Import A V P TSS.
 
-Definition AddrSigPair_eqdec : forall (nsig1 nsig2 : Address * Signature), {nsig1 = nsig2} + {nsig1 <> nsig2}.
-  intros. decide equality.
-  - apply Signature_eqdec. 
-  - apply Address_eqdec.
-Qed. 
+Definition AddrSigPair_eqdec : forall (nsig1 nsig2 : Address * Signature), {nsig1 = nsig2} + {nsig1 <> nsig2}
+  := prod_eq_dec Address_eqdec Signature_eqdec.
 
-Definition AddrLightSigPair_eqdec : forall (nsig1 nsig2 : Address * LightSignature), {nsig1 = nsig2} + {nsig1 <> nsig2}.
-  intros. decide equality.
-  - apply LightSignature_eqdec. 
-  - apply Address_eqdec.
-Qed. 
+Definition AddrLightSigPair_eqdec : forall (nsig1 nsig2 : Address * LightSignature), {nsig1 = nsig2} + {nsig1 <> nsig2}
+  := prod_eq_dec Address_eqdec LightSignature_eqdec.
 
 (* temporarily use list; there should be some notation of finite multisets or ...? *)
 
 Definition Certificate : Type := Value * list (Address * Signature).
 Definition LightCertificate : Type := Value * CombinedSignature.
 
-Definition Certificate_eqdec : forall (c1 c2 : Certificate), {c1 = c2} + {c1 <> c2}.
-  intros. decide equality. 1: do 2 (decide equality).
-  - apply Signature_eqdec. 
-  - apply Address_eqdec.
-  - apply Value_eqdec.
-Qed. 
+Definition Certificate_eqdec : forall (c1 c2 : Certificate), {c1 = c2} + {c1 <> c2}
+  := prod_eq_dec Value_eqdec (list_eq_dec AddrSigPair_eqdec).
 
-Definition LightCertificate_eqdec : forall (c1 c2 : LightCertificate), {c1 = c2} + {c1 <> c2}.
-  intros. decide equality.
-  - apply CombinedSignature_eqdec. 
-  - apply Value_eqdec.
-Qed. 
+Definition LightCertificate_eqdec : forall (c1 c2 : LightCertificate), {c1 = c2} + {c1 <> c2}
+  := prod_eq_dec Value_eqdec CombinedSignature_eqdec.
 
 End ACDataTypes.
 
@@ -179,14 +166,8 @@ Proof.
     destruct (Value_eqdec v v_) as [ <- | Hvneq ].
     + firstorder.
       congruence.
-    + rewrite -> filter_In.
-      (* awkward ... *)
-      assert (in_dec Address_eqdec n (map fst nsigs) <-> In n (map fst nsigs)) as Hp.
-      {
-        unfold is_true.
-        now destruct (in_dec Address_eqdec n (map fst nsigs)).
-      }
-      rewrite -> Hp.
+    + unfold ssrbool.is_left.
+      rewrite -> filter_In, ! in_dec_is_left.
       intuition firstorder congruence.
 Qed.
 
