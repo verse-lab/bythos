@@ -78,14 +78,14 @@ Section Proof_of_Global_Liveness.
       end) (sentMsgs w)).
     hnf. split_and?; auto using incl_filter.
     - apply Forall_forall. intros [ s d [] b ] (Hin & Hcheck)%filter_In; simpl in Hcheck; try discriminate.
-      unfold is_left in Hcheck. rewrite andb_true_iff, negb_true_iff, in_dec_is_left in Hcheck.
+      unfold is_left in Hcheck. rewrite andb_true_iff, negb_true_iff, sumbool_is_left in Hcheck.
       hnf. simpl. intuition.
     - intros n1 Hin1_backup. 
       pose proof Hin1_backup as Hnonbyz_n1%Hf_nonbyz. pose proof Hin1_backup as Hv%Hallvoted. split_and?; auto.
       intros n2 Hnonbyz_n2.
       pick votemsg_sent_l2h as_ Hsent1' by_ (pose proof (Hl2h _ Hnonbyz_n1) as []). specialize (Hsent1' _ _ _ Hv n2). rewrite Hcoh in Hsent1'.
       destruct Hsent1'. eexists. apply filter_In. 
-      simpl. split; [ eassumption | unfold is_left; now rewrite andb_true_iff, negb_true_iff, in_dec_is_left ].
+      simpl. split; [ eassumption | unfold is_left; now rewrite andb_true_iff, negb_true_iff, sumbool_is_left ].
   Qed.
 
   End Prelude.

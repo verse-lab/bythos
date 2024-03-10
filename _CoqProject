@@ -24,13 +24,17 @@ Systems/Network.v
 Properties/Liveness_tla.v
 Utils/ListFacts.v
 Utils/TLAmore.v
+Utils/Tactics.v
 # Utils/InfSeqAdaptor.v
 
 Protocols/ABC/Types.v
 Protocols/ABC/Protocol.v
+Protocols/ABC/Pro.v
+Protocols/ABC/Nw.v
 Protocols/ABC/Network.v
 Protocols/ABC/Invariant.v
 Protocols/ABC/Liveness_tla.v
+Protocols/ABC/Inv.v
 
 Protocols/RB/Types.v
 Protocols/RB/Protocol.v

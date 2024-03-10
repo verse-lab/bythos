@@ -167,7 +167,7 @@ Proof.
     + firstorder.
       congruence.
     + unfold ssrbool.is_left.
-      rewrite -> filter_In, ! in_dec_is_left.
+      rewrite -> filter_In, ! sumbool_is_left.
       intuition firstorder congruence.
 Qed.
 

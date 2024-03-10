@@ -7,87 +7,6 @@ From ABCProtocol.Protocols.RB Require Export Network.
 From RecordUpdate Require Import RecordUpdate.
 From stdpp Require Import tactics. (* anyway *)
 
-Global Tactic Notation "pick" constr(def) "as_" ident(H) :=
-  first
-  [ match goal with
-    | H0 : def _ |- _ => rename H0 into H
-    | H0 : def _ _ |- _ => rename H0 into H
-    | H0 : def _ _ _ |- _ => rename H0 into H
-    end
-  | match goal with
-    | H0 : context[def] |- _ => rename H0 into H; hnf in H
-    end ];
-  tryif (is_const def) then (unfold def in H) else idtac.
-
-(* TODO need improvement *)
-Global Tactic Notation "pick" constr(def) "as_" ident(H) "by_" tactic2(tac) :=
-  let a := fresh "eprop" in
-  evar (a : Prop); assert a as H; subst a; 
-    [ tac; (let Htmp := fresh "Htmp" in pick def as_ Htmp; exact Htmp) | ].
-
-Global Tactic Notation "saturate_assumptions" :=
-  repeat match goal with
-    H : ?P -> ?Q |- _ => 
-    match type of P with
-      Prop => specialize (H ltac:(try apply I; try reflexivity; assumption))
-    end
-  end.
-
-Local Ltac sat H :=
-  match type of H with
-  | forall (_ : ?P), _ =>
-    (* search with backtracking *)
-    tryif first [ specialize (H I) | specialize (H eq_refl) ]
-    then sat H
-    else (match goal with
-          | HH : ?P |- _ => specialize (H HH); sat H
-          end)
-  | _ => idtac
-  end.
-
-Global Tactic Notation "saturate_assumptions" "!" :=
-  repeat match goal with
-  | H : forall (_ : _), _ |- _ => sat H
-  end.
-
-Global Tactic Notation "eqsolve" := solve [ intuition congruence | intuition discriminate ].
-
-Global Tactic Notation "hypothesis" :=
-  match goal with
-    H : ?e |- _ => 
-    match type of e with
-      Prop => solve [ simple apply H ]
-    end
-  end.
-
-Global Ltac isSome_rewrite :=
-  repeat match goal with
-  | H : ?a = _, H0 : context[ssrbool.isSome ?a] |- _ => rewrite H in H0; simpl in H0
-  | H : ?a = _ |- context[ssrbool.isSome ?a] => rewrite H; simpl
-  end.
-
-Global Tactic Notation "destruct_eqdec_raw" constr(eqdec) constr(a) constr(b) simple_intropattern(pat) :=
-  match type of eqdec with
-    forall _ : _, forall _ : _, sumbool (eq _ _) (not (eq _ _)) =>
-    destruct (eqdec a b) as [ pat | ] +
-    destruct (eqdec a b) as [ | ]
-  end.
-
-Global Tactic Notation "destruct_eqdec" "in_" hyp(H) "as_" simple_intropattern(pat) :=
-  repeat match type of H with
-    context[if ?eqdec ?a ?b then _ else _] => destruct_eqdec_raw eqdec a b pat
-  end.
-
-Global Tactic Notation "destruct_eqdec" "as_" simple_intropattern(pat) :=
-  repeat match goal with
-    |- context[if ?eqdec ?a ?b then _ else _] => destruct_eqdec_raw eqdec a b pat
-  end.
-
-Global Tactic Notation "destruct_eqdec" "!" "as_" simple_intropattern(pat) :=
-  repeat match goal with 
-  | H : context[if ?eqdec ?a ?b then _ else _] |- _ => destruct_eqdec_raw eqdec a b pat
-  end; try destruct_eqdec as_ pat.
-
 Module RBInvariant (A : NetAddr) (R : RBTag) (V : Signable) (VBFT : ValueBFT A R V)
   (BTh : ClassicByzThreshold A) (BSett : RestrictedByzSetting A BTh).
 
@@ -96,29 +15,10 @@ Import ssrbool. (* anyway *)
 
 Module Export RBN := RBNetwork A R V VBFT BTh BSett.
 
-(* experimental *)
-Definition is_invariant_step_under (P Q : World -> Prop) : Prop :=
-  forall q w w', P w -> P w' -> Q w -> system_step q w w' -> Q w'.
-
-Fact is_invariant_step_under_clear [P] (Hinv : is_invariant_step P) Q : 
-  is_invariant_step_under Q P.
-Proof. hnf in *. firstorder. Qed.
-(*
-Fact is_invariant_step_under_weaken [P]
-  (Hinv : is_invariant_step P) Q : is_invariant_step_under (fun w => P w /\ Q w).
-Proof. hnf in *. intros ??? (Hp & Hq) Hstep. split; [ firstorder | ]. eapply H; eauto. Qed. 
-*)
-Fact is_invariant_step_under_intro_l [P Q R] (H : is_invariant_step_under (fun w => P w /\ Q w) R)
-  (H0 : is_invariant_step_under P Q) : is_invariant_step_under P (fun w => Q w /\ R w).
-Proof. hnf in *. naive_solver. Qed.
-
-Fact is_invariant_step_under_split [P Q R] (Hl : is_invariant_step_under P Q)
-  (Hr : is_invariant_step_under P R) : is_invariant_step_under P (fun w => Q w /\ R w).
-Proof. hnf in *. firstorder. Qed.
-
-Fact is_invariant_step_under_closed [P Q] (H : is_invariant_step_under P Q)
-  (Hinv : is_invariant_step P) : is_invariant_step (fun w => P w /\ Q w).
-Proof. hnf in *. intros ??? (Hp & Hq) Hstep. split; [ firstorder | ]. eapply H; eauto. Qed. 
+Ltac destruct_localState_id_coh_check P w ::=
+  (* the convert tactic is for 8.19! let's use "change" for now *)
+  (* convert P (forall pp : Address, id (w @ pp) = pp). *)
+  change P with (forall pp : Address, id (w @ pp) = pp).
 
 Section Main_Proof.
 
@@ -143,85 +43,6 @@ Tactic Notation "simpl_via_is_InitialMsg_false" constr(msg) :=
     replace (match msg with InitialMsg _ _ => _ | EchoMsg _ _ _ | VoteMsg _ _ _ => ee end)
       with ee by (destruct msg; try discriminate; reflexivity)
   end.
-
-Tactic Notation "simpl_pkt" :=
-  simpl dst in *; simpl src in *; simpl msg in *; simpl consumed in *.
-
-Tactic Notation "simpl_world" :=
-  simpl localState in *; simpl sentMsgs in *.
-
-Tactic Notation "inversion_step_" hyp(H) ident(Heq) :=
-  (* conventional naming *)
-  let n := fresh "n" in
-  let p := fresh "p" in
-  let t := fresh "t" in
-  let m := fresh "m" in
-  let dst := fresh "dst" in
-  let Hq := fresh "Hq" in
-  let Hpin := fresh "Hpin" in
-  let Hnonbyz := fresh "Hnonbyz" in
-  let Hbyz := fresh "Hbyz" in
-  let Hc := fresh "Hc" in
-  inversion H as 
-    [ Hq <-
-    | p Hq Hpin Hnonbyz Heq 
-    | n t Hq Hnonbyz Heq 
-    | n dst m Hq Hbyz Hc Heq ];
-  match type of Hq with
-    @eq system_step_descriptor ?q _ => try (is_var q; subst q)
-  end.
-
-Tactic Notation "inversion_step" hyp(H) :=
-  let Heq := fresh "Heq" in inversion_step_ H Heq.
-
-Tactic Notation "inversion_step'" hyp(H) :=
-  let stf := fresh "stf" in (* "f" for final *)
-  let msf := fresh "msf" in
-  let Ef := fresh "Ef" in
-  let E := fresh "E" in
-  let Heq := fresh "Heq" in
-  inversion_step_ H Heq;
-  [
-  | (* FIXME: "src", "dst" and "msg" have the same names as functions over messages, 
-      so they will have a trailing "0" or something if use "fresh".
-      currently, let's get rid of this *)
-    (* let src := fresh "src" in
-    let dst := fresh "dst" in
-    let msg := fresh "msg" in
-    let used := fresh "used" in *)
-    destruct (procMsgWithCheck _ _ _) as (stf, msf) eqn:Ef in Heq;
-    match type of Ef with
-    | procMsgWithCheck _ _ (?msgfunc ?p) = _ =>
-      destruct p as [ src dst msg used ]; simpl_pkt
-    | _ => idtac
-    end;
-    (* this try seems protocol specific *)
-    unfold procMsgWithCheck in Ef;
-    (*
-    (* no, not in this protocol ... *)
-      try (unfold procMsgWithCheck in Ef;
-      destruct (procMsg _ _ _) as (st', ms) eqn:E in Ef); *)
-    match type of Heq with ?w' = _ => try (subst w'; simpl_world) end
-  | destruct (procInt _ _) as (st', ms) eqn:E in Heq;
-    match type of Heq with ?w' = _ => try (subst w'; simpl_world) end
-  | match type of Heq with ?w' = _ => try (subst w'; simpl_world) end
-  ].
-
-Tactic Notation "destruct_localState" ident(w) ident(n) 
-  "as_" simple_intropattern(pat) "eqn_" ident(E) :=
-  match goal with 
-  | H : ?P |- _ =>
-    change P with (forall pp : nat, id (w @ pp) = pp); (* convertible checked here *)
-    let Htmp := fresh "Htmp" in
-    pose proof (H n) as Htmp;
-    destruct (w @ n) as pat eqn:E; 
-    simpl in Htmp; 
-    match type of Htmp with ?nn = _ => subst nn end
-  end.
-
-Tactic Notation "destruct_localState" ident(w) ident(n) "as_" simple_intropattern(pat) :=
-  let E := fresh "E" in
-  destruct_localState w n as_ pat eqn_ E; clear E.
 
 Create HintDb RBinv.
 
@@ -579,6 +400,7 @@ Proof.
 Qed.
 
 (* length is also monotonic, but can be reduced to In + NoDup, so it is not included above *)
+(* FIXME: add them? since they look useful *)
 
 (* reformulate *)
 Record node_state_invariants st : Prop := {
@@ -834,7 +656,8 @@ Ltac state_effect_solve :=
   | _ => idtac
   end.
 
-(* TODO this also seems customizable *)
+(* TODO this also seems customizable? but for some cases where there are only broadcasts, 
+    this solver is already useful enough *)
 Ltac psent_analyze' psent' :=
   match psent' with
   | consume ?p ?psent => uconstr:(Pbase psent (Puse psent p ltac:(assumption)))
@@ -1162,7 +985,7 @@ Proof.
       destruct_and? Htmp. destruct_and? Htmp0.
       pose proof (in_nil (a:=n')) as Htmp1. pose proof (in_nil (a:=m')) as Htmp2.
       rewrite <- E, -> ! filter_In, -> ! andb_true_iff in Htmp1, Htmp2.
-      pose proof (localState_mnt Hstep) as [ Ew | (nn & st & Ew) ]; try rewrite Ew in *.
+      pose proof (localState_change_atomic Hstep) as [ Ew | (nn & st & Ew) ]; try rewrite Ew in *.
       1: eqsolve.
       pose proof valid_nodes_NoDup as HH. eapply NoDup_filter in HH. rewrite E', ! NoDup_cons_iff in HH. simpl in HH.
       unfold upd in *. destruct_eqdec! as_ ?; simplify_eq; try eqsolve.
@@ -1199,7 +1022,7 @@ Proof.
     (w' @ dst1).(voted) (src, r) = Some v1 -> (w' @ dst2).(voted) (src, r) = Some v2 ->
     v1 = v2) as Hsymgoal.
   1:{ (* de-symmetrize; have some high-level discussion first, to know that at most one node will change *)
-    pose proof (localState_mnt Hstep) as [ Ew | (nn & st & Ew) ]; hnf in H |- *; rewrite Ew in *; try hypothesis.
+    pose proof (localState_change_atomic Hstep) as [ Ew | (nn & st & Ew) ]; hnf in H |- *; rewrite Ew in *; try hypothesis.
     intros dst1 dst2.
     pick voted_persistent as_ Hv1 by_ (pose proof (persistent_invariants Hstep dst1) as []).
     pick voted_persistent as_ Hv2 by_ (pose proof (persistent_invariants Hstep dst2) as []). (* prepare *)
@@ -1237,7 +1060,7 @@ Proof.
       - pick msgcnt_persistent as_ Htmp by_ (pose proof (persistent_invariants Hstep n') as []). hnf. apply (Htmp (EchoMsg _ _ _)). }
     (* the basic idea is to find a non-faulty node in the quorum intersection that equivocate, and then prove False *)
     pose proof (quorum_intersection Hnodup1 Hnodup2 Hle He) as Hq. pose proof t0_lt_N_minus_2t0 as Ht0.
-    match type of Hq with _ <= ?ll => assert (t0 < ll) as (n & Hnonbyz_n & (Hin2' & Hin1'%in_dec_is_left)%filter_In)%at_least_one_nonfaulty by lia end.
+    match type of Hq with _ <= ?ll => assert (t0 < ll) as (n & Hnonbyz_n & (Hin2' & Hin1'%sumbool_is_left)%filter_In)%at_least_one_nonfaulty by lia end.
     2: now apply List.NoDup_filter.
     (* TODO the following step has some overlap with a previous proof *)
     pick msgcnt_recv_l2h as_ Hsent1 by_ (pose proof (Hl2h _ Hnonbyz_dst1) as []). specialize (Hsent1 _ _ Hin1'). 

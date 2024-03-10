@@ -192,6 +192,9 @@ Fact broadcast_all_fresh n m :
   Forall (fun p => p.(consumed) = false) (broadcast n m).
 Proof. apply Forall_forall. now intros ? (? & ->)%In_broadcast. Qed.
 
+Global Tactic Notation "simpl_pkt" :=
+  simpl dst in *; simpl src in *; simpl msg in *; simpl consumed in *.
+
 End SimplePacket.
 
 Module SimplePacketImpl (Export A : NetAddr) (Export M : MessageType) <: (SimplePacket A M) <: PacketType.

@@ -25,10 +25,10 @@ Section Grounded_Invariants.
 
 (* HMM we can have typeclasses here so that the proofs can be automated (by resolution), 
     but is that too much? *)
-
+(*
 Definition is_grounded_invariant (P : World -> Prop) : Prop :=
   P initWorld /\ is_invariant_step P.
-
+*)
 Fact grounded_invariant_is_safety P (H : is_grounded_invariant P) : is_safety P.
 Proof. destruct H as (Hinit & H). hnf in H |- *. intros w Hr. induction Hr; firstorder. Qed. 
 
@@ -144,7 +144,7 @@ Proof.
   simpl in Hnodup1, Hnodup2.
   (* the basic idea is to find a non-faulty node in the quorum intersection that equivocate, and then prove False *)
   pose proof (quorum_intersection Hnodup1 Hnodup2 Hle1 Hle2) as Hq. pose proof t0_lt_N_minus_2t0 as Ht0.
-  match type of Hq with _ <= ?ll => assert (t0 < ll) as (n & Hnonbyz_n & (Hin2' & Hin1'%in_dec_is_left)%filter_In)%at_least_one_nonfaulty by lia end.
+  match type of Hq with _ <= ?ll => assert (t0 < ll) as (n & Hnonbyz_n & (Hin2' & Hin1'%sumbool_is_left)%filter_In)%at_least_one_nonfaulty by lia end.
   2: now apply List.NoDup_filter.
   (* TODO the following step has some overlap with a previous proof *)
   pick msgcnt_recv_l2h as_ Hsent1 by_ (pose proof (Hl2h _ Hnonbyz_dst1) as []). specialize (Hsent1 _ _ Hin1'). 

@@ -150,16 +150,21 @@ Proof. destruct (eqdec _ _); auto; try contradiction. Qed.
 Fact in_cons_iff [A : Type] (l : list A) (x y : A) : In x (y :: l) <-> y = x \/ In x l.
 Proof. reflexivity. Qed.
 
+(* minimal things about total maps *)
 Definition map_update [A B : Type] (A_eqdec : forall a1 a2 : A, {a1 = a2} + {a1 <> a2}) 
   (a : A) (b : B) (mp : A -> B) : A -> B :=
   fun a' => if A_eqdec a a' then b else mp a'.
 
+(* TODO naming issue? *)
 Fact map_update_refl {A B : Type} (A_eqdec : forall a1 a2 : A, {a1 = a2} + {a1 <> a2})
   (a : A) (b : B) (mp : A -> B) :
   map_update A_eqdec a b mp a = b.
 Proof. unfold map_update. now rewrite eqdec_refl. Qed.
 
-(* TODO ABC should have something similar *)
+Fact map_update_intact {A B : Type} (A_eqdec : forall a1 a2 : A, {a1 = a2} + {a1 <> a2})
+  (a a' : A) (mp : A -> B) :
+  map_update A_eqdec a' (mp a') mp a = mp a.
+Proof. unfold map_update. destruct (A_eqdec _ _); congruence. Qed.
 
 Definition set_add_simple [A : Type] (A_eqdec : forall a1 a2 : A, {a1 = a2} + {a1 <> a2}) 
   (a : A) (l : list A) : list A :=
@@ -170,9 +175,13 @@ Definition Ineq [A : Type] (l1 l2 : list A) : Prop := forall x, In x l1 <-> In x
 #[export] Instance Equivalence_Ineq {A : Type} : Equivalence (@Ineq A).
 Proof. constructor; hnf; unfold Ineq in *; firstorder. Qed.
 
-Fact in_dec_is_left [A : Type] [A_eqdec : forall a1 a2 : A, {a1 = a2} + {a1 <> a2}]
-  [a : A] (l : list A) : (if in_dec A_eqdec a l then true else false) = true <-> In a l.
-Proof. destruct (in_dec _ _ _); intuition discriminate. Qed.
+Fact sumbool_is_left [A : Prop] (dec : {A} + {~ A}) : 
+  (if dec then true else false) = true <-> A.
+Proof. destruct dec; intuition discriminate. Qed.
+
+Fact sumbool_is_right [A : Prop] (dec : {A} + {~ A}) : 
+  (if dec then true else false) = false <-> ~ A.
+Proof. destruct dec; intuition discriminate. Qed.
 (*
 Fact list_ifnil_destruct [A : Type] (l : list A) : {l = nil} + {l <> nil}.
 Proof. destruct l; [ now left | now right ]. Qed.

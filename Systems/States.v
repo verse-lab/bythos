@@ -17,6 +17,9 @@ Definition upd (n : Address) (st : State) (states : StateMap) : StateMap :=
 Fact upd_refl n st stmap : upd n st stmap n = st.
 Proof. now apply map_update_refl. Qed.
 
+Fact upd_intact n n' stmap : upd n' (stmap n') stmap n = stmap n.
+Proof. now apply map_update_intact. Qed.
+
 (* if to parameterize this, then need some module type about finite multiset? *)
 (* currently, let's stick to list *)
 Definition PacketSoup := list Packet.
@@ -29,6 +32,35 @@ Record World :=
   }.
 
 Definition initWorld := mkW initState nil.
+
+(* some handy things *)
+Global Notation "w '@' n" := (localState w n) (at level 50, left associativity).
+
+Global Tactic Notation "simpl_world" := simpl localState in *; simpl sentMsgs in *.
+
+Global Tactic Notation "rewrite_w_expand" ident(w) "in_" hyp(H) :=
+  replace w with (mkW (localState w) (sentMsgs w)) in H by (now destruct w).
+
+(* TODO not good design *)
+(* this will be instantiated for each protocol, since we do not have id field here *)
+Global Ltac destruct_localState_id_coh_check P w := idtac.
+
+Global Tactic Notation "destruct_localState" ident(w) ident(n) "as_" simple_intropattern(pat) "eqn_" ident(E) :=
+  match goal with 
+  | H : ?P |- _ =>
+    tryif destruct_localState_id_coh_check P w
+    then
+      let Htmp := fresh "Htmp" in
+      pose proof (H n) as Htmp;
+      destruct (localState w n) as pat eqn:E; 
+      simpl in Htmp; 
+      match type of Htmp with ?nn = _ => subst nn end
+    else fail 0
+  end.
+
+Global Tactic Notation "destruct_localState" ident(w) ident(n) "as_" simple_intropattern(pat) :=
+  let E := fresh "E" in
+  (destruct_localState w n as_ pat eqn_ E); clear E.
 
 End NetState.
 
@@ -63,6 +95,14 @@ Proof. hnf. intros. rewrite In_sendout. now left. Qed.
 Fact incl_sendout_r (l1 l2 : list Packet) : incl l1 (sendout l2 l1).
 Proof. hnf. intros. rewrite In_sendout. now right. Qed.
 
+Fact incl_sendout_app_l (l l1 l2 l3 : list Packet) (H : incl l (sendout l1 l3)) :
+  incl l (sendout (l1 ++ l2) l3).
+Proof. hnf in H |- *. intros a HH. specialize (H _ HH). rewrite In_sendout in H |- *. rewrite in_app_iff. tauto. Qed.
+
+Fact incl_sendout_app_r (l l1 l2 l3 : list Packet) (H : incl l (sendout l2 l3)) :
+  incl l (sendout (l1 ++ l2) l3).
+Proof. hnf in H |- *. intros a HH. specialize (H _ HH). rewrite In_sendout in H |- *. rewrite in_app_iff. tauto. Qed.
+
 End PacketSoupOperations.
 
 Module PacketSoupOperationsImpl (Export P : PacketType) <: PacketSoupOperations P.
@@ -85,6 +125,14 @@ Proof. hnf. intros. rewrite In_sendout. now left. Qed.
 
 Fact incl_sendout_r (l1 l2 : list Packet) : incl l1 (sendout l2 l1).
 Proof. hnf. intros. rewrite In_sendout. now right. Qed.
+
+Fact incl_sendout_app_l (l l1 l2 l3 : list Packet) (H : incl l (sendout l1 l3)) :
+  incl l (sendout (l1 ++ l2) l3).
+Proof. hnf in H |- *. intros a HH. specialize (H _ HH). rewrite In_sendout in H |- *. rewrite in_app_iff. tauto. Qed.
+
+Fact incl_sendout_app_r (l l1 l2 l3 : list Packet) (H : incl l (sendout l2 l3)) :
+  incl l (sendout (l1 ++ l2) l3).
+Proof. hnf in H |- *. intros a HH. specialize (H _ HH). rewrite In_sendout in H |- *. rewrite in_app_iff. tauto. Qed.
 
 End PacketSoupOperationsImpl.
 
@@ -121,6 +169,14 @@ Section Main.
 
   Context [psent : list Packet] [p : Packet] (Hin : In p psent).
 
+  Lemma In_consume_idem (Hused : p.(consumed) = true) :
+    forall p', In p' (consume p psent) <-> In p' psent.
+  Proof.
+    intros. rewrite In_consume. destruct p as [ src dst msg ? ]. simpl in *. subst. 
+    destruct (Packet_eqdec (mkP src dst msg true) p') in |- *; eqsolve.
+  Qed.
+
+  (* FIXME: any below can be subsumed by In_consume_iff? *)
   Lemma In_consume_fwd [p'] (Hin' : In p' psent) :
     In (if Packet_eqdec p' p then receive_pkt p' else p') (consume p psent).
   Proof.

@@ -109,8 +109,6 @@ Inductive system_step_descriptor : Type :=
   | Byz (src dst : Address) (m : Message)
 .
 
-Global Notation "w '@' n" := (localState w n) (at level 50, left associativity).
-
 (* TODO use this or indexed inductive relation? currently seems no difference *)
 Inductive system_step (q : system_step_descriptor) (w w' : World) : Prop :=
 | IdleStep of q = Idle & w = w'
@@ -140,6 +138,59 @@ Inductive system_step (q : system_step_descriptor) (w w' : World) : Prop :=
                (sendout1 (mkP src dst m false) (sentMsgs w))
 .
 
+Local Ltac inversion_step_ H Heq :=
+  (* conventional naming *)
+  let n := fresh "n" in
+  let p := fresh "p" in
+  let t := fresh "t" in
+  let m := fresh "m" in
+  let dst := fresh "dst" in
+  let Hq := fresh "Hq" in
+  let Hpin := fresh "Hpin" in
+  let Hnonbyz := fresh "Hnonbyz" in
+  let Hbyz := fresh "Hbyz" in
+  let Hc := fresh "Hc" in
+  inversion H as 
+    [ Hq <-
+    | p Hq Hpin Hnonbyz Heq 
+    | n t Hq Hnonbyz Heq 
+    | n dst m Hq Hbyz Hc Heq ];
+  match type of Hq with
+    @eq system_step_descriptor ?q _ => try (is_var q; subst q)
+  end.
+
+Global Tactic Notation "inversion_step" hyp(H) :=
+  let Heq := fresh "Heq" in inversion_step_ H Heq.
+
+Global Tactic Notation "inversion_step'" hyp(H) :=
+  let stf := fresh "stf" in (* "f" for final *)
+  let msf := fresh "msf" in
+  let Ef := fresh "Ef" in
+  let E := fresh "E" in
+  let Heq := fresh "Heq" in
+  inversion_step_ H Heq;
+  [
+  | (* FIXME: "src", "dst" and "msg" have the same names as functions over messages, 
+      so they will have a trailing "0" or something if use "fresh".
+      currently, let's get rid of this *)
+    (* let src := fresh "src" in
+    let dst := fresh "dst" in
+    let msg := fresh "msg" in
+    let used := fresh "used" in *)
+    destruct (procMsgWithCheck _ _ _) as (stf, msf) eqn:Ef in Heq;
+    match type of Ef with
+    | procMsgWithCheck _ _ (?msgfunc ?p) = _ =>
+      destruct p as [ src dst msg used ]; simpl_pkt
+    | _ => idtac
+    end;
+    (* this try seems protocol specific *)
+    unfold procMsgWithCheck in Ef;
+    match type of Heq with ?w' = _ => try (subst w'; simpl_world) end
+  | destruct (procInt _ _) as (st', ms) eqn:E in Heq;
+    match type of Heq with ?w' = _ => try (subst w'; simpl_world) end
+  | match type of Heq with ?w' = _ => try (subst w'; simpl_world) end
+  ].
+
 (* inversion lemmas *)
 
 Fact DeliverStep_inv p w w' (H : system_step (Deliver p) w w') :
@@ -155,8 +206,11 @@ Proof.
   split; [ reflexivity | assumption ].
 Qed.
 
-(* shape monotinicity of state map; really weak, almost says nothing useful *)
-Fact localState_mnt [q w w'] (H : system_step q w w') :
+Section Network_Model_Generic_Lemmas.
+
+(* atomicity of node state change (i.e., at most one node changes its state in one step) *)
+(* FIXME: the following n can be known from q! *)
+Fact localState_change_atomic [q w w'] (H : system_step q w w') :
   localState w' = localState w \/ exists n st, localState w' = upd n st (localState w).
 Proof.
   inversion H; try subst; auto.
@@ -164,12 +218,6 @@ Proof.
   2: rewrite (surjective_pairing (procInt _ _)) in *.
   all: simpl in *; subst; simpl; eauto.
 Qed.
-
-(* put the two properties here, since they are only related to the packet soup
-  (i.e., irrelevant with concrete network transitions) and the notion of packet 
-  (i.e., irrelevant with concrete messages); 
-  so the two properties should hold on all modelling based on packet soup and packet 
-*)
 
 Corollary consume_norevert [p psent] (Hin : In (receive_pkt p) psent) p' :
   In (receive_pkt p) (consume p' psent).
@@ -226,6 +274,7 @@ Corollary system_step_psent_norevert_full [src dst msg w w' q] :
 Proof. rewrite <- receive_pkt_intact with (p:=mkP _ _ _ _) in |- * by auto. apply system_step_psent_norevert. Qed.
 
 (* a received message must be already in the last network state *)
+(* HMM more like a trick? *)
 Fact system_step_received_inversion_full [src dst msg w w' q]
   (* TODO well, this is not very good ... *)
   (Hfresh1 : forall st src m, Forall (fun p => p.(consumed) = false) (snd (procMsgWithCheck st src m)))
@@ -250,6 +299,10 @@ Proof.
   1: specialize (Hfresh1 _ H); simpl in Hfresh1; discriminate.
   apply In_consume_conv_full in H; try assumption.
 Qed.
+
+End Network_Model_Generic_Lemmas.
+
+Section Finite_System_Trace.
 
 (* two multistep propositions *)
 
@@ -297,6 +350,8 @@ Qed.
 
 Fact final_world_snoc w q w' l : final_world w (l ++ (q, w') :: nil) = w'.
 Proof. now rewrite final_world_app. Qed. 
+
+End Finite_System_Trace.
 
 Inductive reachable : World -> Prop :=
   | ReachableInit : reachable initWorld
@@ -353,6 +408,12 @@ Proof.
     eapply H; eauto.
 Qed.
 
+Definition is_invariant_reachable_step (P : World -> Prop) : Prop :=
+  forall q w w', reachable w -> P w -> system_step q w w' -> P w'.
+
+(* full; with everything *)
+Definition is_invariant_reachable_step_under (P Q : World -> Prop) : Prop :=
+  forall q w w', reachable w -> reachable w' -> P w -> P w' -> Q w -> system_step q w w' -> Q w'.
 (*
 Fact is_invariant_implconj (P Q : World -> Prop) (Hisinv : is_invariant_step P) 
   (Hpq : forall w, P w -> Q w) : is_invariant_step (fun w => P w /\ Q w).
@@ -365,6 +426,54 @@ Proof.
   eapply Hpq, Hisinv; eauto.
 Qed.
 *)
+
+(* invariant proof mode? *)
+(* or, maybe there is just no need ... we can just consider the invariants that always hold *)
+
+Definition always_holds (P : World -> Prop) : Prop := forall w, reachable w -> P w.
+
+Fact always_holds_and P Q : always_holds (fun w => P w /\ Q w) <-> always_holds P /\ always_holds Q.
+Proof. unfold always_holds. firstorder. Qed.
+
+Fact is_invariant_reachable_step_under_closed P Q (Hr : is_invariant_reachable_step_under P Q)
+  (Hi : Q initWorld) (H : always_holds P) : always_holds Q.
+Proof.
+  hnf in H, Hr |- *. intros w Hw. 
+  induction Hw; auto. pose proof (ReachableStep Hstep Hw) as Hw'. pose proof (H _ Hw). pose proof (H _ Hw'). firstorder.
+Qed.
+
+Global Ltac always_holds_decompose lemma :=
+  let H := fresh "H" in pose proof lemma as H; rewrite ! always_holds_and in H; tauto.
+
+Definition is_grounded_invariant (P : World -> Prop) : Prop :=
+  P initWorld /\ is_invariant_step P.
+
+(* another way to prove always_holds is by induction on reachable relation *)
+Fact grounded_invariant_always_holds P (H : is_grounded_invariant P) : always_holds P.
+Proof. destruct H as (Hinit & H). hnf in H |- *. intros w Hr. induction Hr; firstorder. Qed. 
+
+Definition is_invariant_step_under (P Q : World -> Prop) : Prop :=
+  forall q w w', P w -> P w' -> Q w -> system_step q w w' -> Q w'.
+
+Fact is_invariant_step_under_clear [P] (Hinv : is_invariant_step P) Q : 
+  is_invariant_step_under Q P.
+Proof. hnf in *. firstorder. Qed.
+(*
+Fact is_invariant_step_under_weaken [P]
+  (Hinv : is_invariant_step P) Q : is_invariant_step_under (fun w => P w /\ Q w).
+Proof. hnf in *. intros ??? (Hp & Hq) Hstep. split; [ firstorder | ]. eapply H; eauto. Qed. 
+*)
+Fact is_invariant_step_under_intro_l [P Q R] (H : is_invariant_step_under (fun w => P w /\ Q w) R)
+  (H0 : is_invariant_step_under P Q) : is_invariant_step_under P (fun w => Q w /\ R w).
+Proof. hnf in *. intros ????? (? & ?) ?. saturate_assumptions!. split; [ auto | firstorder ]. Qed.
+
+Fact is_invariant_step_under_split [P Q R] (Hl : is_invariant_step_under P Q)
+  (Hr : is_invariant_step_under P R) : is_invariant_step_under P (fun w => Q w /\ R w).
+Proof. hnf in *. firstorder. Qed.
+
+Fact is_invariant_step_under_closed [P Q] (H : is_invariant_step_under P Q)
+  (Hinv : is_invariant_step P) : is_invariant_step (fun w => P w /\ Q w).
+Proof. hnf in *. intros ??? (? & ?) ?. now saturate_assumptions!. Qed.
 
 (* some examples of invariants *)
 
