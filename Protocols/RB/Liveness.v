@@ -223,9 +223,9 @@ End Proof_of_Global_Liveness.
 
 End Global_Liveness.
 
-Module Validity1.
+Module Validity.
 
-Section Proof_of_Validity1.
+Section Proof_of_Validity.
 
   Variables (src : Address) (r : Round).
   Hypothesis (Hnonbyz_src : is_byz src = false).
@@ -365,8 +365,8 @@ Section Proof_of_Validity1.
 
   End Round2.
 
-End Proof_of_Validity1.
+End Proof_of_Validity.
 
-End Validity1.
+End Validity.
 
 End RBLiveness.

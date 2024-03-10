@@ -63,7 +63,7 @@ End A.
 
 Section A.
 
-Import Validity1.
+Import Validity.
 
 Lemma validity_in_tla src r (Hnonbyz_src : is_byz src = false) :
   ⌜ init ⌝ ∧ □ ⟨ next ⟩ ∧ fairness ⊢
