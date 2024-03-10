@@ -25,13 +25,29 @@ Global Tactic Notation "pick" constr(def) "as_" ident(H) "by_" tactic2(tac) :=
   evar (a : Prop); assert a as H; subst a; 
     [ tac; (let Htmp := fresh "Htmp" in pick def as_ Htmp; exact Htmp) | ].
 
-(* HMM more aggressive (plus backtracking) version? *)
 Global Tactic Notation "saturate_assumptions" :=
   repeat match goal with
     H : ?P -> ?Q |- _ => 
     match type of P with
       Prop => specialize (H ltac:(try apply I; try reflexivity; assumption))
     end
+  end.
+
+Local Ltac sat H :=
+  match type of H with
+  | forall (_ : ?P), _ =>
+    (* search with backtracking *)
+    tryif first [ specialize (H I) | specialize (H eq_refl) ]
+    then sat H
+    else (match goal with
+          | HH : ?P |- _ => specialize (H HH); sat H
+          end)
+  | _ => idtac
+  end.
+
+Global Tactic Notation "saturate_assumptions" "!" :=
+  repeat match goal with
+  | H : forall (_ : _), _ |- _ => sat H
   end.
 
 Global Tactic Notation "eqsolve" := solve [ intuition congruence | intuition discriminate ].
@@ -67,7 +83,7 @@ Global Tactic Notation "destruct_eqdec" "as_" simple_intropattern(pat) :=
     |- context[if ?eqdec ?a ?b then _ else _] => destruct_eqdec_raw eqdec a b pat
   end.
 
-Global Tactic Notation "destruct_eqdec!" "as_" simple_intropattern(pat) :=
+Global Tactic Notation "destruct_eqdec" "!" "as_" simple_intropattern(pat) :=
   repeat match goal with 
   | H : context[if ?eqdec ?a ?b then _ else _] |- _ => destruct_eqdec_raw eqdec a b pat
   end; try destruct_eqdec as_ pat.

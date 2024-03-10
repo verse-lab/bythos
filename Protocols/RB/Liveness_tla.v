@@ -15,6 +15,30 @@ Import ssrbool. (* anyway *)
 Module Export RBLive := RBLiveness A R V VBFT BTh BSett.
 Include Liveness A M BTh BSett P PSOp RBP Ns RBAdv RBN.
 
+(* empirical, but maybe useful? *)
+Local Ltac aux Htmp :=
+  match type of Htmp with
+  | (exists (_ : list ?t), _) =>
+    tryif convert t Packet
+    then 
+      let pkts := fresh "pkts" in
+      let Htmp0 := fresh "Htmp" in
+      destruct Htmp as (pkts & Htmp); pose proof Htmp as Htmp0; hnf in Htmp0; destruct_and? Htmp0;
+      exists pkts; split_and?; eauto
+    else
+      let Htmp0 := fresh "Htmp" in
+      destruct Htmp as (? & Htmp0); aux Htmp0
+  | _ => fail 2
+  end.
+
+Tactic Notation "delivering" constr(lemma1) "which" "ends" "at" constr(lemma2)
+    "is" "sufficient" "because" constr(lemma3) :=
+  let Htmp := fresh "Htmp" in
+  apply leads_to_by_eventual_delivery;
+  intros; pose proof lemma1 as Htmp; saturate_assumptions!;
+  aux Htmp; 
+  intros; simplify_eq; eapply lemma3; eauto; try (eapply lemma2; eauto).
+
 Section A.
 
 Import Global_Liveness.
@@ -23,13 +47,7 @@ Lemma global_liveness_pre_in_tla src r v :
   ⌜ init ⌝ ∧ □ ⟨ next ⟩ ∧ fairness ⊢
   ⌜ round_2_start src r v ⌝ ~~> ⌜ all_receives src r v ⌝.
 Proof.
-  apply leads_to_by_eventual_delivery.
-  intros w H_w_reachable H. pose proof (round_2_pkts H_w_reachable H) as (pkts & Hround2).
-  hnf in Hround2. pose proof Hround2 as HH. destruct_and? Hround2.
-  exists pkts. split_and?; auto. 
-  intros w0 l0 Htrace0 -> Hincl.
-  eapply all_receives_suffcond; eauto.
-  eapply round_2_end_suffcond; eauto. apply HH.
+  delivering round_2_pkts which ends at round_2_end_suffcond is sufficient because all_receives_suffcond.
 Qed.
 
 Lemma global_liveness_in_tla src r v :
@@ -38,13 +56,7 @@ Lemma global_liveness_in_tla src r v :
 Proof.
   tla_apply (leads_to_trans _ (⌜ round_2_start src r v ⌝)). tla_split.
   2: apply global_liveness_pre_in_tla.
-  apply leads_to_by_eventual_delivery.
-  intros w H_w_reachable H. pose proof (round_1_pkts H_w_reachable H) as (nonbyz_senders & pkts & Hround1).
-  hnf in Hround1. pose proof Hround1 as HH. destruct_and? Hround1.
-  exists pkts. split_and?; auto. 
-  intros w0 l0 Htrace0 -> Hincl.
-  eapply round_2_start_suffcond; eauto.
-  eapply round_1_end_suffcond; eauto. apply HH.
+  delivering round_1_pkts which ends at round_1_end_suffcond is sufficient because round_2_start_suffcond.
 Qed.
 
 End A.
@@ -60,20 +72,8 @@ Proof.
   tla_apply (leads_to_trans _ (⌜ round_2_start src r ⌝)). tla_split.
   2: tla_apply (leads_to_trans _ (⌜ Global_Liveness.round_2_start src r (value_bft src r) ⌝)); tla_split.
   3: apply global_liveness_pre_in_tla.
-  - apply leads_to_by_eventual_delivery.
-    intros w H_w_reachable H. pose proof (round_1_pkts r Hnonbyz_src H_w_reachable H) as (pkts & Hround1).
-    hnf in Hround1. pose proof Hround1 as HH. destruct_and? Hround1.
-    exists pkts. split_and?; auto. 
-    intros w0 l0 Htrace0 -> Hincl.
-    eapply round_2_start_suffcond; eauto.
-    eapply round_1_end_suffcond; eauto.
-  - apply leads_to_by_eventual_delivery.
-    intros w H_w_reachable H. pose proof (round_2_pkts H_w_reachable H) as (pkts & Hround2).
-    hnf in Hround2. pose proof Hround2 as HH. destruct_and? Hround2.
-    exists pkts. split_and?; auto. 
-    intros w0 l0 Htrace0 -> Hincl.
-    eapply round_3_start_suffcond; eauto.
-    eapply round_2_end_suffcond; eauto.
+  - delivering round_1_pkts which ends at round_1_end_suffcond is sufficient because round_2_start_suffcond.
+  - delivering round_2_pkts which ends at round_2_end_suffcond is sufficient because round_3_start_suffcond.
 Qed.
 
 End A.
