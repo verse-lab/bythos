@@ -7,15 +7,6 @@ From ABCProtocol.Protocols.RB Require Export Safety.
 From RecordUpdate Require Import RecordUpdate.
 From stdpp Require Import tactics. (* anyway *)
 
-(* split_and, but accumulating *)
-Global Ltac split_and_acc_r H :=
-  match goal with
-  | |- _ /\ _ => 
-    let HH := fresh H in
-    apply and_wlog_r; [ | intros HH; split_and_acc_r H ]
-  | _ => idtac
-  end.
-
 Module RBLiveness (A : NetAddr) (R : RBTag) (V : Signable) (VBFT : ValueBFT A R V)
   (BTh : ClassicByzThreshold A) (BSett : RestrictedByzSetting A BTh).
 

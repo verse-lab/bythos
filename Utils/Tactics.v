@@ -104,3 +104,14 @@ Global Tactic Notation "destruct_exists" :=
     H : exists (_ : _), _ |- _ =>
     destruct H as (? & ?)
   end.
+
+(* split_and, but accumulating *)
+(*
+Global Ltac split_and_acc_r H :=
+  match goal with
+  | |- _ /\ _ => 
+    let HH := fresh H in
+    apply and_wlog_r; [ | intros HH; split_and_acc_r H ]
+  | _ => idtac
+  end.
+*)

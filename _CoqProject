@@ -31,6 +31,7 @@ Protocols/ABC/Types.v
 Protocols/ABC/Protocol.v
 Protocols/ABC/Network.v
 Protocols/ABC/Invariant.v
+Protocols/ABC/Safety.v
 
 Protocols/RB/Types.v
 Protocols/RB/Protocol.v

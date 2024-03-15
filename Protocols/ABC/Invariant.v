@@ -296,14 +296,15 @@ Proof.
     + apply IH; intuition.
 Qed.
 
-Section Main_Proof.
-
-Set Implicit Arguments. (* anyway *)
-
-Tactic Notation "simpl_state" :=
+(* FIXME: put this to Protocol? *)
+Global Tactic Notation "simpl_state" :=
   simpl id in *; simpl conf in *; simpl submitted_value in *; simpl from_set in *;
   simpl collected_lightsigs in *; simpl collected_sigs in *; simpl received_lightcerts in *; 
   simpl received_certs in *; simpl msg_buffer in *.
+
+Section Main_Proof.
+
+Set Implicit Arguments. (* anyway *)
 
 Create HintDb ABCinv.
 
@@ -982,6 +983,7 @@ Record node_state_invariants_pre' st st' : Prop := {
   _ : lift_point_to_edge buffer_nil_after_submit st st';
   _ : lift_point_to_edge buffer_contains_submitmsg st st';
   _ : lift_point_to_edge confirmed_then_submitted st st';
+  _ : lift_point_to_edge inv_set_size st st';
 }.
 
 (* FIXME: the meta things about persistence can be reused? *)
@@ -1058,6 +1060,7 @@ Record node_state_invariants st : Prop := {
   _ : inv_submit_mixin st;
   _ : buffer_nil_after_submit st;
   _ : buffer_contains_submitmsg st;
+  _ : inv_set_size st;
 }.
 
 Fact state_invariants : always_holds (lift_state_inv node_state_invariants).
