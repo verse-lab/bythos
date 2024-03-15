@@ -15,6 +15,12 @@ Parameter is_byz : Address -> bool.
 (* this module is not intended to be instantiated, so let's include things here anyway *)
 Definition num_byz := length (List.filter is_byz valid_nodes).
 
+Fact is_byz_synonym n : is_byz n <-> In n (filter is_byz valid_nodes).
+Proof. rewrite filter_In. pose proof (Address_is_finite n). intuition. Qed.
+
+Fact is_nonbyz_synonym n : is_byz n = false <-> In n (filter (fun n => negb (is_byz n)) valid_nodes).
+Proof. rewrite filter_In, negb_true_iff. pose proof (Address_is_finite n). intuition. Qed.
+
 Fact filter_byz_upper_bound [l : list Address] (Hnodup : List.NoDup l) :
   length (filter is_byz l) <= num_byz.
 Proof.

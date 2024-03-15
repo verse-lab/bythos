@@ -32,6 +32,8 @@ Protocols/ABC/Protocol.v
 Protocols/ABC/Network.v
 Protocols/ABC/Invariant.v
 Protocols/ABC/Safety.v
+Protocols/ABC/Liveness.v
+Protocols/ABC/Liveness_tla.v
 
 Protocols/RB/Types.v
 Protocols/RB/Protocol.v
