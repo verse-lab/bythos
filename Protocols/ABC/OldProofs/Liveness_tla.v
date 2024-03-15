@@ -2,7 +2,7 @@ From Coq Require Import List Bool Lia ListSet Permutation PeanoNat.
 From Coq Require ssrbool ssreflect.
 Import (coercions) ssrbool.
 Import ssreflect.SsrSyntax.
-From ABCProtocol.Protocols.ABC Require Export Invariant.
+From ABCProtocol.Protocols.ABC.OldProofs Require Export Invariant.
 From ABCProtocol.Properties Require Export Liveness_tla.
 
 Module ACLiveness (A : NetAddr) (V : Signable) (VBFT : ValueBFT A V) 

@@ -28,12 +28,12 @@ Utils/Tactics.v
 # Utils/InfSeqAdaptor.v
 
 Protocols/ABC/Types.v
-Protocols/ABC/Protocol.v
+Protocols/ABC/OldProofs/Protocol.v
+Protocols/ABC/OldProofs/Invariant.v
+Protocols/ABC/OldProofs/Network.v
+Protocols/ABC/OldProofs/Liveness_tla.v
 Protocols/ABC/Pro.v
 Protocols/ABC/Nw.v
-Protocols/ABC/Network.v
-Protocols/ABC/Invariant.v
-Protocols/ABC/Liveness_tla.v
 Protocols/ABC/Inv.v
 
 Protocols/RB/Types.v
