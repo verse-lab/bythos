@@ -3,7 +3,7 @@ From Coq Require ssrbool ssreflect.
 Import (coercions) ssrbool.
 Import ssreflect.SsrSyntax.
 From ABCProtocol.Systems Require Export Network.
-From ABCProtocol.Protocols.ABC Require Export Pro.
+From ABCProtocol.Protocols.ABC Require Export Protocol.
 
 Module ACAdversary (A : NetAddr) (V : Signable) (VBFT : ValueBFT A V) 
   (BTh : ByzThreshold A) (BSett : ByzSetting A)

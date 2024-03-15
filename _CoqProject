@@ -28,13 +28,9 @@ Utils/Tactics.v
 # Utils/InfSeqAdaptor.v
 
 Protocols/ABC/Types.v
-Protocols/ABC/OldProofs/Protocol.v
-Protocols/ABC/OldProofs/Invariant.v
-Protocols/ABC/OldProofs/Network.v
-Protocols/ABC/OldProofs/Liveness_tla.v
-Protocols/ABC/Pro.v
-Protocols/ABC/Nw.v
-Protocols/ABC/Inv.v
+Protocols/ABC/Protocol.v
+Protocols/ABC/Network.v
+Protocols/ABC/Invariant.v
 
 Protocols/RB/Types.v
 Protocols/RB/Protocol.v
@@ -43,3 +39,8 @@ Protocols/RB/Invariant.v
 Protocols/RB/Safety.v
 Protocols/RB/Liveness.v
 Protocols/RB/Liveness_tla.v
+
+Protocols/ABC/OldProofs/Protocol.v
+Protocols/ABC/OldProofs/Network.v
+Protocols/ABC/OldProofs/Invariant.v
+Protocols/ABC/OldProofs/Liveness_tla.v
