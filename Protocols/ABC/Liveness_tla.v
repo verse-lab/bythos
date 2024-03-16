@@ -16,31 +16,6 @@ Import ssrbool. (* anyway *)
 Module Export ACLive := ACLiveness A V VBFT BTh BSett P TSS.
 Include Liveness A M BTh BSett P0 PSOp ACP Ns ACAdv ACN.
 
-(* empirical, but maybe useful? *)
-Local Ltac aux Htmp :=
-  match type of Htmp with
-  (* the packets must be at the outmost level *)
-  | (exists (_ : list ?t), _) =>
-    tryif convert t Packet
-    then 
-      let pkts := fresh "pkts" in
-      let Htmp0 := fresh "Htmp" in
-      destruct Htmp as (pkts & Htmp); pose proof Htmp as Htmp0; hnf in Htmp0; destruct_and? Htmp0;
-      exists pkts; split_and?; eauto
-    else
-      let Htmp0 := fresh "Htmp" in
-      destruct Htmp as (? & Htmp0); aux Htmp0
-  | _ => fail 2
-  end.
-
-Tactic Notation "delivering" constr(lemma1) "which" "ends" "at" constr(lemma2)
-    "is" "sufficient" "because" constr(lemma3) :=
-  let Htmp := fresh "Htmp" in
-  apply leads_to_by_eventual_delivery;
-  intros; pose proof lemma1 as Htmp; saturate_assumptions!;
-  aux Htmp; 
-  intros; simplify_eq; eapply lemma3; eauto; try (eapply lemma2; eauto).
-
 Section A.
 
 Import Terminating_Convergence.
