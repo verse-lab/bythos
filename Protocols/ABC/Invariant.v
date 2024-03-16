@@ -122,7 +122,7 @@ Definition inv_submitmsg_correct p stmap : Prop :=
     is_byz src = false ->
       verify v sig src /\
       light_verify v lsig src /\
-      st.(submitted_value) = Some v (* TODO why put some at LHS? *)
+      st.(submitted_value) = Some v
   | _ => True
   end.
 
@@ -277,25 +277,6 @@ Proof.
   now subst s.
 Qed.
 
-Fact valid_cert_nodup_implies_sender_nodup v nsigs
-  (Hcert_valid : certificate_valid v nsigs) 
-  (Hcert_nodup : NoDup nsigs) : NoDup (map fst nsigs).
-Proof.
-  clear -Hcert_nodup Hcert_valid.
-  induction nsigs as [ | (n, sig) nsigs IH ].
-  - constructor.
-  - inversion_clear Hcert_nodup as [ | ? ? Hnotin Hcert_nodup' ].
-    apply Forall_cons_iff in Hcert_valid.
-    simpl in Hcert_valid.
-    destruct Hcert_valid as (Hveri & Hcert_valid).
-    rewrite <- key_correct in Hveri.
-    subst sig.
-    constructor.
-    + intros Hin.
-      now eapply valid_cert_sender_in in Hin; eauto.
-    + apply IH; intuition.
-Qed.
-
 (* FIXME: put this to Protocol? *)
 Global Tactic Notation "simpl_state" :=
   simpl id in *; simpl conf in *; simpl submitted_value in *; simpl from_set in *;
@@ -319,6 +300,7 @@ Local Hint Resolve incl_nil_l : datatypes.
 
 Section State_Monotone_Proofs.
 
+(* only records how the state changes *)
 Inductive state_mnt_type (st : State) : Type :=
   | Msubmit : st.(submitted_value) = None -> state_mnt_type st
   | Mconf : forall v, st.(submitted_value) = Some v ->
@@ -334,19 +316,12 @@ Inductive state_mnt_type (st : State) : Type :=
   | Mcert : forall (src : Address) v nsigs,
     NoDup nsigs -> (N - t0) <= length nsigs -> certificate_valid v nsigs -> 
     state_mnt_type st
-(*   
-  | Mcheck : forall v, (* even the state will not change, it is still required for l2h proof *)
-    st.(submitted_value) = Some v ->
-    st.(conf) -> lightcert_conflict_check st.(received_lightcerts) ->
-    state_mnt_type st
-     *)
 .
 
 Global Arguments Mconf : clear implicits.
 Global Arguments Mfrom_in : clear implicits.
 Global Arguments Mlcert : clear implicits. 
 Global Arguments Mcert : clear implicits. 
-(* Global Arguments Mcheck : clear implicits.  *)
 
 Definition state_mnt (st : State) (s : state_mnt_type st) : State :=
   match s with
@@ -365,8 +340,6 @@ Definition state_mnt (st : State) (s : state_mnt_type st) : State :=
     (st <| received_lightcerts := (v, cs) :: st.(received_lightcerts) |>)
   | Mcert _ _ v nsigs _ _ _ =>
     (st <| received_certs := (v, nsigs) :: st.(received_certs) |>)
-  (* | Mcheck _ v _ _ _ =>
-    st *)
   end.
 
 Definition confirmmsg_bcast st :=
@@ -381,8 +354,8 @@ Definition confirmmsg_bcast st :=
     other proofs). *) 
 (* the ghost variable "other_pkts" is really like opening a backdoor ... *)
 (* ... which greatly complicates the other proofs. I can no longer tolerate it *)
-(*
-Definition psent_effect (st : State) (s : state_mnt_type st) (n : Address) (psent : PacketSoup) (other_pkts : list Packet) : Prop :=
+
+Definition psent_effect (st : State) (s : state_mnt_type st) (n : Address) (psent : PacketSoup) (* (other_pkts : list Packet) *) : Prop :=
   Eval unfold confirmmsg_bcast in
   match s with
   | Msubmit _ _ =>
@@ -391,55 +364,19 @@ Definition psent_effect (st : State) (s : state_mnt_type st) (n : Address) (psen
     let: pkts := broadcast n (SubmitMsg v (light_sign v (lightkey_map n)) (sign v (key_map n))) in
     incl pkts psent
   | Mconf _ v _ =>
-    (* let: pkts := broadcast st.(id) (LightConfirmMsg (v, lightsig_combine st.(collected_lightsigs))) in
-    incl pkts psent *)
-    (* HMM might be a trick *)
+    (* a trick to solve the case where a psent effect depends on two fields *)
+    (* FIXME: certainly not generalizable *)
     (let: pkts := broadcast st.(id) (LightConfirmMsg (v, lightsig_combine st.(collected_lightsigs))) in
     incl pkts psent) /\
     (lightcert_conflict_check st.(received_lightcerts) ->
     incl (confirmmsg_bcast st) psent)
   | Mfrom_in _ src v lsig sig _ _ _ _ _ =>
     In (mkP src n (SubmitMsg v lsig sig) true) psent
-    \/ In (mkP src n (SubmitMsg v lsig sig) true) other_pkts (* ghost state? *)
+    (* \/ In (mkP src n (SubmitMsg v lsig sig) true) other_pkts *)
   | Mfrom_buffer _ src v lsig sig _ =>
     In (mkP src n (SubmitMsg v lsig sig) true) psent
   | Mlcert _ src v cs _ =>
-    (In (mkP src n (LightConfirmMsg (v, cs)) true) psent
-    \/ In (mkP src n (LightConfirmMsg (v, cs)) true) other_pkts) 
-    /\
-    (st.(conf) -> lightcert_conflict_check ((v, cs) :: st.(received_lightcerts)) ->
-    incl (confirmmsg_bcast st) psent)
-  | Mcert _ src v nsigs _ _ _ =>
-    In (mkP src n (ConfirmMsg (v, nsigs)) true) psent
-    \/ In (mkP src n (ConfirmMsg (v, nsigs)) true) other_pkts
-  (* | Mcheck _ v _ _ _ =>
-    let: pkts := broadcast st.(id) (ConfirmMsg (v, zip_from_sigs st)) in
-    incl pkts psent *)
-  end.
-*)
-Definition psent_effect (st : State) (s : state_mnt_type st) (n : Address) (psent : PacketSoup) : Prop :=
-  Eval unfold confirmmsg_bcast in
-  match s with
-  | Msubmit _ _ =>
-    let: n := st.(id) in
-    let: v := value_bft n in
-    let: pkts := broadcast n (SubmitMsg v (light_sign v (lightkey_map n)) (sign v (key_map n))) in
-    incl pkts psent
-  | Mconf _ v _ =>
-    (* let: pkts := broadcast st.(id) (LightConfirmMsg (v, lightsig_combine st.(collected_lightsigs))) in
-    incl pkts psent *)
-    (* HMM might be a trick *)
-    (let: pkts := broadcast st.(id) (LightConfirmMsg (v, lightsig_combine st.(collected_lightsigs))) in
-    incl pkts psent) /\
-    (lightcert_conflict_check st.(received_lightcerts) ->
-    incl (confirmmsg_bcast st) psent)
-  | Mfrom_in _ src v lsig sig _ _ _ _ _ =>
-    In (mkP src n (SubmitMsg v lsig sig) true) psent
-  | Mfrom_buffer _ src v lsig sig _ =>
-    In (mkP src n (SubmitMsg v lsig sig) true) psent
-  | Mlcert _ src v cs _ =>
-    In (mkP src n (LightConfirmMsg (v, cs)) true) psent
-    /\
+    In (mkP src n (LightConfirmMsg (v, cs)) true) psent /\
     (st.(conf) -> lightcert_conflict_check ((v, cs) :: st.(received_lightcerts)) ->
     incl (confirmmsg_bcast st) psent)
   | Mcert _ src v nsigs _ _ _ =>
@@ -458,31 +395,14 @@ Fixpoint state_mnt_type_list_app [st st' st''] (l1 : state_mnt_type_list st st')
   - exact l2.
   - exact (MNTcons d (state_mnt_type_list_app _ _ _ l1 l2)).
 Defined.
-(*
-Fixpoint psent_effect_star (n : Address) (psent : PacketSoup) (other_pkts : list Packet) [st st'] (l : state_mnt_type_list st st') : Prop :=
-  match l with
-  | MNTnil _ => True
-  | MNTcons d l' =>
-    psent_effect d n psent other_pkts /\ psent_effect_star n psent other_pkts l' (* TODO setting implicit during definition? *)
-  end.
-*)
+
 Fixpoint psent_effect_star (n : Address) (psent : PacketSoup) [st st'] (l : state_mnt_type_list st st') : Prop :=
   match l with
   | MNTnil _ => True
   | MNTcons d l' =>
-    psent_effect d n psent /\ psent_effect_star n psent l' (* TODO setting implicit during definition? *)
+    psent_effect d n psent /\ psent_effect_star n psent l'
   end.
-(*
-Lemma psent_effect_star_app n psent others st st' st'' (l1 : state_mnt_type_list st st') (l2 : state_mnt_type_list st' st'') :
-  psent_effect_star n psent others (state_mnt_type_list_app l1 l2) <-> 
-  psent_effect_star n psent others l1 /\ psent_effect_star n psent others l2.
-Proof. revert st'' l2. induction l1; intros; simpl; try tauto. rewrite IHl1. tauto. Qed.
 
-Lemma psent_effect_star_incl n psent psent' others others' st st' (l : state_mnt_type_list st st')
-  (H : psent_effect_star n psent others l) (Hincl : incl psent psent') (Hincl' : incl others others') :
-  psent_effect_star n psent' others' l.
-Proof. induction l; simpl in *; auto. destruct H. split; auto. destruct d; simpl in *; unfold incl in *; intuition. Qed.
-*)
 Lemma psent_effect_star_app n psent st st' st'' (l1 : state_mnt_type_list st st') (l2 : state_mnt_type_list st' st'') :
   psent_effect_star n psent (state_mnt_type_list_app l1 l2) <-> 
   psent_effect_star n psent l1 /\ psent_effect_star n psent l2.
@@ -492,42 +412,12 @@ Lemma psent_effect_star_incl n psent psent' st st' (l : state_mnt_type_list st s
   (H : psent_effect_star n psent l) (Hincl : incl psent psent') :
   psent_effect_star n psent' l.
 Proof. induction l; simpl in *; auto. destruct H. split; auto. destruct d; simpl in *; unfold incl in *; intuition. Qed.
-(* 
-(* false: stopping token *)
-Local Ltac state_analyze_select f x :=
-  match f with
-  | msg_buffer =>
-    match x with
-    | _ :: _ => uconstr:(Mfrom_buffer)
-    | _ => uconstr:(false)
-    end
-  | collected_sigs => uconstr:(Mfrom_in)
-  | received_lightcerts => uconstr:(Mlcert)
-  | received_certs => uconstr:(Mcert)
-  | _ => uconstr:(false)
-  end. 
-*)
-(* TODO eassumption is not stable ... mostly manual analysis below *)
+
+(* eassumption is not stable ... mostly manual analysis below *)
+(* FIXME: can we add something like stopping token to make the analysis automated again? *)
 Ltac analyze_step ctor tac :=
   unshelve eapply MNTcons; [ eapply ctor; tac | ]; simpl.
-(*
-Ltac state_analyze' st' :=
-  match st' with
-  | set ?f (fun _ => ?vv) ?st =>
-    let ctor := state_analyze_select f vv in
-    match ctor with
-    | false => idtac
-    | _ =>
-      state_analyze' st;
-      match goal with 
-      | |- state_mnt_type_list _ _ =>
-        unshelve eapply MNTcons; [ eapply ctor | ]; simpl
-      | _ => idtac
-      end
-    end
-  | _ => idtac
-  end.
-*)
+
 Ltac psent_effect_star_solver :=
   simpl; autorewrite with psent; rewrite ! In_consume; simpl; try solve [ tauto | intuition | basic_solver ].
 
@@ -540,159 +430,15 @@ Ltac state_invariants_pre_solver :=
         intuition (auto using In_consume_fwd_full' with ABCinv) ] (* for inv_buffer_received *) ].
 
 Ltac local_solver := split_and?; try solve [ intros; eqsolve | psent_effect_star_solver | state_invariants_pre_solver ].
-(*
-Ltac state_analyze :=
-  try rewrite sendout0;
-  match goal with
-  | |- exists (_ : state_mnt_type_list _ ?st'), _ =>
-    unshelve eexists; [ state_analyze' st'; try solve [ apply (MNTnil _) ] | ];
-    split_and?;
-    match goal with
-    | |- @psent_effect_star _ _ _ _ _ => psent_effect_star_solver
-    | _ => try solve [ basic_solver ]
-    end
-  end.
-*)
+
 Definition lift_point_to_edge {A : Type} (P : A -> Prop) : A -> A -> Prop :=
   fun st st' => P st -> P st'.
 
 (* here no need to put too many things in *)
 Record node_state_invariants_pre st st' : Prop := {
   _ : lift_point_to_edge inv_conf_correct st st';
-  (* _ : lift_point_to_edge confirmed_then_submitted st st'; *)
 }.
-(*
-Fact inv_conf_confmsg_incl psent psent' st (H : inv_conf_confmsg psent st)
-  (Hincl : incl psent psent') : inv_conf_confmsg psent' st.
-Proof. hnf in *. intros. saturate_assumptions!. destruct H. specialize (Hincl _ H). eauto. Qed.
-*)
-(* the conditions get complicated to accommodate the ghost variable *)
-(*
-Fact state_mnt_sound_pre_pre p (Hnonbyz : is_byz (dst p) = false) stf msf w w'
-  (Ef : procMsgWithCheck (w @ dst p) (src p) (msg p) = (stf, msf))
-  psent others (E0 : w' = mkW (upd (dst p) stf (localState w)) (sendout msf psent))
-  (*
-  (Hothers : match (w @ dst p).(submitted_value) with None => others = nil | _ => True end)
-  (Hin : In (receive_pkt p) psent \/ (match p.(msg) with SubmitMsg _ _ _ => In (receive_pkt p) others | _ => False end)) :
-  *)
-  (Hothers : match (w @ dst p).(submitted_value) with None => others = nil | _ => True end)
-  (Hin : In (receive_pkt p) psent \/ In (receive_pkt p) others) :
-  forall n, exists l : state_mnt_type_list (w @ n) (w' @ n),
-    psent_effect_star n (sentMsgs w') others l /\ node_state_invariants_pre (w @ n) (w' @ n).
-Proof with (try (now exists (MNTnil _))).
-  destruct p as [ src dst msg used ]. simpl_pkt. subst w'. simpl. intros n. unfold procMsgWithCheck in Ef.
-  unfold upd.
-  destruct (Address_eqdec _ _) as [ <- | Hneq ]...
-  destruct (procMsg _ _ _) as [ (st', ms) | ] eqn:E in Ef; simplify_eq...
-  destruct (w @ dst) as [ dst' conf ov from lsigs sigs rlcerts rcerts buffer ].
-  destruct msg as [ v ls s | (v, cs) | (v, nsigs) ]; simpl in E.
-  1-2: simplify_eq. (* pair inj *)
-  1: simpl in Hin.
-  - destruct ov as [ vthis | ].
-    + destruct (andb _ _) eqn:EE in E; try discriminate. 
-      unfold is_left in EE. rewrite ! andb_true_iff, sumbool_is_left in EE. destruct EE as ((-> & Everi) & Elveri).
-      destruct conf.
-      * simplify_eq. unshelve eexists. 1: analyze_step Mconf ltac:(idtac); try apply MNTnil; try reflexivity. 
-        simpl. destruct (lightcert_conflict_check _) in |- *; simpl.
-        all: local_solver.
-      * destruct (in_dec _ _ _) as [ | Hnotin ] in E; try discriminate. simplify_eq.
-        destruct (N - t0 <=? S (length from)) eqn:Eth; 
-          [ apply Nat.leb_le in Eth | apply Nat.leb_nle in Eth ].
-        all: unshelve eexists; [ analyze_step Mfrom_in ltac:(try eassumption); auto | ]; try apply MNTnil.
-        1: analyze_step Mconf ltac:(idtac); auto. 1: apply MNTnil.
-        all: simpl. 1: destruct (lightcert_conflict_check _) in |- *; simpl.
-        all: local_solver.
-    + simplify_eq. simpl. unshelve eexists. 1: analyze_step Mfrom_buffer ltac:(idtac); try apply MNTnil; try reflexivity.
-      (* since here is for buffer, need to make sure that others = nil, so we need Hothers *)
-      simpl. simpl in Hothers. subst others. simpl in Hin. local_solver.
-  - destruct (combined_verify _ _) eqn:EE in E; try discriminate.
-    simplify_eq. unshelve eexists. 1: analyze_step Mlcert ltac:(idtac); try apply MNTnil; try reflexivity.
-    1: apply src. 1: auto. (* need to manually instantiate src here *)
-    simpl. unfold zip_from_sigs. simpl. rewrite app_nil_r.
-    destruct ov in |- *; [ destruct (andb _ _) eqn:EE0 in |- *; 
-      [ rewrite andb_true_iff in EE0 | rewrite andb_false_iff in EE0 ]; destruct EE0; try is_true_rewrite | ]; simpl.
-    all: local_solver.
-    (* ... *)
-    + (* TODO automation is so weak???? *) now setoid_rewrite H.
-    + auto with datatypes.
-  - destruct (andb _ _) eqn:EE in E; try discriminate.
-    unfold is_left in EE. rewrite ! andb_true_iff, ! sumbool_is_left, Nat.leb_le in EE. destruct_and? EE.
-    simplify_eq. unshelve eexists. 1: analyze_step Mcert ltac:(idtac); try apply MNTnil; try reflexivity.
-    1: apply src. all: auto. (* need to manually instantiate src here *)
-    simpl. local_solver.
-Qed.
 
-Fact state_mnt_sound_pre q (Hq_ : forall n t, q <> Intern n t) 
-  w w' (Hstep : system_step q w w') :
-  forall n, exists l : state_mnt_type_list (w @ n) (w' @ n),
-    psent_effect_star n (sentMsgs w') nil l /\ node_state_invariants_pre (w @ n) (w' @ n).
-    (* /\ (id (w @ n) = n (* ! *) -> is_byz n = false -> inv_buffer_received (sentMsgs w) (w @ n) -> 
-      inv_buffer_received (sentMsgs w') (w' @ n)). *)
-Proof with (try (now exists (MNTnil _))).
-  unfold inv_buffer_received.
-  inversion_step' Hstep; clear Hstep; intros... 
-  2: exfalso; eapply Hq_; reflexivity.
-  pose proof (@state_mnt_sound_pre_pre (mkP src dst msg used) Hnonbyz stf msf
-    w _ Ef (consume (mkP src dst msg used) (sentMsgs w)) nil eq_refl) as H.
-  simpl in H. apply H. now destruct (submitted_value _) in |- *. rewrite In_consume. auto.
-Qed.
-
-Definition buffer_augment n buf :=
-  map (fun nmsg => mkP (fst nmsg) n (snd nmsg) true) buf.
-
-Fact state_mnt_sound q w w' (Hstep : system_step q w w') :
-  forall n, exists l : state_mnt_type_list (w @ n) (w' @ n),
-    psent_effect_star n (sentMsgs w') 
-      (match q with Intern _ _ => buffer_augment n (w @ n).(msg_buffer) | _ => nil end) l /\ 
-    node_state_invariants_pre (w @ n) (w' @ n).
-    (* /\ (id (w @ n) = n (* ! *) -> is_byz n = false -> inv_buffer_received (sentMsgs w) (w @ n) -> 
-      inv_buffer_received (sentMsgs w') (w' @ n)). *)
-(* Proof with (try solve [ exists (MNTnil _); simpl; split_and?; local_solver ]). *)
-Proof with (try (now exists (MNTnil _))).
-  unfold inv_buffer_received.
-  destruct q as [ | | n0 t | ]. 1,2,4: eapply state_mnt_sound_pre; try eassumption; auto.
-  inversion_step' Hstep; clear Hstep; intros; try discriminate.
-  revert Hq. intros [= ->].
-  unfold upd.
-  destruct (Address_eqdec _ _) as [ <- | Hneq ]...
-  destruct t1, (w @ n) as [ n' conf ov from lsigs sigs rlcerts rcerts buffer ].
-  simpl in E. simpl.
-  destruct ov. 1: simplify_eq...
-  destruct (fold_right _ _ _) as (st_, ps_) eqn:Efr in E. simplify_eq.
-  (* this is great *)
-  change (set _ _ (set _ _ _)) with (Node n' conf (Some (value_bft n')) from lsigs sigs rlcerts rcerts nil) in Efr.
-  remember (Node _ _ _ _ _ _ _ _ _) as stt eqn:Es in Efr.
-  match goal with |- exists (_ : _), (psent_effect_star _ ?pp ?ot _) /\ _ =>
-    assert (exists l : state_mnt_type_list stt st', psent_effect_star n pp ot l /\ node_state_invariants_pre stt st') as Hgoal end.
-  all: subst stt.
-  (* time to do induction *)
-  { revert st' ps_ Efr. induction buffer as [ | (src, msg) buffer IH ]; intros; simpl in Efr.
-    - simplify_eq...
-    - simpl.
-      destruct (procMsgWithCheck _ _ _) as (sta, psa) eqn:E0 in Efr.
-      destruct (fold_right _ _ _) as (stb, psb) eqn:E1 in Efr. rewrite E1 in E0. simpl in E0, Efr. 
-      revert Efr. intros [= <- <-].
-      saturate_assumptions!. destruct IH as (l & Ha & HH).
-      (* use persistence here *)
-      pick submitted_value_persistent as_ Hv by_ (destruct HH). simpl in Hv. specialize (Hv _ eq_refl).
-      (* use the previous lemma *)
-      pose proof (@state_mnt_sound_pre_pre (mkP src n msg true) Hnonbyz sta psa
-        (mkW (upd n stb (localState w)) (sentMsgs w)) _ ltac:(simpl; rewrite upd_refl; assumption)
-        (sentMsgs w) (mkP src n msg true :: nil) eq_refl ltac:(simpl; rewrite upd_refl, Hv; auto) ltac:(simpl; auto) n) as Hgoal.
-      simpl in Hgoal. rewrite ! upd_refl in Hgoal. destruct Hgoal as (l0 & Ha0 & HH0).
-      exists (state_mnt_type_list_app l l0). 
-      rewrite psent_effect_star_app. split; [ split; [ eapply psent_effect_star_incl; try apply Ha | eapply psent_effect_star_incl; try apply Ha0 ] | ].
-      1-4: hnf; intros ?; autorewrite with psent; simpl; tauto.
-      pick submitted_value_persistent as_ Hv0 by_ (destruct HH0). specialize (Hv0 _ Hv).
-      destruct HH, HH0. hnf in *. state_invariants_pre_solver. }
-  destruct Hgoal as (l & Ha & HH).
-  unshelve eexists. 1: analyze_step Msubmit ltac:(idtac); try apply MNTnil; try reflexivity. 1: apply l.
-  simpl; local_solver.
-  (* TODO still need some cleaning! *)
-  destruct HH as [ HH1 HH2 HH3 ]. hnf in *. constructor; auto; try discriminate. 
-  hnf; intros; hnf in *; intros. apply HH2; auto. now hnf.
-Qed.
-*)
 Definition lift_node_inv (P : PacketSoup -> State -> Prop) : World -> Prop :=
   fun w => forall n, is_byz n = false -> P (sentMsgs w) (w @ n).
 
@@ -733,11 +479,6 @@ Fact inv_buffer_received_only_pre q (Hq_ : forall n t, q <> Intern n t)
     /\ ((w' @ n).(submitted_value) -> (w' @ n).(msg_buffer) = nil)
     /\ submitted_value_persistent (w @ n) (w' @ n).
 Proof with (intros; rewrite ?sendout0; try (rewrite In_sendout; right); eauto using In_consume_fwd_full').
-  (* destruct H as (Hcoh & Hrcv).
-  unfold id_coh, lift_node_inv.
-  enough (forall n, id (w' @ n) = n /\ (is_byz n = false → inv_buffer_received (sentMsgs w') (w' @ n))) as H.
-  { split; intros n; specialize (H n); destruct H; saturate_assumptions; auto. }
-  intros n. specialize (Hrcv n). *)
   intros n. specialize (H n). destruct H as (Hcoh & Hrcv & Hs).
   unfold inv_buffer_received, submitted_value_persistent in *.
   inversion_step' Hstep; clear Hstep; auto.
@@ -865,8 +606,6 @@ Proof with (try (now exists (MNTnil _))).
         all: simpl. 1: destruct (lightcert_conflict_check _) in |- *; simpl.
         all: local_solver.
     + simplify_eq. simpl. unshelve eexists. 1: analyze_step Mfrom_buffer ltac:(idtac); try apply MNTnil; try reflexivity.
-      (* since here is for buffer, need to make sure that others = nil, so we need Hothers *)
-      (* simpl. simpl in Hothers. subst others. simpl in Hin. local_solver. *)
       simpl. local_solver.
   - destruct (combined_verify _ _) eqn:EE in E; try discriminate.
     simplify_eq. unshelve eexists. 1: analyze_step Mlcert ltac:(idtac); try apply MNTnil; try reflexivity.
@@ -884,25 +623,6 @@ Proof with (try (now exists (MNTnil _))).
     1: apply src. all: auto. (* need to manually instantiate src here *)
     simpl. local_solver.
 Qed.
-(*
-Fact state_mnt_sound_pre q (Hq_ : forall n t, q <> Intern n t) 
-  w w' (Hstep : system_step q w w') :
-  forall n, exists l : state_mnt_type_list (w @ n) (w' @ n),
-    psent_effect_star n (sentMsgs w') nil l /\ node_state_invariants_pre (w @ n) (w' @ n).
-    (* /\ (id (w @ n) = n (* ! *) -> is_byz n = false -> inv_buffer_received (sentMsgs w) (w @ n) -> 
-      inv_buffer_received (sentMsgs w') (w' @ n)). *)
-Proof with (try (now exists (MNTnil _))).
-  unfold inv_buffer_received.
-  inversion_step' Hstep; clear Hstep; intros... 
-  2: exfalso; eapply Hq_; reflexivity.
-  pose proof (@state_mnt_sound_pre_pre (mkP src dst msg used) Hnonbyz stf msf
-    w _ Ef (consume (mkP src dst msg used) (sentMsgs w)) nil eq_refl) as H.
-  simpl in H. apply H. now destruct (submitted_value _) in |- *. rewrite In_consume. auto.
-Qed.
-
-Definition buffer_augment n buf :=
-  map (fun nmsg => mkP (fst nmsg) n (snd nmsg) true) buf.
-*)
 
 (* HMM one inconvenience of having reachable here is that some lemmas become weaker, 
     as they depend on the decomposition here so they have to assume reachable (i.e., persistent_invariants),
@@ -910,9 +630,6 @@ Definition buffer_augment n buf :=
 Fact state_mnt_sound q w w' (Hstep : system_step q w w') (Hw : reachable w) :
   forall n, exists l : state_mnt_type_list (w @ n) (w' @ n),
     psent_effect_star n (sentMsgs w') l /\ node_state_invariants_pre (w @ n) (w' @ n).
-    (* /\ (id (w @ n) = n (* ! *) -> is_byz n = false -> inv_buffer_received (sentMsgs w) (w @ n) -> 
-      inv_buffer_received (sentMsgs w') (w' @ n)). *)
-(* Proof with (try solve [ exists (MNTnil _); simpl; split_and?; local_solver ]). *)
 Proof with (try (now exists (MNTnil _))).
   destruct q as [ | | n t | ]. 
   1,2,4: intros n; eapply state_mnt_sound_pre_pre with (n:=n) in Hstep; try eassumption; auto;
@@ -1026,7 +743,6 @@ Proof.
     constructor; hnf in *; auto.
 Qed.
 
-(* TODO is this wrapper actually useful? *)
 Definition lift_state_pair_inv (P : State -> State -> Prop) : World -> World -> Prop :=
   fun w w' => forall n, P (w @ n) (w' @ n).
 
@@ -1090,74 +806,6 @@ Record node_psent_l2h_invariants psent st : Prop := {
   _ : inv_buffer_received psent st;
 }.
 
-(*
-Fact l2h_invariants_pre : is_invariant_reachable_step
-  (fun w => forall n, is_byz n = false -> 
-    inv_buffer_received (sentMsgs w) (w @ n) /\ inv_nsigs_correct (sentMsgs w) (w @ n)).
-Proof.
-  hnf; intros qq ?? Hw H Hstep. pose proof (ReachableStep Hstep Hw) as Hw'.
-  unfold lift_node_inv in *.
-  intros n Hnonbyz. saturate_assumptions!. destruct H as (H & H0).
-  (* TODO this is cumbersome! *)
-  pose proof (id_coh_is_invariant Hw n) as Hcoh.
-  pose proof (id_coh_is_invariant Hw' n) as Hcoh'.
-  pick inv_submit_mixin as_ Hmx' by_ (pose proof (state_invariants Hw n) as []). rewrite Hcoh in Hmx'.
-  assert ((w @ n).(submitted_value) = None -> (w @ n).(from_set) = nil) as Hmx by (now destruct ((w @ n).(submitted_value))). clear Hmx'.
-  pick buffer_nil_after_submit as_ Hbn by_ (pose proof (state_invariants Hw n) as []).
-  (* get the effect *)
-  pose proof Hstep as Hstep_.
-  apply state_mnt_sound with (n:=n) in Hstep.
-  destruct Hstep as (l & Hpsent & _).
-  (* generalize a little bit *)
-  (* TODO put this before? *)
-  assert (exists others, incl others (buffer_augment n (msg_buffer (w @ n))) /\ 
-    psent_effect_star n (sentMsgs w') others l) as Hpsent'.
-  { eexists. split; [ | apply Hpsent ]. destruct qq; hnf; simpl; tauto. }
-  clear Hpsent. destruct Hpsent' as (others & Hincl & Hpsent).
-  hnf in H, H0.
-  split_and?.
-  all: hnf; rewrite Hcoh in *; rewrite Hcoh' in *.
-  1: intros (n0, msg0) Hin; specialize (H (n0, msg0)); clear H0 Hbn Hmx.
-  (* TODO why if we do not specialize here, things will not go through? *)
-  (* TODO revert others? *)
-  2: intros v Hv n0 lsig sig; pose proof (fun vv Hvv => H0 vv Hvv n0 lsig sig) as H'; specialize (H (n0, SubmitMsg v lsig sig));
-    clear H0; rename H' into H0; revert others Hincl Hpsent.
-  (* all: remember (w @ n) as st eqn:Est; remember (w' @ n) as st' eqn:Est'. *)
-  all: (* revert Est' Est; *) induction l as [ st | st d st' l IH ]; intros; saturate_assumptions!.
-  all: (* all MNTnil (under-specified) cases *)
-    try solve [ eapply system_step_psent_norevert_full; eauto ].
-  all: simpl in Hpsent; destruct Hpsent as (Hpsent & HH).
-  all: destruct d; simpl in Hpsent, IH, (type of l); saturate_assumptions; simplify_eq.
-  all: unfold zip_from_lsigs, zip_from_lsigs_sigs, zip_from_sigs in *; simpl in *.
-  all: try solve [ tauto | apply IH; auto with datatypes | apply IH with (others:=others); auto with datatypes ].
-  (* try unify submitted value *)
-  all: pose proof (persistent_invariants_pre l) as ([] & _); 
-    pick submitted_value_persistent as_ Hvv; pick conf_persistent as_ Hcc; simpl in Hvv, Hcc;
-    try (saturate_assumptions! in_ Hvv); try (saturate_assumptions! in_ Hcc).
-  all: try (specialize (Hvv _ eq_refl); rewrite Hvv in * ); simplify_eq.
-  - (* use persistence here *)
-    pick msg_buffer_nil_persistent as_ Hb by_ (pose proof (persistent_invariants_pre l) as ([] & _)). 
-    simpl in Hb. saturate_assumptions. rewrite Hb in Hin. contradiction.
-  - destruct (ListFacts.prod_eq_dec Address_eqdec Message_eqdec (n0, msg0) (src0, SubmitMsg v lsig sig)); simplify_eq; auto.
-    apply IH; auto with datatypes. intros [ | ]; auto; congruence.
-  - apply IH with (others:=nil); try contradiction; auto with datatypes.
-    + (* by contradiction *)
-      rewrite Hmx. simpl. intros. contradiction.
-    + admit.
-  - match goal with Hpsent : In (mkP ?srca _ (SubmitMsg _ ?lsiga ?siga) _) _ \/ In _ _ 
-      |- In (mkP ?srcb _ (SubmitMsg _ ?lsigb ?sigb) _) _ => 
-      destruct (ListFacts.prod_eq_dec (ListFacts.prod_eq_dec Address_eqdec LightSignature_eqdec) Signature_eqdec 
-        (srca, lsiga, siga) (srcb, lsigb, sigb)); try simplify_eq end.
-    + (* prove that others = nil *)
-      destruct Hpsent as [ Hpsent | Hpsent ]; auto.
-      isSome_rewrite. saturate_assumptions. rewrite Hbn in Hincl. simpl in Hincl. now apply Hincl in Hpsent.
-    + eapply IH; eauto; try congruence. intros ? HH1. intros. rewrite HH1 in *. simplify_eq. 
-      eapply H0; try reflexivity. tauto.
-  - destruct (ListFacts.prod_eq_dec Address_eqdec Message_eqdec (n0, SubmitMsg v lsig sig) (src0, SubmitMsg v0 lsig0 sig0)); simplify_eq; auto.
-    eapply IH with (others:=others); eauto with datatypes. 2: now isSome_rewrite. 
-    intros [ | ]; auto; congruence.
-Admitted.
-*)
 Fact l2h_invariants_pre : is_invariant_reachable_step_under
   (fun w => id_coh w /\ lift_state_inv node_state_invariants w /\ lift_node_inv inv_buffer_received w)
   (lift_node_inv node_psent_l2h_invariants).
@@ -1253,17 +901,12 @@ Section Backward.
 
 (* the state-major view is useful, but we also need a packetsoup-major view *)
 
+(* ... this design of mixing user packets and Byzantine packets is not good *)
+
 Inductive psent_mnt_type_base (psent : PacketSoup) : Type :=
   | Pid : psent_mnt_type_base psent
   | Puse : forall p, In p psent -> psent_mnt_type_base psent
 .
-
-(* ... this design of mixing user packets and Byzantine packets is not good *)
-(*
-Inductive packets_shape_user : Type := PSUbcast (n : Address) (m : Message).
-
-Inductive packets_shape : Type := PSHuser (psu : packets_shape_user) | PSHbyz (p : Packet).
-*)
 
 (* intended to be in a module type, or something, provided by user *)
 Inductive packets_shape : Type := PSbcast (n : Address) (m : Message).
@@ -1272,23 +915,6 @@ Definition packets_shape_consistent (ps : packets_shape) (pkts : list Packet) : 
   match ps with
   | PSbcast n m => pkts = broadcast n m
   end.
-
-(* a list *)
-(* the base psent will not change, which represents the psent before update *)
-(* ... this design is not very good, since the cons part can be just a normal list *)
-(*
-Inductive psent_mnt_type : PacketSoup -> Type :=
-  | Pbase : forall psent, psent_mnt_type_base psent -> psent_mnt_type psent
-  | Pcons : forall pkts ps,
-    Forall (fun p => p.(consumed) = false) pkts ->
-    packets_shape_consistent ps pkts ->
-    forall psent, psent_mnt_type psent -> psent_mnt_type psent
-  (* HMM since we are proving, do not consider sendout1 ...? *)
-.
-
-Global Arguments Pbase : clear implicits.
-Global Arguments Pcons : clear implicits.
-*)
 
 (* want to write it in another way so that the base part can be exposed, 
     which will enable some proofs about psent_mnt_type concatenation *)
@@ -1381,8 +1007,6 @@ Definition state_effect_bcast (n : Address) (m : Message) (stmap : StateMap) : P
   end.
 
 Definition state_effect_recv (src : Address) (m : Message) (st : State) : Prop :=
-  (* currently only uses single point, so reduces the argument *)
-  (* let: st := (stmap n) in *)
   match m with
   | SubmitMsg v lsig sig => 
     match st.(submitted_value) with
@@ -1556,27 +1180,7 @@ Proof.
       | rewrite !andb_false_iff, !sumbool_is_right, !Nat.leb_nle in EE ]; simplify_eq.
     all: psent_analyze.
 Qed.
-(*
-Fact psent_mnt_sound_pre q w w' (Hstep : system_step q w w') (Hq_ : forall n t, q <> Intern n t) 
-  (* having reachable instead would complicate the induction proof *)
-  (Hcoh : id_coh w) (* still needed *) :
-  exists (b : psent_mnt_type_base (sentMsgs w)) (l : list psent_mnt_type),
-    psent_mnt b l (sentMsgs w') /\ state_effect (localState w') b l.
-Proof.
-  inversion_step' Hstep; clear Hstep; intros.
-  3: exfalso; eapply Hq_; reflexivity.
-  - exists (Pid _). psent_analyze.
-  - exists (Puse _ _ Hpin).
-    let pkt := constr:(mkP src dst msg used) in
-      eapply psent_mnt_sound_pre_pre with (psent:=consume pkt (sentMsgs w)) in Ef; try reflexivity; auto.
-    simpl in Ef. destruct Ef as (l & Ha & Hb).
-    exists l. rewrite psent_mnt_base_change. simpl. 
-    exists ( 
-  - (* TODO the bug happens here ... *)
-    psent_analyze. (* ???? *)
-    intros ?; autorewrite with psent; simpl; tauto.
-Qed.
-*)
+
 (* required below? *)
 
 Fact procMsgWithCheck_fresh st src m :
@@ -1594,17 +1198,6 @@ Proof with (simpl; rewrite ?Forall_app; auto using broadcast_all_fresh).
   - destruct (andb _ _)...
 Qed.
 
-(* specialized to this invariant only *)
-(*
-Fact inv_submitmsg_receive_fresh_skip psent psent' pkts st
-  (Hf : Forall (fun p => p.(consumed) = false) pkts) (Hpsent : forall p, In p psent' <-> In p psent \/ In p pkts) :
-  (forall p, In p psent -> inv_submitmsg_receive_ p st) ->
-  (forall p, In p psent' -> inv_submitmsg_receive_ p st).
-Proof.
-  intros H p Hin%Hpsent. destruct Hin as [ Hin | Hin ]; auto.
-  eapply Forall_forall in Hin. 2: apply Hf. simpl in Hin. hnf. rewrite Hin. now destruct (msg p).
-Qed.
-*)
 Fact psent_mnt_sound_pre n t w w' (Hstep : system_step (Intern n t) w w') (Hw : reachable w) :
   (lift_pkt_inv' inv_submitmsg_receive (sentMsgs w) (localState w) ->
     lift_pkt_inv' inv_submitmsg_receive (sentMsgs w') (localState w')) /\
@@ -1613,14 +1206,11 @@ Fact psent_mnt_sound_pre n t w w' (Hstep : system_step (Intern n t) w w') (Hw : 
 Proof.
   simpl.
   pose proof (id_coh_always_holds Hw) as Hcoh.
-  (* destruct q as [ | | n t | ]. 
-  1,2,4: eapply psent_mnt_sound_pre; try eassumption; auto. *)
   inversion_step' Hstep; clear Hstep; intros; try discriminate.
   revert Hq. intros [= <-]. destruct t1.
   pose proof (inv_buffer_received_always_holds Hw Hnonbyz) as Hrcv. hnf in Hrcv. 
   destruct_localState w n as_ [ ? conf ov from lsigs sigs rlcerts rcerts buffer ] eqn_ Est. simpl_state.
   simpl in E.
-  (* destruct ov. 1: simplify_eq; psent_analyze. *)
   destruct ov. 1: simplify_eq; split; [ | psent_analyze ].
   1:{ rewrite sendout0. intros Hq. hnf in Hq |- *. intros p Hin. specialize (Hq _ Hin). 
     unfold inv_submitmsg_receive in Hq |- *. now rewrite <- Est, -> upd_intact. }
