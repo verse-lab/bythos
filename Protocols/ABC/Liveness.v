@@ -40,16 +40,7 @@ Definition all_honest_nodes_submitted v w := forall n, is_byz n = false -> (w @ 
 
 (* end *)
 Definition all_honest_nodes_confirmed v w := forall n, is_byz n = false -> (w @ n).(conf) /\ (w @ n).(submitted_value) = Some v.
-(*
-Fact all_honest_nodes_submitted_is_invariant v :
-  is_invariant_reachable_step (all_honest_nodes_submitted v).
-Proof.
-  hnf. intros ??? Hr H Hstep.
-  hnf in H |- *. intros n Hnonbyz. saturate_assumptions!.
-  eapply persistent_invariants in Hstep; eauto. 
-  pick submitted_value_persistent as_ Htmp by_ (pose proof (Hstep n) as []). now apply Htmp.
-Qed.
-*)
+
 Section Proof_of_Terminating_Convergence.
 
   Variables (v : Value).
