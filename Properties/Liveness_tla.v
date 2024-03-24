@@ -137,6 +137,35 @@ Proof.
     split; [ constructor | assumption ].
 Qed.
 
+(* what if things go too strong *)
+(*
+Fact fairness_strictly_stronger [e : exec World] (Hrc : e ⊨ □ ⟨ next ⟩) :
+  (e ⊨ (∀ p : Packet, ⌞ good_packet p ⌟ → weak_fairness (system_step (Deliver p)))%L)%L ↔ reliable_condition e.
+Proof.
+  unfold reliable_condition.
+  autounfold with tla in *.
+  split; intros H.
+  - intros p Hg E n Hin.
+    specialize (H _ Hg n).
+    destruct (Classical_Prop.classic (∀ k : nat, tla_enabled (system_step (Deliver p)) (drop k (drop n e)))).
+    + specialize (H H0).
+      destruct H as (k & H).
+      rewrite ! drop_drop ! drop_n /= in H.
+      eauto.
+    + rewrite classical.classical.not_forall /tla_enabled/enabled/state_pred in H0.
+      destruct H0 as (k & H0).
+      rewrite drop_drop drop_n /= in H0.
+      assert (¬ In p (e (k + n)).(sentMsgs)) as Htmp.
+      { intros Htmp. apply H0. eexists. eapply DeliverStep; try reflexivity; try auto. 1: hnf in *; tauto. 
+        rewrite (surjective_pairing (procMsgWithCheck _ _ _)). reflexivity. }
+      apply consumed_is_changed_by_delivery in Htmp; auto.
+      destruct Htmp as (? & ? & ?).
+      eauto.
+  - intros p Hg k ?.
+    (* boom here, since a received packet is not guaranteed to be delivered again *)
+Abort.
+*)
+
 Fact fairness_adequate [e : exec World] (Hrc : e ⊨ □ ⟨ next ⟩) :
   (e ⊨ fairness)%L ↔ reliable_condition e.
 Proof.
