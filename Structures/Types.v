@@ -3,17 +3,31 @@ From Coq Require ssrbool.
 Import (coercions) ssrbool.
 From ABCProtocol.Structures Require Export Address.
 From ABCProtocol.Utils Require Export ListFacts.
-
+(*
 Module Type Signable.
-
-(* ideally, this would be "bytes" ... here model the objects that can be signed *)
 
 Parameter Value : Set.
 Parameter Value_eqdec : forall (v1 v2 : Value), {v1 = v2} + {v1 <> v2}.
 
 End Signable.
+*)
+(* the design above is problematic. 
+  intuitively, the signing function should work for anything which can be signed in reality ...
+  in other words, if we can transform something into those signable, then that thing should be signable as well. 
+  so typeclass should be a more suitable abstraction. *)
 
-Module Type PKI (Export A : NetAddr) (Export V : Signable).
+Module Type Signable.
+
+Parameter t : Set. (* describing what can be signed in reality *)
+Parameter eqdec : forall (v1 v2 : t), {v1 = v2} + {v1 <> v2}.
+Class signable (A : Type) :=
+  make : A -> t.
+  (* { make : A -> t;
+    make_inj : forall (a1 a2 : A), make a1 = make a2 -> a1 = a2 }. *)
+
+End Signable.
+
+Module Type PKIPrim (Export A : NetAddr) (V : Signable).
 
 (* would expect that in this setting, an address is more or less a public key *)
 
@@ -22,8 +36,8 @@ Parameter Signature : Set.
 Parameter Signature_eqdec : forall (s1 s2 : Signature), {s1 = s2} + {s1 <> s2}.
 
 Parameter key_map : Address -> PrivateKey.
-Parameter verify : Value -> Signature -> Address -> bool.
-Parameter sign : Value -> PrivateKey -> Signature.
+Parameter verify : V.t -> Signature -> Address -> bool.
+Parameter sign : V.t -> PrivateKey -> Signature.
 
 (* symbolic security assumption *)
 
@@ -33,10 +47,91 @@ Axiom key_correct : forall v n s,
 Fact correct_sign_verify_ok v n :
   verify v (sign v (key_map n)) n.
 Proof. now rewrite <- key_correct. Qed.
+(*
+Section Extended. 
+
+  Context {A : Type} `{Sn : V.signable A}.
+
+  Corollary key_correct' : forall (v : A) n s, 
+    s = (sign (V.make v) (key_map n)) <-> verify (V.make v) s n.
+  Proof. intros. now rewrite key_correct. Qed.
+
+  Fact correct_sign_verify_ok v n :
+    verify v (sign v (key_map n)) n.
+  Proof. now rewrite <- key_correct. Qed.
+
+End Extended. 
+*)
+End PKIPrim.
+
+Module Type PKI (Export A : NetAddr) (V : Signable).
+
+Declare Module PPrim : PKIPrim A V.
+Export PPrim.
+
+Section Extended. 
+
+  Context {A : Type} `{Sn : V.signable A} (v : A).
+
+  Definition verify (sig : Signature) (addr : Address) := verify (V.make v) sig addr.
+
+  Definition sign (k : PrivateKey) := sign (V.make v) k.
+
+  Corollary key_correct n s :
+    s = (sign (key_map n)) <-> verify s n.
+  Proof. apply key_correct. Qed.
+
+  Corollary correct_sign_verify_ok n :
+    verify (sign (key_map n)) n.
+  Proof. now rewrite <- key_correct. Qed.
+
+End Extended.
 
 End PKI.
 
-Module Type ThresholdSignatureScheme (Export A : NetAddr) (Export V : Signable).
+Module PKIImpl (Export A : NetAddr) (V : Signable) <: PKI A V.
+
+Include PKI A V.
+
+End PKIImpl.
+
+(* ...? *)
+(*
+Module Type Signable'.
+
+Parameter signable : Type -> Type.
+Existing Class signable.
+
+End Signable'.
+
+Module Type PKI_Forall (Export A : NetAddr) (Export V : Signable').
+
+Parameter PrivateKey : Set.
+Parameter Signature : Set.
+Parameter Signature_eqdec : forall (s1 s2 : Signature), {s1 = s2} + {s1 <> s2}.
+
+Parameter key_map : Address -> PrivateKey.
+Parameter verify : forall {Value : Type} `{signable Value}, Value -> Signature -> Address -> bool.
+Parameter sign : forall {Value : Type} `{signable Value}, Value -> PrivateKey -> Signature.
+
+Section Main.
+
+  Context {Value : Type} `{VSn : signable Value}.
+
+  (* symbolic security assumption *)
+
+  Axiom key_correct : forall v n s, 
+    s = (sign v (key_map n)) <-> verify v s n.
+
+  Fact correct_sign_verify_ok v n :
+    verify v (sign v (key_map n)) n.
+  Proof. now rewrite <- key_correct. Qed.
+
+End Main.
+
+End PKI_Forall.
+*)
+Module Type ThresholdSignatureSchemePrim (Export A : NetAddr) (V : Signable).
 
 Parameter thres : nat.
 
@@ -47,16 +142,10 @@ Parameter CombinedSignature : Set.
 Parameter CombinedSignature_eqdec : forall (cs1 cs2 : CombinedSignature), {cs1 = cs2} + {cs1 <> cs2}.
 
 Parameter lightkey_map : Address -> LightPrivateKey.
-(* TODO if for threshold signature scheme there will be a separate public key, 
-    then we can only view Address as "the abstraction of publicly available information about a node"
-    rather than "a public key (in PKI infrastructure)" *)
-Parameter light_verify : Value -> LightSignature -> Address -> bool.
-Parameter light_sign : Value -> LightPrivateKey -> LightSignature.
+Parameter light_verify : V.t -> LightSignature -> Address -> bool.
+Parameter light_sign : V.t -> LightPrivateKey -> LightSignature.
 (* use dependent type to restrict the number of light signatures *)
 (* Parameter lightsig_combine : Vector.t LightSignature (N - t0) -> CombinedSignature. *)
-(* TODO using dependent type may incur difficulty in the protocol, so use a total function at first 
-  if the number of light certificates is not (N-t0), then simply return some garbage
-  (guaranteed by "combine_correct" below) *)
 (*
 (* it might also be good to know who signed these shared signatures, 
     without which we may be unable to implement the TSS
@@ -66,10 +155,9 @@ Parameter lightsig_combine : list (Address * LightSignature) -> CombinedSignatur
 
 (* or, we can bake the information of sender into LightSignature *)
 (* or, we can make the information of sender optional *)
-(* FIXME: read some real-world code of TSS to make decision *)
 *)
 Parameter lightsig_combine : list LightSignature -> CombinedSignature.
-Parameter combined_verify : Value -> CombinedSignature -> bool.
+Parameter combined_verify : V.t -> CombinedSignature -> bool.
 
 (* symbolic security assumption *)
 
@@ -86,7 +174,47 @@ Fact correct_sign_verify_ok_light v n :
   light_verify v (light_sign v (lightkey_map n)) n.
 Proof. now rewrite <- lightkey_correct. Qed.
 
-End ThresholdSignatureScheme. 
+End ThresholdSignatureSchemePrim. 
+
+Module Type ThresholdSignatureScheme (Export A : NetAddr) (V : Signable).
+
+Declare Module TSSPrim : ThresholdSignatureSchemePrim A V.
+Export TSSPrim.
+
+Section Extended. 
+
+  Context {A : Type} `{Sn : V.signable A} (v : A).
+
+  Definition light_verify (lsig : LightSignature) (addr : Address) := light_verify (V.make v) lsig addr.
+
+  Definition light_sign (k : LightPrivateKey) := light_sign (V.make v) k.
+
+  Definition combined_verify (cs : CombinedSignature) := combined_verify (V.make v) cs.
+
+  Corollary lightkey_correct n ls :
+    ls = (light_sign (lightkey_map n)) <-> light_verify ls n.
+  Proof. apply lightkey_correct. Qed.
+
+  Corollary combine_correct cs :
+    (exists ns : list Address, 
+      NoDup ns /\ length ns = N - thres /\
+      cs = lightsig_combine (map (fun n => light_sign (lightkey_map n)) ns)) 
+    <-> combined_verify cs.
+  Proof. apply combine_correct. Qed.
+
+  Corollary correct_sign_verify_ok_light n :
+    light_verify (light_sign (lightkey_map n)) n.
+  Proof. now rewrite <- lightkey_correct. Qed.
+
+End Extended.
+
+End ThresholdSignatureScheme.
+
+Module ThresholdSignatureSchemeImpl (Export A : NetAddr) (V : Signable) <: ThresholdSignatureScheme A V.
+
+Include ThresholdSignatureScheme A V.
+
+End ThresholdSignatureSchemeImpl.
 
 (*
 Module SimpleTSS (A : NetAddr) (V : Signable) (P : PKI A V).

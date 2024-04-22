@@ -5,7 +5,7 @@ Import ssreflect.SsrSyntax.
 From ABCProtocol.Systems Require Export Network.
 From ABCProtocol.Protocols.RB Require Export Protocol.
 
-Module RBAdversary (A : NetAddr) (R : RBTag) (V : Signable) (VBFT : ValueBFT A R V) 
+Module RBAdversary (A : NetAddr) (R : RBTag) (V : Value) (VBFT : ValueBFT A R V) 
   (BTh : ClassicByzThreshold A) (BSett : ByzSetting A)
   (M : RBMessage A R V)
   (P : SimplePacket A M) 
@@ -20,7 +20,7 @@ Definition byz_constraints (m : Message) (w : World) : Prop :=
 
 End RBAdversary.
 
-Module RBNetwork (A : NetAddr) (R : RBTag) (V : Signable) (VBFT : ValueBFT A R V) 
+Module RBNetwork (A : NetAddr) (R : RBTag) (V : Value) (VBFT : ValueBFT A R V) 
   (BTh : ClassicByzThreshold A) (BSett : RestrictedByzSetting A BTh).
 
 Import A R V VBFT BTh BSett.

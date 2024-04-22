@@ -6,11 +6,12 @@ From ABCProtocol.Protocols.ABC Require Export Types.
 
 From RecordUpdate Require Import RecordUpdate.
 
-Module Type ACProtocol (A : NetAddr) (V : Signable) (VBFT : ValueBFT A V) 
+Module Type ACProtocol (A : NetAddr) (Sn : Signable) (V : Value Sn) (VBFT : ValueBFT A Sn V) 
   (BTh : ByzThreshold A)
-  (P : PKI A V) (TSS : ThresholdSignatureScheme A V with Definition thres := BTh.t0) (* ! *)
-  (ACDT : ACDataTypes A V P TSS) 
-  (CC : CertCheckers A V P TSS ACDT) (M : ACMessage A V P TSS ACDT)
+  (P : PKI A Sn) (TSS0 : ThresholdSignatureSchemePrim A Sn with Definition thres := BTh.t0) (* ! *)
+  (TSS : ThresholdSignatureScheme A Sn with Module TSSPrim := TSS0)
+  (ACDT : ACDataTypes A Sn V P TSS) 
+  (CC : CertCheckers A Sn V P TSS ACDT) (M : ACMessage A Sn V P TSS ACDT)
   (P0 : SimplePacket A M) <: Protocol A M P0 BTh.
 
 Import A V VBFT BTh P TSS ACDT CC M P0.
@@ -225,13 +226,14 @@ Definition procInt (st : State) (tr : InternalTransition) :=
 
 End ACProtocol.
 
-Module ACProtocolImpl (A : NetAddr) (V : Signable) (VBFT : ValueBFT A V) 
+Module ACProtocolImpl (A : NetAddr) (Sn : Signable) (V : Value Sn) (VBFT : ValueBFT A Sn V) 
   (BTh : ByzThreshold A)
-  (P : PKI A V) (TSS : ThresholdSignatureScheme A V with Definition thres := BTh.t0)
-  (ACDT : ACDataTypes A V P TSS) 
-  (CC : CertCheckers A V P TSS ACDT) (M : ACMessage A V P TSS ACDT)
-  (P0 : SimplePacket A M) <: Protocol A M P0 BTh <: ACProtocol A V VBFT BTh P TSS ACDT CC M P0.
+  (P : PKI A Sn) (TSS0 : ThresholdSignatureSchemePrim A Sn with Definition thres := BTh.t0) (* ! *)
+  (TSS : ThresholdSignatureScheme A Sn with Module TSSPrim := TSS0)
+  (ACDT : ACDataTypes A Sn V P TSS) 
+  (CC : CertCheckers A Sn V P TSS ACDT) (M : ACMessage A Sn V P TSS ACDT)
+  (P0 : SimplePacket A M) <: Protocol A M P0 BTh <: ACProtocol A Sn V VBFT BTh P TSS0 TSS ACDT CC M P0.
 
-Include ACProtocol A V VBFT BTh P TSS ACDT CC M P0.
+Include ACProtocol A Sn V VBFT BTh P TSS0 TSS ACDT CC M P0.
 
 End ACProtocolImpl.

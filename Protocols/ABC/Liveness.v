@@ -7,14 +7,15 @@ From ABCProtocol.Protocols.ABC Require Export Safety.
 From RecordUpdate Require Import RecordUpdate.
 From stdpp Require Import tactics. (* anyway *)
 
-Module ACLiveness (A : NetAddr) (V : Signable) (VBFT : ValueBFT A V) 
+Module ACLiveness (A : NetAddr) (Sn : Signable) (V : Value Sn) (VBFT : ValueBFT A Sn V) 
   (BTh : ByzThreshold A) (BSett : ByzSetting A)
-  (P : PKI A V) (TSS : ThresholdSignatureScheme A V with Definition thres := BTh.t0).
+  (P : PKI A Sn) (TSS0 : ThresholdSignatureSchemePrim A Sn with Definition thres := BTh.t0) (* ! *)
+  (TSS : ThresholdSignatureScheme A Sn with Module TSSPrim := TSS0).
 
 Import A V VBFT BTh BSett P TSS.
 Import ssrbool. (* anyway *)
 
-Module Export ACS := ACSafety A V VBFT BTh BSett P TSS.
+Module Export ACS := ACSafety A Sn V VBFT BTh BSett P TSS0 TSS.
 
 Definition pkts_needed size w nonbyz_senders pkts (m : Address -> Message) (P : World -> Address -> Prop) : Prop :=
   List.NoDup nonbyz_senders /\

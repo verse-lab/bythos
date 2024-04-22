@@ -5,13 +5,14 @@ Import ssreflect.SsrSyntax.
 From ABCProtocol.Systems Require Export Network.
 From ABCProtocol.Protocols.ABC.OldProofs Require Export Protocol.
 
-Module ACAdversary (A : NetAddr) (V : Signable) (VBFT : ValueBFT A V) 
+Module ACAdversary (A : NetAddr) (Sn : Signable) (V : Value Sn) (VBFT : ValueBFT A Sn V) 
   (BTh : ByzThreshold A) (BSett : ByzSetting A)
-  (P : PKI A V) (TSS : ThresholdSignatureScheme A V with Definition thres := BTh.t0)
-  (ACDT : ACDataTypes A V P TSS) 
-  (CC : CertCheckers A V P TSS ACDT) (M : ACMessage A V P TSS ACDT)
+  (P : PKI A Sn) (TSS0 : ThresholdSignatureSchemePrim A Sn with Definition thres := BTh.t0) (* ! *)
+  (TSS : ThresholdSignatureScheme A Sn with Module TSSPrim := TSS0)
+  (ACDT : ACDataTypes A Sn V P TSS) 
+  (CC : CertCheckers A Sn V P TSS ACDT) (M : ACMessage A Sn V P TSS ACDT)
   (P0 : SimplePacket A M) 
-  (ACP : ACProtocol A V VBFT BTh P TSS ACDT CC M P0) 
+  (ACP : ACProtocol A Sn V VBFT BTh P TSS0 TSS ACDT CC M P0) 
   (Ns : NetState A M P0 BTh ACP) <: Adversary A M BTh BSett P0 ACP Ns.
 
 Import A V VBFT BTh BSett P TSS ACDT CC M P0 ACP Ns.
@@ -62,21 +63,22 @@ Definition byz_constraints (m : Message) (w : World) : Prop :=
 
 End ACAdversary.
 
-Module ACNetwork (A : NetAddr) (V : Signable) (VBFT : ValueBFT A V) 
+Module ACNetwork (A : NetAddr) (Sn : Signable) (V : Value Sn) (VBFT : ValueBFT A Sn V) 
   (BTh : ByzThreshold A) (BSett : ByzSetting A)
-  (P : PKI A V) (TSS : ThresholdSignatureScheme A V with Definition thres := BTh.t0).
+  (P : PKI A Sn) (TSS0 : ThresholdSignatureSchemePrim A Sn with Definition thres := BTh.t0) (* ! *)
+  (TSS : ThresholdSignatureScheme A Sn with Module TSSPrim := TSS0).
 
 Import A V VBFT BTh BSett P TSS.
 
-Module Export ACDT <: ACDataTypes A V P TSS := ACDataTypesImpl A V P TSS.
-Module Export CC : (* hide implementation *) CertCheckers A V P TSS ACDT := CertCheckersImpl A V P TSS ACDT.
-Module Export M <: MessageType := ACMessageImpl A V P TSS ACDT.
+Module Export ACDT <: ACDataTypes A Sn V P TSS := ACDataTypesImpl A Sn V P TSS.
+Module Export CC : (* hide implementation *) CertCheckers A Sn V P TSS ACDT := CertCheckersImpl A Sn V P TSS ACDT.
+Module Export M <: MessageType := ACMessageImpl A Sn V P TSS ACDT.
 Module Export P0 <: SimplePacket A M := SimplePacketImpl A M.
 Module Export PSOp : (* hide implementation *) PacketSoupOperations P0 := PacketSoupOperationsImpl P0.
-Module Export ACP <: Protocol A M P0 BTh <: ACProtocol A V VBFT BTh P TSS ACDT CC M P0 :=
-  ACProtocolImpl A V VBFT BTh P TSS ACDT CC M P0.
+Module Export ACP <: Protocol A M P0 BTh <: ACProtocol A Sn V VBFT BTh P TSS0 TSS ACDT CC M P0 :=
+  ACProtocolImpl A Sn V VBFT BTh P TSS0 TSS ACDT CC M P0.
 Module Export Ns <: NetState A M P0 BTh ACP := NetStateImpl A M P0 BTh ACP.
-Module Export ACAdv <: Adversary A M BTh BSett P0 ACP Ns := ACAdversary A V VBFT BTh BSett P TSS ACDT CC M P0 ACP Ns.
+Module Export ACAdv <: Adversary A M BTh BSett P0 ACP Ns := ACAdversary A Sn V VBFT BTh BSett P TSS0 TSS ACDT CC M P0 ACP Ns.
 
 Include NetworkImpl A M BTh BSett P0 PSOp ACP Ns ACAdv.
 

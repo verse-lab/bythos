@@ -6,7 +6,7 @@ From ABCProtocol.Protocols.RB Require Export Types.
 
 From RecordUpdate Require Import RecordUpdate.
 
-Module Type RBProtocol (A : NetAddr) (R : RBTag) (V : Signable)
+Module Type RBProtocol (A : NetAddr) (R : RBTag) (V : Value)
   (VBFT : ValueBFT A R V) 
   (* although the fraction 1/3 will not be used in the protocol, 
       this protocol only makes sense with t0 being N/3 ...
@@ -191,7 +191,7 @@ Definition procMsgWithCheck (st : State) (src : Address) (msg : Message) : State
 
 End RBProtocol.
 
-Module RBProtocolImpl (A : NetAddr) (R : RBTag) (V : Signable)
+Module RBProtocolImpl (A : NetAddr) (R : RBTag) (V : Value)
   (VBFT : ValueBFT A R V) 
   (BTh : ClassicByzThreshold A) (M : RBMessage A R V)
   (P : SimplePacket A M) <: Protocol A M P BTh <: RBProtocol A R V VBFT BTh M P.

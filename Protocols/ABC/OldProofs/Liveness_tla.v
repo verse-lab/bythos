@@ -5,13 +5,14 @@ Import ssreflect.SsrSyntax.
 From ABCProtocol.Protocols.ABC.OldProofs Require Export Invariant.
 From ABCProtocol.Properties Require Export Liveness_tla.
 
-Module ACLiveness (A : NetAddr) (V : Signable) (VBFT : ValueBFT A V) 
+Module ACLiveness (A : NetAddr) (Sn : Signable) (V : Value Sn) (VBFT : ValueBFT A Sn V) 
   (BTh : ByzThreshold A) (BSett : ByzSetting A)
-  (P : PKI A V) (TSS : ThresholdSignatureScheme A V with Definition thres := BTh.t0).
+  (P : PKI A Sn) (TSS0 : ThresholdSignatureSchemePrim A Sn with Definition thres := BTh.t0) (* ! *)
+  (TSS : ThresholdSignatureScheme A Sn with Module TSSPrim := TSS0).
 
 Import A V VBFT BTh BSett P TSS.
 
-Module Export ACInv := ACInvariant A V VBFT BTh BSett P TSS.
+Module Export ACInv := ACInvariant A Sn V VBFT BTh BSett P TSS0 TSS.
 Include Liveness A M BTh BSett P0 PSOp ACP Ns ACAdv ACN.
 
 (* now, really nice things *)

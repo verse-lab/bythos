@@ -7,7 +7,7 @@ From ABCProtocol.Protocols.RB Require Export Invariant.
 From RecordUpdate Require Import RecordUpdate.
 From stdpp Require Import tactics. (* anyway *)
 
-Module RBSafety (A : NetAddr) (R : RBTag) (V : Signable) (VBFT : ValueBFT A R V)
+Module RBSafety (A : NetAddr) (R : RBTag) (V : Value) (VBFT : ValueBFT A R V)
   (BTh : ClassicByzThreshold A) (BSett : RestrictedByzSetting A BTh).
 
 Import A R V VBFT BTh BSett.

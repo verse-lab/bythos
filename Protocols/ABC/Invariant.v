@@ -7,14 +7,15 @@ From ABCProtocol.Protocols.ABC Require Export Network.
 From RecordUpdate Require Import RecordUpdate.
 From stdpp Require Import tactics. (* anyway *)
 
-Module ACInvariant (A : NetAddr) (V : Signable) (VBFT : ValueBFT A V) 
+Module ACInvariant (A : NetAddr) (Sn : Signable) (V : Value Sn) (VBFT : ValueBFT A Sn V) 
   (BTh : ByzThreshold A) (BSett : ByzSetting A)
-  (P : PKI A V) (TSS : ThresholdSignatureScheme A V with Definition thres := BTh.t0).
+  (P : PKI A Sn) (TSS0 : ThresholdSignatureSchemePrim A Sn with Definition thres := BTh.t0) (* ! *)
+  (TSS : ThresholdSignatureScheme A Sn with Module TSSPrim := TSS0).
 
 Import A V VBFT BTh BSett P TSS.
 Import ssrbool. (* anyway *)
 
-Module Export ACN := ACNetwork A V VBFT BTh BSett P TSS.
+Module Export ACN := ACNetwork A Sn V VBFT BTh BSett P TSS0 TSS.
 
 Definition id_coh w : Prop := forall n, (w @ n).(id) = n.
 

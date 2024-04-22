@@ -441,6 +441,9 @@ Definition always_holds (P : World -> Prop) : Prop := forall w, reachable w -> P
 Fact always_holds_and P Q : always_holds (fun w => P w /\ Q w) <-> always_holds P /\ always_holds Q.
 Proof. unfold always_holds. firstorder. Qed.
 
+Fact always_holds_impl P Q (H : always_holds P) (H' : forall w, P w -> Q w) : always_holds Q.
+Proof. unfold always_holds. firstorder. Qed.
+
 Fact is_invariant_reachable_step_under_closed P Q (Hr : is_invariant_reachable_step_under P Q)
   (Hi : Q initWorld) (H : always_holds P) : always_holds Q.
 Proof.
