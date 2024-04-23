@@ -7,7 +7,7 @@ Module Type Value (Sn : Signable).
 
 Parameter Value : Set.
 Parameter Value_eqdec : forall (v1 v2 : Value), {v1 = v2} + {v1 <> v2}.
-Declare Instance VSn : Sn.signable Value.
+(* Declare Instance VSn : Sn.signable Value. *)
 
 End Value.
 
@@ -15,7 +15,7 @@ Module Type PBProof (Sn : Signable).
 
 Parameter Proof : Set.
 Parameter Proof_eqdec : forall (v1 v2 : Proof), {v1 = v2} + {v1 <> v2}.
-Declare Instance ProofSn : Sn.signable Proof.
+(* Declare Instance ProofSn : Sn.signable Proof. *)
 
 End PBProof.
 
@@ -36,10 +36,12 @@ Module Type PBDataTypes (A : NetAddr) (R : PBTag) (Sn : Signable) (V : Value Sn)
 
 Import A R V Pf TSS.
 
-Declare Instance LSSn : Sn.signable LightSignature.
+(* Declare Instance LSSn : Sn.signable LightSignature. *)
 Declare Instance VPfSn : Sn.signable (Round * Value). (* TODO temporary; also can be done with a typeclass for product composition *)
 
-Parameter ex_validate : Round -> Value -> Proof -> bool.  (* external validator *)
+(* external validator *)
+(* TODO consider each node may possess a different one? not quite ... *)
+Parameter ex_validate : Round -> Value -> Proof -> bool.  
 
 End PBDataTypes.
 

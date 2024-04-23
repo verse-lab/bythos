@@ -74,16 +74,21 @@ Definition procMsg (st : State) (src : Address) (msg : Message) : option (State 
     | Some _ => None
     end
   | EchoMsg r lsig =>
-    if light_verify (r, fst (value_bft n r)) lsig src
-    then
-      if in_dec Address_eqdec src (map fst (cnt r))
+    (* early terminating, constraining the size *)
+    match omap r with
+    | None =>
+      if light_verify (r, fst (value_bft n r)) lsig src
       then
-        (* simply add to counter *)
-        let: cnt' := map_update Round_eqdec r ((src, lsig) :: cnt r) cnt in
-        let: st' := st <| counter := cnt' |> in
-        Some (st', nil)
+        if in_dec Address_eqdec src (map fst (cnt r))
+        then None
+        else
+          (* simply add to counter *)
+          let: cnt' := map_update Round_eqdec r ((src, lsig) :: cnt r) cnt in
+          let: st' := st <| counter := cnt' |> in
+          Some (st', nil)
       else None
-    else None
+    | _ => None
+    end
   end.
 
 (* TODO repeating from RB *)
@@ -91,6 +96,8 @@ Definition th_output := N - t0.
 
 Fact th_output_gt_0 : 0 < th_output.
 Proof. unfold th_output. pose proof N_minus_2t0_gt_0. lia. Qed.
+
+Definition delivery_cert r st := lightsig_combine (map snd (st.(counter) r)).
 
 Definition routine_check (st : State) (r : Round) : State :=
   let: l := st.(counter) r in
