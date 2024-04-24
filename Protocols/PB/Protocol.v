@@ -79,6 +79,9 @@ Definition procMsg (st : State) (src : Address) (msg : Message) : option (State 
     | None =>
       if light_verify (r, fst (value_bft n r)) lsig src
       then
+        (* NOTE: there is a discrepancy from the pseudocode: 
+          in the pseudocode, the sender is not recorded, but only signature is recorded
+          not sure if the latter also works; here also record the senders to make things easier *)
         if in_dec Address_eqdec src (map fst (cnt r))
         then None
         else
