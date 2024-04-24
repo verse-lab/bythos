@@ -54,6 +54,8 @@ Definition lcert_correct (psent : PacketSoup) (lc : LightCertificate) : Prop :=
 Definition lcert_correct_threshold (psent : PacketSoup) (lc : LightCertificate) : Prop :=
   (num_byz < N - (thres + thres) -> lcert_correct psent lc).
 
+(* a weaker constraint than that provided by cryptographic primitives *)
+(* because such values cannot exist, not only cannot be sent *)
 Definition byz_constraints (m : Message) (w : World) : Prop :=
   match m with
   | SubmitMsg v lsig sig => True
