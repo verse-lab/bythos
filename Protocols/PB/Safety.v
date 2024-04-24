@@ -74,11 +74,19 @@ Definition echoed_backtrack w : Prop :=
   forall src dst r vpf, is_byz src = false -> is_byz dst = false ->
     (w @ dst).(echoed) (src, r) = Some vpf -> vpf = value_bft src r.
 
+Definition counter_backtrack w : Prop :=
+  forall src dst r, is_byz src = false -> is_byz dst = false ->
+    In src (map fst ((w @ dst).(counter) r)) -> 
+    (w @ src).(echoed) (dst, r) = Some (value_bft dst r) /\ ex_validate r (value_bft dst r).1 (value_bft dst r).2.
+
 (* also implies external validity *)
 Definition output_ok w : Prop :=
   forall n r cs, is_byz n = false -> (w @ n).(output) r = Some cs ->
     let: v := (value_bft n r).1 in
-    ex_validate r v (value_bft n r).2 /\ combined_verify (r, v) cs.
+    ex_validate r v (value_bft n r).2 /\ combined_verify (r, v) cs /\
+    (exists quorum : list Address, 
+      List.NoDup quorum /\ t0 < length quorum /\ 
+      (forall n0, In n0 quorum -> is_byz n0 = false /\ (w @ n0).(echoed) (n, r) = Some (value_bft n r))).
 
 Lemma node_in_counter_always_holds : always_holds node_in_counter.
 Proof.
@@ -98,6 +106,20 @@ Proof.
   pick initmsg_sent_h2l as_ H5 by_ (pose proof (Hh2l _ H4) as []). saturate_assumptions. now destruct H5 as (_ & ->).
 Qed.
 
+Lemma counter_backtrack_always_holds : always_holds counter_backtrack.
+Proof.
+  hnf. intros w Hr. saturate.
+  hnf. intros ? dst r Hnonbyz_src Hnonbyz_dst ((src & lsig1) & <- & Hin)%in_map_iff. simpl in Hnonbyz_src.
+  (* in counter <-- EchoMsg recv *)
+  pick echomsg_recv_l2h as_ H2 by_ (pose proof (Hl2h _ Hnonbyz_dst) as []). apply H2 in Hin. rewrite Hcoh in Hin.
+  (* <-- echoed *)
+  pick echomsg_sent_h2l as_ H3 by_ (pose proof (Hh2l _ Hin) as []). saturate_assumptions.
+  destruct (echoed (w @ src) (dst, r)) as [ (v, pf) | ] eqn:E; try contradiction. subst lsig1. simpl. rewrite E.
+  (* <-- validated *)
+  pick echoed_ex_valid as_ H6 by_ (pose proof (Hst src) as []). saturate_assumptions!. 
+  eapply echoed_backtrack_always_holds in E; auto. now rewrite <- E.
+Qed.
+
 Lemma output_ok_always_holds : always_holds output_ok.
 Proof.
   hnf. intros w Hr. saturate.
@@ -105,23 +127,21 @@ Proof.
   (* basic *)
   pick output_some as_ H1 by_ (pose proof (Hst n) as []). specialize (H1 r). isSome_rewrite. saturate_assumptions.
   pick from_nodup as_ Hnodup by_ (pose proof (Hst n) as []). specialize (Hnodup r).
-  split.
+  split_and?.
   - apply at_least_one_nonfaulty in Hnodup.
     2: rewrite map_length, H1; unfold th_output; pose proof N_minus_2t0_gt_0; lia.
-    destruct Hnodup as (? & Hnonbyz_n1 & ((n1 & lsig1) & <- & Hin)%in_map_iff). simpl in Hnonbyz_n1.
-    (* in counter <-- EchoMsg recv *)
-    pick echomsg_recv_l2h as_ H2 by_ (pose proof (Hl2h _ H) as []). apply H2 in Hin. rewrite Hcoh in Hin.
-    (* <-- echoed *)
-    pick echomsg_sent_h2l as_ H3 by_ (pose proof (Hh2l _ Hin) as []). saturate_assumptions.
-    destruct (echoed (w @ n1) (n, r)) as [ (v, pf) | ] eqn:E; try contradiction. subst lsig1.
-    (* <-- validated *)
-    pick echoed_ex_valid as_ H6 by_ (pose proof (Hst n1) as []). saturate_assumptions!.
-    apply echoed_backtrack_always_holds in E; auto. rewrite <- E. now simpl.
+    destruct Hnodup as (n1 & Hnonbyz_n1 & Hin).
+    now apply counter_backtrack_always_holds in Hin.
   - apply combine_correct.
     eexists. split; [ apply Hnodup | ]. split; [ rewrite map_length, H1; reflexivity | ].
     pick output_is_delivery_cert as_ H2 by_ (pose proof (Hst n) as []). apply H2 in H0. subst cs. unfold delivery_cert. f_equal.
     pick counter_ok as_ H3 by_ (pose proof (Hst n) as []). fold (counter_ok (w @ n)) in H3. rewrite counter_ok_alt in H3. 
     rewrite H3 at 1. now rewrite map_map, Hcoh.
+  - exists (List.filter (fun n => negb (is_byz n)) (map fst (counter (w @ n) r))).
+    split; [ auto using NoDup_filter | ].
+    split. 1:{ pose proof (filter_nonbyz_lower_bound_t0 Hnodup). rewrite map_length, H1 in H2. unfold th_output in H2. pose proof t0_lt_N_minus_2t0. lia. }
+    intros n1 (Hin & Hnonbyz_n1%negb_true_iff)%filter_In. split; auto.
+    apply counter_backtrack_always_holds in Hin; auto. tauto.
 Qed.
 
 End PBSafety.
