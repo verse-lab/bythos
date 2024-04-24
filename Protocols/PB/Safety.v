@@ -84,9 +84,9 @@ Definition output_ok w : Prop :=
   forall n r cs, is_byz n = false -> (w @ n).(output) r = Some cs ->
     let: v := (value_bft n r).1 in
     ex_validate r v (value_bft n r).2 /\ combined_verify (r, v) cs /\
-    (exists quorum : list Address, 
-      List.NoDup quorum /\ t0 < length quorum /\ 
-      (forall n0, In n0 quorum -> is_byz n0 = false /\ (w @ n0).(echoed) (n, r) = Some (value_bft n r))).
+    (exists l : list Address, 
+      List.NoDup l /\ t0 < length l /\ 
+      (forall n0, In n0 l -> is_byz n0 = false /\ (w @ n0).(echoed) (n, r) = Some (value_bft n r))).
 
 Lemma node_in_counter_always_holds : always_holds node_in_counter.
 Proof.
