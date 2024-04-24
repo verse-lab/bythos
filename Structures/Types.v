@@ -66,7 +66,7 @@ End PKIPrim.
 
 Module Type PKI (Export A : NetAddr) (V : Signable).
 
-Declare Module PPrim : PKIPrim A V.
+Declare Module PPrim : PKIPrim A V. (* TODO this introduces axiom when "Include"ing? *)
 Export PPrim.
 
 Section Extended. 
@@ -88,13 +88,13 @@ Section Extended.
 End Extended.
 
 End PKI.
-
+(*
 Module PKIImpl (Export A : NetAddr) (V : Signable) <: PKI A V.
 
 Include PKI A V.
 
 End PKIImpl.
-
+*)
 (* ...? *)
 (*
 Module Type Signable'.
@@ -209,13 +209,13 @@ Section Extended.
 End Extended.
 
 End ThresholdSignatureScheme.
-
+(*
 Module ThresholdSignatureSchemeImpl (Export A : NetAddr) (V : Signable) <: ThresholdSignatureScheme A V.
 
 Include ThresholdSignatureScheme A V.
 
 End ThresholdSignatureSchemeImpl.
-
+*)
 (*
 Module SimpleTSS (A : NetAddr) (V : Signable) (P : PKI A V).
 
