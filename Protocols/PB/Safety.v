@@ -99,7 +99,7 @@ Definition lightsig_seen_in_history (src dst : Address) (v : Round * Value) (ls 
       lightsig_seen_in_history n dst v lsig (sentMsgs w).
 
 Definition light_sign_inj : Prop :=
-  forall rv rv' n, 
+  forall (rv rv' : Round * Value) n, 
     light_sign rv (lightkey_map n) = light_sign rv' (lightkey_map n) -> rv = rv'.
 
 Definition uniqueness w : Prop :=
