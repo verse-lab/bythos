@@ -16,14 +16,10 @@ Module PBAdversary (A : NetAddr) (R : PBTag) (Sn : Signable) (V : Value Sn) (Pf 
 
 Import A R V Pf VBFT BTh BSett TSS PBDT M P0 PBP Ns.
 
-(* TODO need to take care that Round, Value and Proof may contain light signatures ... *)
-(* not sure what to constrain for now ... skip *)
+(* TODO need to take care that Round, Value and Proof may contain signatures ... *)
 
-Definition byz_constraints (m : Message) (w : World) : Prop :=
-  match m with
-  | EchoMsg _ lsig => True
-  | _ => True
-  end.
+(* well ... *)
+Definition byz_constraints (m : Message) (w : World) : Prop := True.
 
 End PBAdversary.
 

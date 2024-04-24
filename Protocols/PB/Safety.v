@@ -20,6 +20,13 @@ Module Export PBInv := PBInvariant A R Sn V Pf VBFT BTh BSett TSS0 TSS PBDT.
 
 Set Implicit Arguments. (* anyway *)
 
+Create HintDb booldec.
+
+Fact is_left_unfold [A B : Prop] (b : {A} + {B}) : is_left b = if b then true else false.
+Proof eq_refl.
+
+Hint Rewrite -> is_left_unfold sumbool_is_left sumbool_is_right andb_true_iff negb_true_iff @eqdec_refl filter_In : booldec.
+
 Fact id_coh_always_holds : always_holds id_coh.
 Proof. intros w Hw. induction Hw; eauto using id_coh_is_invariant. hnf. intros. reflexivity. Qed.
 
@@ -63,7 +70,46 @@ Ltac saturate :=
     (* pose proof (proj2 h2l_invariants _ H) as Hh2lbyz *)
   end.
 
-(* TODO how to state uniqueness? or, how to express "producing a string"? *)
+(* ask: can a faulty node produce something with type A, which meets some requirement P, 
+    by just using what is in the world? *)
+(* do not really make sense to give a proof saying that if produ_check holds, then P holds.
+    just for proving *)
+Class producible (A : Type) (P : A -> Prop) :=
+  produ_check : World -> A -> Prop.
+
+(* TODO the following definition of uniqueness is slightly awkward: 
+    the proof by quorum intersection only works for a single instance of PB, 
+    where a single instance is determined by 
+    (1) the broadcast initiator and 
+    (2) the round number. 
+    so need to put restriction on "dst" and "v" below *)
+Definition lightsig_seen_in_history (src dst : Address) (v : Round * Value) (ls : LightSignature) (pkts : PacketSoup) :=
+  Exists (fun p => P0.src p = src /\ P0.dst p = dst /\ 
+    (match p with mkP _ _ (EchoMsg r' ls') _ => r' = fst v /\ ls = ls' | _ => False end)) pkts.
+
+#[export] Instance producible_CombinedSignatures (* {A : Type} `{Sn.signable A} *) (dst : Address) (v : Round * Value) :
+  @producible CombinedSignature (fun cs => combined_verify v cs) :=
+  fun w cs =>
+  forall lsigs,
+    cs = lightsig_combine lsigs ->
+    forall n lsig,
+      In lsig lsigs ->
+      is_byz n = false ->
+      light_verify v lsig n ->
+      lightsig_seen_in_history n dst v lsig (sentMsgs w).
+
+Definition light_sign_inj : Prop :=
+  forall rv rv' n, 
+    light_sign rv (lightkey_map n) = light_sign rv' (lightkey_map n) -> rv = rv'.
+
+Definition uniqueness w : Prop :=
+  forall n r v v' cs cs',
+    light_sign_inj -> (* injectivity assumption *)
+    let: inst := producible_CombinedSignatures n (r, v) in
+    let: inst' := producible_CombinedSignatures n (r, v') in
+    @produ_check _ _ inst w cs ->
+    @produ_check _ _ inst' w cs' ->
+    combined_verify (r, v) cs -> combined_verify (r, v') cs' -> v = v'.
 
 Definition node_in_counter w : Prop :=
   forall n src r,
@@ -142,6 +188,35 @@ Proof.
     split. 1:{ pose proof (filter_nonbyz_lower_bound_t0 Hnodup). rewrite map_length, H1 in H2. unfold th_output in H2. pose proof t0_lt_N_minus_2t0. lia. }
     intros n1 (Hin & Hnonbyz_n1%negb_true_iff)%filter_In. split; auto.
     apply counter_backtrack_always_holds in Hin; auto. tauto.
+Qed.
+
+Lemma uniqueness_always_holds : always_holds uniqueness.
+Proof.
+  hnf. intros w Hr. saturate.
+  hnf. intros dst r v v' cs cs' Hinj H H' (ns & Hnodup & Hlen & ->)%combine_correct (ns' & Hnodup' & Hlen' & ->)%combine_correct.
+  specialize (H _ eq_refl). specialize (H' _ eq_refl).
+  (* get the nonfaulty node *)
+  pose proof Hnodup as His. unfold thres in *. eapply quorum_intersection with (l1:=ns) (l2:=ns') in His; auto; try lia.
+  pose proof Hnodup' as Hone. apply NoDup_filter with (f:=(fun n => in_dec Address_eqdec n ns)), at_least_one_nonfaulty in Hone.
+  2: pose proof t0_lt_N_minus_2t0; lia.
+  destruct Hone as (n & Hnonbyz & Hin). autorewrite with booldec in Hin. destruct Hin as (Hin & Hin').
+  (* get the provenance of light signatures *)
+  specialize (H n (light_sign (r, v) (lightkey_map n)) (in_map _ ns n ltac:(auto))).
+  specialize (H' n (light_sign (r, v') (lightkey_map n)) (in_map _ ns' n ltac:(auto))).
+  rewrite <- !lightkey_correct in H, H'. saturate_assumptions!.
+  hnf in H, H'. rewrite Exists_exists in H, H'. simpl in H, H'.
+  destruct H as ([ tmp tmp0 [] ? ] & Hpin & E & E0 & H), H' as ([ tmp' tmp0' [] ? ] & Hpin' & E' & E0' & H'); try contradiction.
+  simpl in E, E', E0, E0'. destruct H as (-> & <-), H' as (-> & <-). subst tmp tmp' tmp0 tmp0'.
+  (* now, try getting contradiction *)
+  pick echomsg_sent_h2l as_ HH by_ (pose proof (Hh2l _ Hpin) as []).
+  pick echomsg_sent_h2l as_ HH' by_ (pose proof (Hh2l _ Hpin') as []). saturate_assumptions.
+  destruct (echoed _ _) as [ (?, ?) | ] eqn:E in HH; try contradiction. 
+  destruct (echoed _ _) as [ (?, ?) | ] eqn:E' in HH'; try contradiction.
+  rewrite E in E'. simplify_eq. rewrite <- HH' in HH.
+  (* TODO if we do not assume injectivity, this is the best we can have! 
+      in other words, the best we can know is that the two light signatures will be equal, 
+      but we do not know whether the corresponding values are equal *)
+  apply Hinj in HH. now simplify_eq.
 Qed.
 
 End PBSafety.

@@ -39,6 +39,9 @@ Import A R V Pf TSS.
 (* Declare Instance LSSn : Sn.signable LightSignature. *)
 Declare Instance VPfSn : Sn.signable (Round * Value). (* TODO temporary; also can be done with a typeclass for product composition *)
 
+(* it seems that in any cases, there will not be LightSigantures in the Proof? so ignore for now *)
+(* Parameter lightsig_from_proof : Proof -> list LightSignature. *)
+
 (* external validator *)
 (* TODO consider each node may possess a different one? not quite ... *)
 Parameter ex_validate : Round -> Value -> Proof -> bool.  

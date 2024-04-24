@@ -22,14 +22,6 @@ Set Implicit Arguments. (* anyway *)
 
 Definition all_echoes src r w : Prop := forall n, is_byz n = false -> (w @ n).(echoed) (src, r) = Some (value_bft src r).
 
-(* TODO make this reusable *)
-Create HintDb booldec.
-
-Fact is_left_unfold [A B : Prop] (b : {A} + {B}) : is_left b = if b then true else false.
-Proof eq_refl.
-
-Hint Rewrite -> is_left_unfold sumbool_is_left sumbool_is_right andb_true_iff negb_true_iff @eqdec_refl : booldec.
-
 Module Termination.
 
 Section Proof_of_Termination.
