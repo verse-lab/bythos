@@ -63,12 +63,16 @@ Ltac saturate :=
     (* pose proof (proj2 h2l_invariants _ H) as Hh2lbyz *)
   end.
 
-(* TODO how to state uniqueness? *)
+(* TODO how to state uniqueness? or, how to express "producing a string"? *)
 
 Definition node_in_counter w : Prop :=
   forall n src r,
     In src (map fst ((w @ n).(counter) r)) ->
     In (src, light_sign (r, (value_bft n r).1) (lightkey_map src)) ((w @ n).(counter) r).
+
+Definition echoed_backtrack w : Prop :=
+  forall src dst r vpf, is_byz src = false -> is_byz dst = false ->
+    (w @ dst).(echoed) (src, r) = Some vpf -> vpf = value_bft src r.
 
 (* also implies external validity *)
 Definition output_ok w : Prop :=
@@ -82,6 +86,16 @@ Proof.
   hnf. intros n ? r ((src & lsig) & <- & Hin)%in_map_iff. simpl.
   pick counter_ok as_ H1 by_ (pose proof (Hst n) as []). pose proof Hin as ->%H1%lightkey_correct.
   now rewrite Hcoh in Hin.
+Qed.
+
+Lemma echoed_backtrack_always_holds : always_holds echoed_backtrack.
+Proof.
+  hnf. intros w Hr. saturate.
+  hnf. intros src dst r (v, pf) Hnonbyz_src Hnonbyz_dst E.
+  (* <-- InitMsg recv *)
+  pick initmsg_recv_l2h as_ H4 by_ (pose proof (Hl2h _ Hnonbyz_dst) as []). saturate_assumptions!. rewrite Hcoh in H4.
+  (* <-- sent *)
+  pick initmsg_sent_h2l as_ H5 by_ (pose proof (Hh2l _ H4) as []). saturate_assumptions. now destruct H5 as (_ & ->).
 Qed.
 
 Lemma output_ok_always_holds : always_holds output_ok.
@@ -100,16 +114,14 @@ Proof.
     (* <-- echoed *)
     pick echomsg_sent_h2l as_ H3 by_ (pose proof (Hh2l _ Hin) as []). saturate_assumptions.
     destruct (echoed (w @ n1) (n, r)) as [ (v, pf) | ] eqn:E; try contradiction. subst lsig1.
-    (* <-- InitMsg recv *)
-    pick initmsg_recv_l2h as_ H4 by_ (pose proof (Hl2h _ Hnonbyz_n1) as []). saturate_assumptions!. rewrite Hcoh in H4.
-    (* <-- sent *)
-    pick initmsg_sent_h2l as_ H5 by_ (pose proof (Hh2l _ H4) as []). saturate_assumptions. destruct H5 as (_ & ->). simpl.
     (* <-- validated *)
-    pick echoed_ex_valid as_ H6 by_ (pose proof (Hst n1) as []). now saturate_assumptions!.
+    pick echoed_ex_valid as_ H6 by_ (pose proof (Hst n1) as []). saturate_assumptions!.
+    apply echoed_backtrack_always_holds in E; auto. rewrite <- E. now simpl.
   - apply combine_correct.
     eexists. split; [ apply Hnodup | ]. split; [ rewrite map_length, H1; reflexivity | ].
     pick output_is_delivery_cert as_ H2 by_ (pose proof (Hst n) as []). apply H2 in H0. subst cs. unfold delivery_cert. f_equal.
-    pick counter_ok as_ H3 by_ (pose proof (Hst n) as []). fold (counter_ok (w @ n)) in H3. rewrite counter_ok_alt in H3. rewrite H3 at 1. now rewrite map_map, Hcoh.
+    pick counter_ok as_ H3 by_ (pose proof (Hst n) as []). fold (counter_ok (w @ n)) in H3. rewrite counter_ok_alt in H3. 
+    rewrite H3 at 1. now rewrite map_map, Hcoh.
 Qed.
 
 End PBSafety.
