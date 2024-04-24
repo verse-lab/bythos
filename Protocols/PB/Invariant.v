@@ -8,7 +8,7 @@ From RecordUpdate Require Import RecordUpdate.
 From stdpp Require Import tactics. (* anyway *)
 
 Module PBInvariant (A : NetAddr) (R : PBTag) (Sn : Signable) (V : Value Sn) (Pf : PBProof Sn) (VBFT : ValueBFT A R Sn V Pf) 
-  (BTh : ClassicByzThreshold A) (BSett : ByzSetting A)
+  (BTh : ClassicByzThreshold A) (BSett : RestrictedByzSetting A BTh)
   (TSS0 : ThresholdSignatureSchemePrim A Sn with Definition thres := BTh.t0) (* ! *)
   (TSS : ThresholdSignatureScheme A Sn with Module TSSPrim := TSS0)
   (PBDT : PBDataTypes A R Sn V Pf TSS).
@@ -37,6 +37,20 @@ Definition echoed_ex_valid st : Prop :=
 Definition counter_ok st : Prop :=
   forall r n lsig, In (n, lsig) (st.(counter) r) -> light_verify (r, fst (value_bft st.(id) r)) lsig n.
 
+Fact counter_ok_alt st : counter_ok st <->
+  forall r, st.(counter) r = map (fun n => (n, light_sign (r, (value_bft st.(id) r).1) (lightkey_map n))) 
+    (map fst (st.(counter) r)).
+Proof.
+  unfold counter_ok. split; intros.
+  - specialize (H r). remember (st.(counter) r) as l eqn:E. clear E.
+    induction l as [ | (n, lsig) l IH ]; auto.
+    simpl in H |- *. f_equal. 
+    + f_equal. apply lightkey_correct, H. auto.
+    + apply IH. intros. apply H. auto.
+  - rewrite H, in_map_iff in H0. destruct H0 as (? & ? & Hin). simplify_eq.
+    apply correct_sign_verify_ok_light.
+Qed. 
+
 Definition output_is_delivery_cert st : Prop :=
   forall r cs, st.(output) r = Some cs -> cs = delivery_cert r st.
 
@@ -45,10 +59,6 @@ Definition output_some st : Prop :=
 
 Definition output_none st : Prop :=
   forall r, st.(output) r = None -> length (st.(counter) r) < th_output.
-
-(* derivable *)
-Definition output_ok st : Prop :=
-  forall r cs, st.(output) r = Some cs -> combined_verify (r, fst (value_bft st.(id) r)) cs.
 
 (* l2h, sent *)
 

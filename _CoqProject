@@ -52,3 +52,4 @@ Protocols/PB/Types.v
 Protocols/PB/Protocol.v
 Protocols/PB/Network.v
 Protocols/PB/Invariant.v
+Protocols/PB/Safety.v

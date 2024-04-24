@@ -28,7 +28,7 @@ Definition byz_constraints (m : Message) (w : World) : Prop :=
 End PBAdversary.
 
 Module PBNetwork (A : NetAddr) (R : PBTag) (Sn : Signable) (V : Value Sn) (Pf : PBProof Sn) (VBFT : ValueBFT A R Sn V Pf) 
-  (BTh : ClassicByzThreshold A) (BSett : ByzSetting A)
+  (BTh : ClassicByzThreshold A) (BSett : RestrictedByzSetting A BTh)
   (TSS0 : ThresholdSignatureSchemePrim A Sn with Definition thres := BTh.t0) (* ! *)
   (TSS : ThresholdSignatureScheme A Sn with Module TSSPrim := TSS0)
   (PBDT : PBDataTypes A R Sn V Pf TSS).
