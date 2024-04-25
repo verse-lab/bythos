@@ -23,7 +23,7 @@ Module PB2 (Ad : NetAddr) (R : PBTag) (Sn : Signable) (V : Value Sn) (Pf : PBPro
   (PfB : PBProofB Ad Sn BTh TSS0 TSS) 
   (VBFTB : ValueBFT Ad R Sn V PfB)
   (PBDT : PBDataTypes Ad R Sn V Pf TSS)
-  (PBDTB : PBDataTypes Ad R Sn V PfB TSS).
+  (PBDTB : PBDataTypes Ad R Sn V PfB TSS with Definition VPfSn := PBDT.VPfSn).
 
 Import Ad R V Pf VBFT BTh BSettA BSettB TSS PBDT.
 Import ssrbool. (* anyway *)
