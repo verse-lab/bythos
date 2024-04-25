@@ -55,3 +55,5 @@ Protocols/PB/Invariant.v
 Protocols/PB/Safety.v
 Protocols/PB/Liveness.v
 Protocols/PB/Liveness_tla.v
+
+Protocols/PB/PB2.v
