@@ -7,15 +7,15 @@ From ABCProtocol.Protocols.ABC Require Export Invariant.
 From RecordUpdate Require Import RecordUpdate.
 From stdpp Require Import tactics. (* anyway *)
 
-Module ACSafety (A : NetAddr) (Sn : Signable) (V : SignableValue Sn) (VBFT : ValueBFT A Sn V) 
+Module ACSafety (A : NetAddr) (Sn : Signable) (V : SignableValue Sn) (* (VBFT : ValueBFT A Sn V) *)
   (BTh : ByzThreshold A) (BSett : ByzSetting A)
   (P : PKI A Sn) (TSS0 : ThresholdSignatureSchemePrim A Sn with Definition thres := BTh.t0) (* ! *)
   (TSS : ThresholdSignatureScheme A Sn with Module TSSPrim := TSS0).
 
-Import A V VBFT BTh BSett P TSS.
+Import A V (* VBFT *) BTh BSett P TSS.
 Import ssrbool. (* anyway *)
 
-Module Export ACInv := ACInvariant A Sn V VBFT BTh BSett P TSS0 TSS.
+Module Export ACInv := ACInvariant A Sn V (* VBFT *) BTh BSett P TSS0 TSS.
 
 Set Implicit Arguments. (* anyway *)
 
@@ -175,7 +175,7 @@ Proof.
   pick inv_submit_mixin as_ Hc1 by_ (destruct Hst_n1).
   pick inv_submit_mixin as_ Hc2 by_ (destruct Hst_n2). simpl_state. 
   unfold zip_from_sigs in Hc1, Hc2. simpl in Hc1, Hc2.
-  destruct Hc1 as (-> & _ & Hcert_valid1), Hc2 as (-> & _ & Hcert_valid2).
+  destruct Hc1 as ((* -> & *) _ & Hcert_valid1), Hc2 as ((* -> & *) _ & Hcert_valid2).
   pick inv_conf_correct as_ Hsz1 by_ (destruct Hst_n1). (* required to show quorum size lower bound *)
   pick inv_conf_correct as_ Hsz2 by_ (destruct Hst_n2). simpl_state.
   pick inv_from_nodup as_ Hnodup1 by_ (destruct Hst_n1). (* required to show quorum size lower bound *)

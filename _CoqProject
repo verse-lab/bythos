@@ -45,10 +45,10 @@ Protocols/RB/Safety.v
 Protocols/RB/Liveness.v
 Protocols/RB/Liveness_tla.v
 
-Protocols/ABC/OldProofs/Protocol.v
-Protocols/ABC/OldProofs/Network.v
-Protocols/ABC/OldProofs/Invariant.v
-Protocols/ABC/OldProofs/Liveness_tla.v
+# Protocols/ABC/OldProofs/Protocol.v
+# Protocols/ABC/OldProofs/Network.v
+# Protocols/ABC/OldProofs/Invariant.v
+# Protocols/ABC/OldProofs/Liveness_tla.v
 
 Protocols/PB/Types.v
 Protocols/PB/Protocol.v

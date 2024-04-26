@@ -8,15 +8,15 @@ From ABCProtocol.Properties Require Import Liveness.
 From RecordUpdate Require Import RecordUpdate.
 From stdpp Require Import tactics. (* anyway *)
 
-Module ACLiveness (A : NetAddr) (Sn : Signable) (V : SignableValue Sn) (VBFT : ValueBFT A Sn V) 
+Module ACLiveness (A : NetAddr) (Sn : Signable) (V : SignableValue Sn) (* (VBFT : ValueBFT A Sn V) *)
   (BTh : ByzThreshold A) (BSett : ByzSetting A)
   (P : PKI A Sn) (TSS0 : ThresholdSignatureSchemePrim A Sn with Definition thres := BTh.t0) (* ! *)
   (TSS : ThresholdSignatureScheme A Sn with Module TSSPrim := TSS0).
 
-Import A V VBFT BTh BSett P TSS.
+Import A V (* VBFT *) BTh BSett P TSS.
 Import ssrbool. (* anyway *)
 
-Module Export ACS := ACSafety A Sn V VBFT BTh BSett P TSS0 TSS.
+Module Export ACS := ACSafety A Sn V (* VBFT *) BTh BSett P TSS0 TSS.
 Include Liveness A M BTh BSett P0 PSOp ACP Ns ACAdv ACN.
 
 Module Terminating_Convergence.
@@ -34,7 +34,7 @@ Section Proof_of_Terminating_Convergence.
   Hypothesis (H_byz_minor : num_byz <= t0).
 
   Let submitted_v w n : Prop := (w @ n).(submitted_value) = Some v.
-  Let valid_submitmsg n : Message := let: vv := value_bft n in
+  Let valid_submitmsg n : Message := let: vv := (* value_bft n *) v in
     (SubmitMsg vv (light_sign vv (lightkey_map n)) (sign vv (key_map n))).
 
   Section Round1.
@@ -65,7 +65,7 @@ Section Proof_of_Terminating_Convergence.
       pose proof Hin1_backup as Hnonbyz_n1%is_nonbyz_synonym. pose proof Hnonbyz_n1 as Hv%Hstart. split_and?; auto.
       intros n2 Hnonbyz_n2.
       pick inv_submitted_broadcast as_ Hbc by_ (pose proof (Hl2h _ Hnonbyz_n1) as []). saturate_assumptions!. 
-      pick inv_submit_mixin as_ Htmp by_ (pose proof (Hst n1) as []). rewrite Hv in Htmp. destruct Htmp as (-> & ? & ?). 
+      pick inv_submit_mixin as_ Htmp by_ (pose proof (Hst n1) as []). rewrite Hv in Htmp. destruct Htmp as ((* -> & *)? & ?). 
       rewrite Hcoh in Hbc. destruct Hbc as (b & Hbc). exists b. apply filter_In. 
       simpl. now rewrite andb_true_iff, !negb_true_iff. 
   Qed.
@@ -101,16 +101,16 @@ Section Proof_of_Terminating_Convergence.
     pose proof (Hstart _ Hnonbyz_n) as Hvn. saturate_assumptions! in_ Hvv.
     split; auto. destruct (conf (w0 @ n)) eqn:Ec; auto.
     (* TODO this step is repeating? *)
-    pick inv_submit_mixin as_ Htmp by_ (pose proof (Hst n) as []). rewrite Hvv, Hcoh in Htmp. destruct Htmp as (Ev & _ & _). 
+    pick inv_submit_mixin as_ Htmp by_ (pose proof (Hst n) as []). rewrite Hvv(*, Hcoh *) in Htmp. destruct Htmp as ((* Ev & *)_ & _). 
     assert (incl nonbyz_senders (w0 @ n).(from_set)) as Hincl.
     { hnf. intros nn Hnonbyz_nn%is_nonbyz_synonym. specialize (Hw0 _ Hnonbyz_nn n Hnonbyz_n).
       (* need to unify (value_bft nn) with v *)
       (* TODO this step is repeating! *)
       pick submitted_value_persistent as_ Hvv' by_ (pose proof (Htrace0 nn) as []). rewrite <- Ew0 in Hvv'.
       pose proof (Hstart _ Hnonbyz_nn) as Hvn'. saturate_assumptions! in_ Hvv'.
-      pick inv_submit_mixin as_ Htmp by_ (pose proof (Hst nn) as []). rewrite Hvv', Hcoh in Htmp. destruct Htmp as (Ev' & _ & _). 
+      pick inv_submit_mixin as_ Htmp by_ (pose proof (Hst nn) as []). rewrite Hvv'(*, Hcoh *) in Htmp. destruct Htmp as ((* Ev' & *)_ & _). 
       pick inv_submitmsg_receive as_ Htmp by_ (pose proof (Hh2l _ Hw0) as []). 
-      unfold valid_submitmsg, inv_submitmsg_receive_ in Htmp. simpl in Htmp. rewrite Hvv, Ev' in Htmp.
+      unfold valid_submitmsg, inv_submitmsg_receive_ in Htmp. simpl in Htmp. rewrite Hvv(*, Ev' *) in Htmp.
       (* FIXME: maybe use ABCinv below? *)
       apply Htmp; auto using correct_sign_verify_ok, correct_sign_verify_ok_light. }
     unfold nonbyz_senders in Hincl. 
@@ -154,9 +154,10 @@ Definition confirmed_different_values n1 n2 w : Prop :=
 Definition confirmed_different_values' n1 n2 w : Prop :=
   Eval unfold nonbyz_confirmed in
   n1 <> n2 /\ nonbyz_confirmed n1 w /\ nonbyz_confirmed n2 w /\ 
-  (w @ n1).(submitted_value) = Some (value_bft n1) /\
-  (w @ n2).(submitted_value) = Some (value_bft n2) /\
-  value_bft n1 <> value_bft n2.
+  match (w @ n1).(submitted_value), (w @ n2).(submitted_value) with
+  | Some v1, Some v2 => v1 <> v2
+  | _, _ => False
+  end.
 
 Fact confirmed_different_values_strengthen n1 n2 w (Hr : reachable w) :
   confirmed_different_values n1 n2 w -> confirmed_different_values' n1 n2 w.
@@ -170,7 +171,7 @@ Proof.
   pick inv_submit_mixin as_ Hs2 by_ (pose proof (Hst n2) as []).
   hnf.
   destruct (submitted_value (w @ n1)) as [ v1 | ], (submitted_value (w @ n2)) as [ v2 | ]; try discriminate.
-  rewrite Hcoh in Hs1, Hs2. eqsolve.
+  (* rewrite Hcoh in Hs1, Hs2. *) eqsolve.
 Qed.
 
 (* end; not represented as an explicit state *)
@@ -190,18 +191,23 @@ Section Proof_of_Accountability.
 
   Local Tactic Notation "prepare" hyp(H) :=
     apply confirmed_different_values_strengthen in H; auto;
-    destruct H as (Hnneq & (Hnonbyz_n1 & Hconf1) & (Hnonbyz_n2 & Hconf2) & Hv1 & Hv2 & Hvneq); clear H.
+    destruct H as (Hnneq & (Hnonbyz_n1 & Hconf1) & (Hnonbyz_n2 & Hconf2) & Hvneq); clear H;
+    destruct (w @ n1).(submitted_value) as [ v1 | ] eqn:Hv1, (w @ n2).(submitted_value) as [ v2 | ] eqn:Hv2; try contradiction.
 
   (* well, using 4 packets instead of 2 is inevitable. *)
   (* TODO self messaging is kind of weird *)
-  Definition mutual_lightcerts b1 b2 b3 b4 := Eval cbn in
-    let f src dst b := (mkP src dst (LightConfirmMsg 
-      (value_bft src, (lightsig_combine (localState w src).(collected_lightsigs)))) b) in
-    (f n1 n1 b1 :: f n1 n2 b2 :: f n2 n1 b3 :: f n2 n2 b4 :: nil). 
+  Definition mutual_lightcerts v1 v2 b1 b2 b3 b4 := Eval cbn in
+    let f (bb : bool) src dst b := 
+      let: qq := if bb then v1 else v2 in (mkP src dst (LightConfirmMsg 
+      (qq, (lightsig_combine (localState w src).(collected_lightsigs)))) b) in
+    (f true n1 n1 b1 :: f true n1 n2 b2 :: f false n2 n1 b3 :: f false n2 n2 b4 :: nil). 
 
   Definition pkts_needed_in_round_1 pkts :=
     incl pkts (sentMsgs w) /\ Forall good_packet pkts /\
-    exists b1 b2 b3 b4, pkts = mutual_lightcerts b1 b2 b3 b4. 
+    exists v1 v2 b1 b2 b3 b4, 
+      (w @ n1).(submitted_value) = Some v1 /\
+      (w @ n2).(submitted_value) = Some v2 /\
+      pkts = mutual_lightcerts v1 v2 b1 b2 b3 b4. 
 
   Lemma round_1_pkts : exists pkts, pkts_needed_in_round_1 pkts.
   Proof.
@@ -213,7 +219,7 @@ Section Proof_of_Accountability.
     pose proof (Hc2 _ Hv2 Hconf2 n1) as (b3 & Hin3).
     pose proof (Hc2 _ Hv2 Hconf2 n2) as (b4 & Hin4).
     rewrite Hcoh in Hin1, Hin2, Hin3, Hin4. eexists. split_and?. 
-    3: exists b1, b2, b3, b4; reflexivity.
+    3: exists v1, v2, b1, b2, b3, b4; split_and?; try reflexivity.
     - hnf. simpl. intuition (subst; auto).
     - repeat constructor; auto.
   Qed.
@@ -223,11 +229,14 @@ Section Proof_of_Accountability.
   Hypotheses (Hround1 : pkts_needed_in_round_1 pkts).
 
   Definition round_1_end w' :=
-    incl (mutual_lightcerts true true true true) (sentMsgs w').
+    exists v1 v2, 
+      (w @ n1).(submitted_value) = Some v1 /\
+      (w @ n2).(submitted_value) = Some v2 /\
+      incl (mutual_lightcerts v1 v2 true true true true) (sentMsgs w').
 
   Fact round_1_end_suffcond w' (Hincl : incl (map receive_pkt pkts) (sentMsgs w')) :
     round_1_end w'.
-  Proof. hnf in Hround1. destruct Hround1 as (? & ? & (? & ? & ? & ? & ->)). auto. Qed.
+  Proof. hnf in Hround1 |- *. destruct Hround1 as (? & ? & (? & ? & ? & ? & ? & ? & -> & -> & ->)). eauto. Qed.
 
   (* at the same time as round 1 ends *)
   Definition round_2_start w' :=
@@ -242,8 +251,8 @@ Section Proof_of_Accountability.
     pose proof (reachable_by_trace Htrace0 H_w_reachable) as H_w0_reachable. rewrite <- Ew0 in H_w0_reachable.
     (* clear H_w_reachable. *) saturate. prepare Hstart.
 
-    hnf in Hw0 |- *.
-    unfold mutual_lightcerts in Hw0. rewrite <- Forall_forall, !Forall_cons_iff in Hw0. 
+    hnf in Hw0 |- *. destruct Hw0 as (v1' & v2' & Ev1' & Ev2' & Hw0). rewrite Hv1 in Ev1'. rewrite Hv2 in Ev2'. injection Ev1' as <-. injection Ev2' as <-.
+    unfold mutual_lightcerts in Hw0. hnf in Hw0. rewrite <- Forall_forall, !Forall_cons_iff in Hw0. 
     destruct Hw0 as (H11 & H12 & H21 & H22 & _).
     (* know that the combined lightsigs are good *)
     (* TODO this is tedious! *)
@@ -264,20 +273,20 @@ Section Proof_of_Accountability.
     pick conf_collected_lightsigs_persistent as_ Hls1 by_ (pose proof (Htrace0 n1) as []).
     pick conf_collected_lightsigs_persistent as_ Hls2 by_ (pose proof (Htrace0 n2) as []). (* also these two *)
     rewrite <- Ew0 in Hvv1, Hvv2, Hcc1, Hcc2, Hls1, Hls2. 
-    specialize (Hvv1 (value_bft n1)). specialize (Hvv2 (value_bft n2)). saturate_assumptions!.
+    specialize (Hvv1 v1). specialize (Hvv2 v2). saturate_assumptions!.
     rewrite Hvv1 in Hs1. rewrite Hcc1 in Hc1. rewrite Hvv2 in Hs2. rewrite Hcc2 in Hc2. rewrite Hls1 in *. rewrite Hls2 in *.
-    destruct Hs1 as (_ & Hs1 & _), Hs2 as (_ & Hs2 & _), Hsz1 as (Hsz1 & _), Hsz2 as (Hsz2 & _).
+    destruct Hs1 as ((*_ & *) Hs1 & _), Hs2 as ((*_ & *) Hs2 & _), Hsz1 as (Hsz1 & _), Hsz2 as (Hsz2 & _).
     apply light_signatures_valid_for_combine in Hs1, Hs2; auto.
     (* know that the lightcerts will not be rejected *)
-    let tac nn := assert (combined_verify (value_bft nn) (lightsig_combine (collected_lightsigs (w0 @ nn))))
+    let tac vv nn := assert (combined_verify vv (lightsig_combine (collected_lightsigs (w0 @ nn))))
       by (apply combine_correct; exists (from_set (w0 @ nn)); split_and?; auto; try congruence)
-    in tac n1; tac n2.
+    in tac v1 n1; tac v2 n2.
     let tac HH str := (let name := fresh "Hrcv" str in
       pick inv_lightconfirmmsg_receive as_ name by_ (pose proof (Hh2l _ HH) as []))
     in tac H11 ident:(_11); tac H12 ident:(_12); tac H21 ident:(_21); tac H22 ident:(_22).
     saturate_assumptions!. 
-    rewrite !lightcert_conflict_check_correct. unfold confirmed_different_values'. split_and?; auto. 
-    all: exists (value_bft n1), (value_bft n2); do 2 eexists; split_and?; try eassumption; auto.
+    rewrite !lightcert_conflict_check_correct. unfold confirmed_different_values'. rewrite Hvv1, Hvv2. split_and?; auto. 
+    all: exists v1, v2; do 2 eexists; split_and?; try eassumption; auto.
   Qed.
 
   End Round1.
@@ -288,11 +297,16 @@ Section Proof_of_Accountability.
   Hypothesis (H_w_reachable : reachable w) (Hstart : round_2_start n1 n2 w).
 
   Local Tactic Notation "prepare" hyp(H) :=
-    destruct H as ((Hnneq & (Hnonbyz_n1 & Hconf1) & (Hnonbyz_n2 & Hconf2) & Hv1 & Hv2 & Hvneq) & Hcheck1 & Hcheck2); clear H.
+    destruct H as ((Hnneq & (Hnonbyz_n1 & Hconf1) & (Hnonbyz_n2 & Hconf2) & Hvneq) & Hcheck1 & Hcheck2); clear H;
+    destruct (w @ n1).(submitted_value) as [ v1 | ] eqn:Hv1, (w @ n2).(submitted_value) as [ v2 | ] eqn:Hv2; try contradiction.
 
   Definition pkts_needed_in_round_2 pkts : Prop :=
-    pkts_multi_to_all 0 (* size does not matter here *) w (n1 :: n2 :: nil) pkts
-    (fun n => (ConfirmMsg (value_bft n, zip_from_sigs (w @ n)))) (fun _ _ => True). (* do not need extra predicate *)
+    match (w @ n1).(submitted_value), (w @ n2).(submitted_value) with
+    | Some v1, Some v2 =>
+      pkts_multi_to_all 0 (* size does not matter here *) w (n1 :: n2 :: nil) pkts
+      (fun n => (ConfirmMsg (if Address_eqdec n n1 then v1 else v2, zip_from_sigs (w @ n)))) (fun _ _ => True) (* do not need extra predicate *)
+    | _, _ => False
+    end.
 
   Lemma round_2_pkts : exists pkts, pkts_needed_in_round_2 pkts.
   Proof.
@@ -300,23 +314,23 @@ Section Proof_of_Accountability.
     exists (List.filter (fun p => 
       match p.(msg) with
       | ConfirmMsg _ =>
-        (negb (is_byz p.(src))) && (negb (is_byz p.(dst))) (* TODO maybe too general? *)
+        (Address_eqdec p.(src) n1 || Address_eqdec p.(src) n2) && (negb (is_byz p.(dst))) (* TODO maybe too general? *)
       | _ => false
       end) (sentMsgs w)).
     hnf. split_and?; auto using incl_filter, le_0_n.
     - repeat constructor; simpl; eqsolve. 
     - apply Forall_forall. intros [ s d [] b ] (Hin & Hcheck)%filter_In; simpl in Hcheck; try discriminate.
-      now rewrite andb_true_iff, !negb_true_iff in Hcheck.
+      autorewrite with booldec in Hcheck. hnf. intuition (subst; auto).
     - intros n Hor. simpl in Hor.
       apply and_wlog_r. 1: eqsolve. intros Hnonbyz_n. split; auto. intros nn Hnonbyz_nn.
       (* know that n1 and n2 must have sent ConfirmMsg *)
       pick inv_conf_confmsg as_ Hs1 by_ (pose proof (Hl2h _ Hnonbyz_n1) as []).
       pick inv_conf_confmsg as_ Hs2 by_ (pose proof (Hl2h _ Hnonbyz_n2) as []).
-      specialize (Hs1 (value_bft n1)). specialize (Hs2 (value_bft n2)).
-      saturate_assumptions. rewrite Hcoh in Hs1, Hs2.
-      pose proof (Hs1 nn) as []. pose proof (Hs2 nn) as []. 
-      setoid_rewrite filter_In. simpl. rewrite Hnonbyz_n, Hnonbyz_nn. simpl.
-      destruct Hor as [ <- | [ <- | [] ] ]; eauto.
+      saturate_assumptions!. rewrite Hcoh in Hs1, Hs2.
+      destruct Hs1 as (b1 & Hs1), Hs2 as (b2 & Hs2). 
+      destruct Hor as [ <- | [ <- | [] ] ]; destruct_eqdec as_ ?; try congruence.
+      1: exists b1. 2: exists b2.
+      all: autorewrite with booldec; simpl; autorewrite with booldec; intuition.
   Qed.
 
   (* universally quantified *)
@@ -324,19 +338,24 @@ Section Proof_of_Accountability.
   Hypotheses (Hround2 : pkts_needed_in_round_2 pkts).
 
   Definition round_2_end w' :=
-    forall n, is_byz n = false ->
-      In (mkP n1 n (ConfirmMsg (value_bft n1, zip_from_sigs (w @ n1))) true) (sentMsgs w') /\
-      In (mkP n2 n (ConfirmMsg (value_bft n2, zip_from_sigs (w @ n2))) true) (sentMsgs w').
+    match (w @ n1).(submitted_value), (w @ n2).(submitted_value) with
+    | Some v1, Some v2 =>
+      forall n, is_byz n = false ->
+        In (mkP n1 n (ConfirmMsg (v1, zip_from_sigs (w @ n1))) true) (sentMsgs w') /\
+        In (mkP n2 n (ConfirmMsg (v2, zip_from_sigs (w @ n2))) true) (sentMsgs w')
+    | _, _ => False
+    end.
 
   Fact round_2_end_suffcond w' (Hincl : incl (map receive_pkt pkts) (sentMsgs w')) :
     round_2_end w'.
   Proof.
+    hnf in Hround2 |- *. prepare Hstart.
     hnf in Hround2. pick ConfirmMsg as_ HH by_ (destruct_and? Hround2).
-    hnf. intros n Hnonbyz_n. split; apply Hincl.
+    intros n Hnonbyz_n. split; apply Hincl.
     1: specialize (HH n1 ltac:(simpl; tauto)).
     2: specialize (HH n2 ltac:(simpl; tauto)).
     all: destruct_and? HH; saturate_assumptions!.
-    all: destruct_exists; match goal with H : In _ pkts |- _ => apply (in_map receive_pkt) in H; now simpl in H end.
+    all: destruct_exists; match goal with H : In _ pkts |- _ => apply (in_map receive_pkt) in H; simpl in H; destruct_eqdec in_ H0 as_ ?; congruence end.
   Qed.
 
   Lemma accountability_suffcond w0 l0 (Htrace0 : system_trace w l0) (Ew0 : w0 = final_world w l0) 
@@ -344,9 +363,8 @@ Section Proof_of_Accountability.
   Proof.
     saturate. 
     pose proof (reachable_by_trace Htrace0 H_w_reachable) as H_w0_reachable. rewrite <- Ew0 in H_w0_reachable.
-    (* clear H_w_reachable. *) saturate. prepare Hstart.
+    (* clear H_w_reachable. *) saturate. hnf in Hw0. prepare Hstart.
 
-    hnf in Hw0.
     (* TODO repeating *)
     pick inv_submit_mixin as_ Hs1 by_ (pose proof (Hst n1) as []).
     pick inv_submit_mixin as_ Hs2 by_ (pose proof (Hst n2) as []).
@@ -357,7 +375,7 @@ Section Proof_of_Accountability.
     pick inv_conf_correct as_ Hc1 by_ (pose proof (Hst n1) as []).
     pick inv_conf_correct as_ Hc2 by_ (pose proof (Hst n2) as []).
     rewrite Hv1 in Hs1. rewrite Hconf1 in Hc1. rewrite Hv2 in Hs2. rewrite Hconf2 in Hc2. 
-    destruct Hs1 as (_ & _ & Hs1), Hs2 as (_ & _ & Hs2), Hsz1 as (_ & Hsz1), Hsz2 as (_ & Hsz2).
+    destruct Hs1 as ((*_ & *)_ & Hs1), Hs2 as ((*_ & *)_ & Hs2), Hsz1 as (_ & Hsz1), Hsz2 as (_ & Hsz2).
     remember (List.filter (fun n' : Address => in_dec Address_eqdec n' (w @ n1).(from_set)) (w @ n2).(from_set)) as l eqn:El.
     hnf. exists l. do 2 (try split_and).
     - subst l. auto using NoDup_filter.

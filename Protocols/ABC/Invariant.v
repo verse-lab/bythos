@@ -8,15 +8,15 @@ From ABCProtocol.Properties Require Import Invariant.
 From RecordUpdate Require Import RecordUpdate.
 From stdpp Require Import tactics. (* anyway *)
 
-Module ACInvariant (A : NetAddr) (Sn : Signable) (V : SignableValue Sn) (VBFT : ValueBFT A Sn V) 
+Module ACInvariant (A : NetAddr) (Sn : Signable) (V : SignableValue Sn) (* (VBFT : ValueBFT A Sn V) *)
   (BTh : ByzThreshold A) (BSett : ByzSetting A)
   (P : PKI A Sn) (TSS0 : ThresholdSignatureSchemePrim A Sn with Definition thres := BTh.t0) (* ! *)
   (TSS : ThresholdSignatureScheme A Sn with Module TSSPrim := TSS0).
 
-Import A V VBFT BTh BSett P TSS.
+Import A V (* VBFT *) BTh BSett P TSS.
 Import ssrbool. (* anyway *)
 
-Module Export ACN := ACNetwork A Sn V VBFT BTh BSett P TSS0 TSS.
+Module Export ACN := ACNetwork A Sn V (* VBFT *) BTh BSett P TSS0 TSS.
 
 Definition id_coh w : Prop := forall n, (w @ n).(id) = n.
 
@@ -52,7 +52,7 @@ Definition inv_rcerts_mixin st : Prop :=
 Definition inv_submit_mixin st : Prop :=
   match st.(submitted_value) with
   | Some v => 
-    v = value_bft st.(id) /\
+    (* v = value_bft st.(id) /\ *)
     light_signatures_valid v (zip_from_lsigs st) /\
     certificate_valid v (zip_from_sigs st)
   | None => st.(from_set) = nil
@@ -311,7 +311,7 @@ Module Export SMT <: StateMntTemplate A M BTh P0 PSOp ACP Ns.
 
 (* only records how the state changes *)
 Inductive state_mnt_type_ (st : State) : Type :=
-  | Msubmit : st.(submitted_value) = None -> state_mnt_type_ st
+  | Msubmit : forall (v : Value), st.(submitted_value) = None -> state_mnt_type_ st
   | Mconf : forall v, st.(submitted_value) = Some v ->
     (* conf may be already true *) state_mnt_type_ st
   | Mfrom_in : forall src v lsig sig, 
@@ -336,8 +336,8 @@ Definition state_mnt_type := state_mnt_type_.
 
 Definition state_mnt (st : State) (s : state_mnt_type st) : State :=
   match s with
-  | Msubmit _ _ =>
-    (st <| submitted_value := Some (value_bft st.(id)) |>
+  | Msubmit _ v _ =>
+    (st <| submitted_value := Some v |>
         <| msg_buffer := nil |>)
   | Mconf _ _ _ =>
     (st <| conf := true |>)
@@ -369,9 +369,9 @@ Definition confirmmsg_bcast st :=
 Definition psent_effect (st : State) (s : state_mnt_type st) (n : Address) (psent : PacketSoup) (* (other_pkts : list Packet) *) : Prop :=
   Eval unfold confirmmsg_bcast in
   match s with
-  | Msubmit _ _ =>
+  | Msubmit _ v _ =>
     let: n := st.(id) in
-    let: v := value_bft n in
+    (* let: v := value_bft n in *)
     let: pkts := broadcast n (SubmitMsg v (light_sign v (lightkey_map n)) (sign v (key_map n))) in
     incl pkts psent
   | Mconf _ v _ =>
@@ -500,11 +500,11 @@ Fact inv_buffer_received_only q w w' (Hstep : system_step q w w')
     /\ ((w' @ n).(submitted_value) -> (w' @ n).(msg_buffer) = nil)
     /\ submitted_value_persistent (w @ n) (w' @ n).
 Proof.
-  destruct q as [ | | n t | ]. 
+  destruct q as [ | | n [ v0 ] | ]. 
   1,2,4: eapply inv_buffer_received_only_pre; try eassumption; auto.
   unfold inv_buffer_received, submitted_value_persistent in *. intros n0.  
   inversion_step' Hstep; intros; try discriminate.
-  revert Hq. intros [= <-]. destruct t1. 
+  revert Hq. intros [= <-]. subst.
   unfold upd.
   destruct (Address_eqdec _ _) as [ <- | Hneq ].
   2: split_and?; auto; try apply H; intros; rewrite In_sendout; right; now apply H.
@@ -515,7 +515,7 @@ Proof.
   destruct ov as [ v | ].
   1: simplify_eq; simpl; split_and?; auto; intros; rewrite sendout0; now apply Hrcv.  
   destruct (fold_right _ _ _) as (st_, ps_) eqn:Efr in E. simplify_eq.
-  change (set _ _ (set _ _ _)) with (Node n conf (Some (value_bft n)) from lsigs sigs rlcerts rcerts nil) in Efr. (* the extensionality is great *)
+  change (set _ _ (set _ _ _)) with (Node n conf (Some v0) from lsigs sigs rlcerts rcerts nil) in Efr. (* the extensionality is great *)
   (* these are what we need to maintain in the induction proof *)
   enough (id st' = n /\ st'.(msg_buffer) = nil /\ st'.(submitted_value)) as (<- & -> & _).
   1: simpl; split_and?; auto; try discriminate; try contradiction.
@@ -617,12 +617,12 @@ Fact state_mnt_sound q w w' (Hstep : system_step q w w') (Hw : reachable w) :
   forall n, exists l : state_mnt_type_list (w @ n) (w' @ n),
     psent_effect_star n (sentMsgs w') l /\ node_state_invariants_pre (w @ n) (w' @ n).
 Proof with (try (now exists (MNTnil _))).
-  destruct q as [ | | n t | ]. 
+  destruct q as [ | | n [ v0 ] | ]. 
   1,2,4: intros n; eapply state_mnt_sound_pre_pre with (n:=n) in Hstep; try eassumption; auto;
     destruct Hstep as (? & ? & ? & ?); eauto.
   intros n0.
   inversion_step' Hstep; clear Hstep; intros; try discriminate.
-  revert Hq. intros [= <-]. destruct t1.
+  revert Hq. intros [= <-]. subst.
   unfold upd.
   destruct (Address_eqdec _ _) as [ <- | Hneq ]...
   pose proof (id_coh_always_holds Hw) as Hcoh.
@@ -631,7 +631,7 @@ Proof with (try (now exists (MNTnil _))).
   simpl in E.
   destruct ov. 1: simplify_eq...
   destruct (fold_right _ _ _) as (st_, ps_) eqn:Efr in E. simplify_eq.
-  change (set _ _ (set _ _ _)) with (Node n conf (Some (value_bft n)) from lsigs sigs rlcerts rcerts nil) in Efr.
+  change (set _ _ (set _ _ _)) with (Node n conf (Some v0) from lsigs sigs rlcerts rcerts nil) in Efr.
   remember (Node _ _ _ _ _ _ _ _ _) as stt eqn:Es in Efr.
   (* time to do induction *)
   match goal with |- exists (_ : _), (psent_effect_star _ ?pp _) /\ _ =>
@@ -658,7 +658,7 @@ Proof with (try (now exists (MNTnil _))).
       1: naive_solver. (* interesting case; depend on Hrcv *)
       destruct HH, HH0. hnf in *. state_invariants_pre_solver. }
   destruct Hgoal as (l & Ha & HH).
-  unshelve eexists. 1: analyze_step Msubmit ltac:(idtac); try apply MNTnil; try reflexivity. 1: apply l.
+  unshelve eexists. 1: analyze_step Msubmit ltac:(idtac); try apply MNTnil; try reflexivity. 1: exact v0. 1: apply l.
   simpl; local_solver.
   (* TODO still need some cleaning! *)
   destruct HH. hnf in *. constructor; auto.
@@ -1028,7 +1028,7 @@ Proof.
   simpl.
   pose proof (id_coh_always_holds Hw) as Hcoh.
   inversion_step' Hstep; clear Hstep; intros; try discriminate.
-  revert Hq. intros [= <-]. destruct t1.
+  revert Hq. intros [= <-]. destruct t as [ v0 ]. subst.
   pose proof (inv_buffer_received_always_holds Hw Hnonbyz) as Hrcv. hnf in Hrcv. 
   destruct_localState w n as_ [ ? conf ov from lsigs sigs rlcerts rcerts buffer ] eqn_ Est. simpl_state.
   simpl in E.
@@ -1036,10 +1036,10 @@ Proof.
   1:{ rewrite sendout0. intros Hq. hnf in Hq |- *. intros p Hin. specialize (Hq _ Hin). 
     unfold inv_submitmsg_receive in Hq |- *. now rewrite <- Est, -> upd_intact. }
   destruct (fold_right _ _ _) as (st_, ps_) eqn:Efr in E. simplify_eq.
-  change (set _ _ (set _ _ _)) with (Node n conf (Some (value_bft n)) from lsigs sigs rlcerts rcerts nil) in Efr.
+  change (set _ _ (set _ _ _)) with (Node n conf (Some v0) from lsigs sigs rlcerts rcerts nil) in Efr.
   (* time to do induction *)
   assert (st'.(id) = n /\ (* required by psent_mnt_sound_pre_pre *)
-    st'.(submitted_value) = Some (value_bft n) /\ (* required at the end *)
+    st'.(submitted_value) = Some v0 /\ (* required at the end *)
     Forall (fun '(src, msg) => state_effect_recv_ src msg st') buffer /\
     Forall (fun p => p.(consumed) = false) ps_ /\ (* required to do fresh skip *)
     exists l : list psent_mnt_type, 
@@ -1068,7 +1068,7 @@ Proof.
       simpl in Hgoal. unfold state_effect_recv in Hgoal. destruct Hgoal as (l0 & Ha0 & ((_ & Hre0) & HH0)). rewrite !upd_refl in Hre0.
       (* well, this is inevitable *)
       split.
-      1:{ constructor; auto. revert Hre. apply Forall_impl. intros (src0, [ v0 lsig0 sig0 | (v0, cs0) | (v0, nsigs0) ]) Htmp.
+      1:{ constructor; auto. revert Hre. apply Forall_impl. intros (src0, [ v0_ lsig0 sig0 | (v0_, cs0) | (v0_, nsigs0) ]) Htmp.
         all: simpl in Htmp |- *; intros; try (rewrite Hvb in Htmp; rewrite Hva); intros.
         all: hnf in *; try is_true_rewrite; intuition.
         destruct (ACP.conf stb); saturate_assumptions; try discriminate. intuition. }
@@ -1103,7 +1103,7 @@ Proof.
     - specialize (Hq _ Hin). unfold upd. destruct p as [ src dst msg used ]. simpl in Hq |- *.
       destruct (Address_eqdec n dst) as [ <- | ]; auto.
       rewrite Est in Hq. hnf in Hq |- *. simpl in Hq |- *. rewrite Hv.
-      destruct msg as [ v0 lsig0 sig0 | | ], used; auto.
+      destruct msg as [ v0_ lsig0 sig0 | | ], used; auto.
       saturate_assumptions. eapply Forall_forall in Hq; try eassumption. simpl in Hq. now rewrite Hv in Hq. }
   match goal with |- context[SubmitMsg ?v ?lsig ?sig] =>
     let m := constr:(SubmitMsg v lsig sig) in

@@ -2,13 +2,13 @@ From Coq Require Import List.
 From Coq Require ssrbool.
 Import (coercions) ssrbool.
 From ABCProtocol.Structures Require Export Types.
-
+(*
 Module Type ValueBFT (Export A : NetAddr) (Sn : Signable) (Export V : SignableValue Sn).
 
 Parameter value_bft : Address -> Value.
 
 End ValueBFT.
-
+*)
 Module Type ACDataTypes (A : NetAddr) (Sn : Signable) (V : SignableValue Sn) (P : PKI A Sn) (TSS : ThresholdSignatureScheme A Sn).
 
 Import A V P TSS.

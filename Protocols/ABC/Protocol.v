@@ -6,7 +6,7 @@ From ABCProtocol.Protocols.ABC Require Export Types.
 
 From RecordUpdate Require Import RecordUpdate.
 
-Module Type ACProtocol (A : NetAddr) (Sn : Signable) (V : SignableValue Sn) (VBFT : ValueBFT A Sn V) 
+Module Type ACProtocol (A : NetAddr) (Sn : Signable) (V : SignableValue Sn) (* (VBFT : ValueBFT A Sn V) *)
   (BTh : ByzThreshold A)
   (P : PKI A Sn) (TSS0 : ThresholdSignatureSchemePrim A Sn with Definition thres := BTh.t0) (* ! *)
   (TSS : ThresholdSignatureScheme A Sn with Module TSSPrim := TSS0)
@@ -14,10 +14,10 @@ Module Type ACProtocol (A : NetAddr) (Sn : Signable) (V : SignableValue Sn) (VBF
   (CC : CertCheckers A Sn V P TSS ACDT) (M : ACMessage A Sn V P TSS ACDT)
   (P0 : SimplePacket A M) <: Protocol A M P0 BTh.
 
-Import A V VBFT BTh P TSS ACDT CC M P0.
+Import A V (* VBFT *) BTh P TSS ACDT CC M P0.
 
 Inductive InternalTransition_ :=
-  | SubmitIntTrans.
+  | SubmitIntTrans (v : Value).
 
 Definition InternalTransition := InternalTransition_.
 (* TODO 
@@ -205,11 +205,11 @@ Definition procMsgWithCheck (st : State) (src : Address) (msg : Message) : State
 Definition procInt (st : State) (tr : InternalTransition) :=
   let: Node n cf ov from lsigs sigs rlcerts rcerts buffer := st in
   match tr with
-  | SubmitIntTrans => 
+  | SubmitIntTrans vthis => 
     (* making it happen at most once should make things easier *)
     match ov with
     | None =>
-      let: vthis := value_bft n in
+      (* let: vthis := value_bft n in *)
       let: ps := broadcast n 
         (SubmitMsg vthis (light_sign vthis (lightkey_map n)) (sign vthis (key_map n))) in
       let: st_start := st <| submitted_value := Some vthis |> <| msg_buffer := nil |> in
@@ -226,14 +226,14 @@ Definition procInt (st : State) (tr : InternalTransition) :=
 
 End ACProtocol.
 
-Module ACProtocolImpl (A : NetAddr) (Sn : Signable) (V : SignableValue Sn) (VBFT : ValueBFT A Sn V) 
+Module ACProtocolImpl (A : NetAddr) (Sn : Signable) (V : SignableValue Sn) (* (VBFT : ValueBFT A Sn V) *)
   (BTh : ByzThreshold A)
   (P : PKI A Sn) (TSS0 : ThresholdSignatureSchemePrim A Sn with Definition thres := BTh.t0) (* ! *)
   (TSS : ThresholdSignatureScheme A Sn with Module TSSPrim := TSS0)
   (ACDT : ACDataTypes A Sn V P TSS) 
   (CC : CertCheckers A Sn V P TSS ACDT) (M : ACMessage A Sn V P TSS ACDT)
-  (P0 : SimplePacket A M) <: Protocol A M P0 BTh <: ACProtocol A Sn V VBFT BTh P TSS0 TSS ACDT CC M P0.
+  (P0 : SimplePacket A M) <: Protocol A M P0 BTh <: ACProtocol A Sn V (* VBFT *) BTh P TSS0 TSS ACDT CC M P0.
 
-Include ACProtocol A Sn V VBFT BTh P TSS0 TSS ACDT CC M P0.
+Include ACProtocol A Sn V (* VBFT *) BTh P TSS0 TSS ACDT CC M P0.
 
 End ACProtocolImpl.
