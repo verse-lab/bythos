@@ -19,8 +19,7 @@ Parameter value_bft : Address -> Round -> Value.
 
 End ValueBFT.
 
-Module Type RBMessage (A : NetAddr) (R : Round)
-  (V : Value (* not for signing here, though *)) <: MessageType.
+Module Type RBMessage (A : NetAddr) (R : Round) (V : Value) <: MessageType.
 
 Import A R V.
 
