@@ -337,6 +337,7 @@ Module Type Value.
 
 Parameter Value : Set.
 Parameter Value_eqdec : forall (v1 v2 : Value), {v1 = v2} + {v1 <> v2}.
+Parameter Value_inhabitant : Value.     (* should be benign *)
 
 End Value.
 

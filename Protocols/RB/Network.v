@@ -21,7 +21,7 @@ Definition byz_constraints (m : Message) (w : World) : Prop :=
 End RBAdversary.
 
 Module RBNetwork (A : NetAddr) (R : Round) (V : Value) (VBFT : ValueBFT A R V) 
-  (BTh : ClassicByzThreshold A) (BSett : RestrictedByzSetting A BTh).
+  (BTh : ClassicByzThreshold A) (BSett : ByzSetting A).
 
 Import A R V VBFT BTh BSett.
 
