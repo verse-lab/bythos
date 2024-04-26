@@ -25,23 +25,27 @@ Module RBACAdversary (A : NetAddr) (R : Round) (ARP : AddrRoundPair A R) (Sn : S
 
 Import A R ARP V VBFT BTh P TSS0 TSS ACDT CC M Pk RBACP Ns.
 
+(* auxiliary operations *)
+Definition stmap_inl (stmap : StateMap) : RBNs.StateMap :=
+  fun n => (stmap n).(stRB).
+
+Definition stmap_inr (stmap : StateMap) : ACNs.StateMap :=
+  fun n => (stmap n).(stAC).
+
+Definition world_inl (w : World) : RBNs.World :=
+  RBNs.mkW (stmap_inl (localState w)) (pkts_filter_inl (sentMsgs w)).
+
+Definition world_inr (w : World) : ACNs.World :=
+  ACNs.mkW (stmap_inr (localState w)) (pkts_filter_inr (sentMsgs w)).
+
 (* instantiate inside *)
 Module ACAdv := ACAdversary A Sn V BTh BSett P TSS0 TSS ACDT CC ACM ACPk ACP ACNs.
-
-(* this seems to be inevitable *)
-Fixpoint check_and_map (psent : list Packet) : list ACPk.Packet :=
-  match psent with
-  | nil => nil
-  | (mkP src dst msg used) :: psent' =>
-    (match msg with inr msg' => (ACPk.mkP src dst msg' used) :: nil | _ => nil end) ++
-    check_and_map psent'
-  end.
 
 Definition byz_constraints (m : Message) (w : World) : Prop :=
   match m with
   | inl mRB => True
   | inr mAC => ACAdv.byz_constraints mAC (ACNs.mkW (ACNs.localState ACNs.initWorld) (* this part does not contribute *)
-    (check_and_map (sentMsgs w)))
+    (pkts_filter_inr (sentMsgs w)))
   end.
 
 End RBACAdversary.

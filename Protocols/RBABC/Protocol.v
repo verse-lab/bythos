@@ -22,12 +22,29 @@ Module Type RBACProtocol (A : NetAddr) (R : Round) (ARP : AddrRoundPair A R) (Sn
 
 Import A R ARP V VBFT BTh P TSS ACDT CC M Pk.
 
+(* auxiliary operations *)
 (* TODO this should be generic? *)
 Definition pkt_inl (p : RBPk.Packet) : Packet :=
   mkP (RBPk.src p) (RBPk.dst p) (inl (RBPk.msg p)) (RBPk.consumed p).
 
 Definition pkt_inr (p : ACPk.Packet) : Packet :=
   mkP (ACPk.src p) (ACPk.dst p) (inr (ACPk.msg p)) (ACPk.consumed p).
+
+Fixpoint pkts_filter_inl (psent : list Packet) : list RBPk.Packet :=
+  match psent with
+  | nil => nil
+  | (mkP src dst msg used) :: psent' =>
+    (match msg with inl msg' => (RBPk.mkP src dst msg' used) :: nil | _ => nil end) ++
+    pkts_filter_inl psent'
+  end.
+
+Fixpoint pkts_filter_inr (psent : list Packet) : list ACPk.Packet :=
+  match psent with
+  | nil => nil
+  | (mkP src dst msg used) :: psent' =>
+    (match msg with inr msg' => (ACPk.mkP src dst msg' used) :: nil | _ => nil end) ++
+    pkts_filter_inr psent'
+  end.
 
 Definition InternalTransition := RBP.InternalTransition.
 
