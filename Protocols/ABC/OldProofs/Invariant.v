@@ -4,7 +4,7 @@ Import (coercions) ssrbool.
 Import ssreflect.SsrSyntax.
 From ABCProtocol.Protocols.ABC.OldProofs Require Export Network.
 
-Module ACInvariant (A : NetAddr) (Sn : Signable) (V : Value Sn) (VBFT : ValueBFT A Sn V) 
+Module ACInvariant (A : NetAddr) (Sn : Signable) (V : SignableValue Sn) (VBFT : ValueBFT A Sn V) 
   (BTh : ByzThreshold A) (BSett : ByzSetting A)
   (P : PKI A Sn) (TSS0 : ThresholdSignatureSchemePrim A Sn with Definition thres := BTh.t0) (* ! *)
   (TSS : ThresholdSignatureScheme A Sn with Module TSSPrim := TSS0).

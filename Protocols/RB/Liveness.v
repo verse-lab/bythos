@@ -7,7 +7,7 @@ From ABCProtocol.Protocols.RB Require Export Safety.
 From RecordUpdate Require Import RecordUpdate.
 From stdpp Require Import tactics. (* anyway *)
 
-Module RBLiveness (A : NetAddr) (R : RBTag) (V : Value) (VBFT : ValueBFT A R V)
+Module RBLiveness (A : NetAddr) (R : Round) (V : Value) (VBFT : ValueBFT A R V)
   (BTh : ClassicByzThreshold A) (BSett : RestrictedByzSetting A BTh).
 
 Import A R V VBFT BTh BSett.
@@ -344,7 +344,7 @@ Section Proof_of_Validity.
     destruct (voted _ _) as [ v' | ] eqn:Ev' in |- *.
     - (* use vote_integrity *)
       f_equal.
-      pose proof (vote_integrity_is_safety H_w0_reachable) as Htmp. now eapply (Htmp n src) in Ev'; try eassumption.
+      pose proof (vote_integrity_always_holds H_w0_reachable) as Htmp. now eapply (Htmp n src) in Ev'; try eassumption.
     - (* prove contradiction using the message size *)
       (* TODO repeating *)
       pick voted_none as_ Hp by_ (pose proof (Hst n) as []). apply Hp with (v:=value_bft src r) in Ev'.

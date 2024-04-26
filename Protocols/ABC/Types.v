@@ -3,21 +3,13 @@ From Coq Require ssrbool.
 Import (coercions) ssrbool.
 From ABCProtocol.Structures Require Export Types.
 
-Module Type Value (Sn : Signable).
-
-Parameter Value : Set.
-Parameter Value_eqdec : forall (v1 v2 : Value), {v1 = v2} + {v1 <> v2}.
-Declare Instance VSn : Sn.signable Value.
-
-End Value.
-
-Module Type ValueBFT (Export A : NetAddr) (Sn : Signable) (Export V : Value Sn).
+Module Type ValueBFT (Export A : NetAddr) (Sn : Signable) (Export V : SignableValue Sn).
 
 Parameter value_bft : Address -> Value.
 
 End ValueBFT.
 
-Module Type ACDataTypes (A : NetAddr) (Sn : Signable) (V : Value Sn) (P : PKI A Sn) (TSS : ThresholdSignatureScheme A Sn).
+Module Type ACDataTypes (A : NetAddr) (Sn : Signable) (V : SignableValue Sn) (P : PKI A Sn) (TSS : ThresholdSignatureScheme A Sn).
 
 Import A V P TSS.
 
@@ -40,14 +32,14 @@ Definition LightCertificate_eqdec : forall (c1 c2 : LightCertificate), {c1 = c2}
 
 End ACDataTypes.
 
-Module ACDataTypesImpl (A : NetAddr) (Sn : Signable) (V : Value Sn) (P : PKI A Sn) (TSS : ThresholdSignatureScheme A Sn)
+Module ACDataTypesImpl (A : NetAddr) (Sn : Signable) (V : SignableValue Sn) (P : PKI A Sn) (TSS : ThresholdSignatureScheme A Sn)
   <: ACDataTypes A Sn V P TSS.
 
 Include ACDataTypes A Sn V P TSS.
 
 End ACDataTypesImpl.
 
-Module Type CertCheckers (A : NetAddr) (Sn : Signable) (V : Value Sn) (P : PKI A Sn) (TSS : ThresholdSignatureScheme A Sn)
+Module Type CertCheckers (A : NetAddr) (Sn : Signable) (V : SignableValue Sn) (P : PKI A Sn) (TSS : ThresholdSignatureScheme A Sn)
   (ACDT : ACDataTypes A Sn V P TSS).
 
 Import A V P TSS ACDT.
@@ -74,7 +66,7 @@ Axiom genproof_correct :
 
 End CertCheckers.
 
-Module CertCheckersImpl (A : NetAddr) (Sn : Signable) (V : Value Sn) (P : PKI A Sn) (TSS : ThresholdSignatureScheme A Sn)
+Module CertCheckersImpl (A : NetAddr) (Sn : Signable) (V : SignableValue Sn) (P : PKI A Sn) (TSS : ThresholdSignatureScheme A Sn)
   (ACDT : ACDataTypes A Sn V P TSS) <: CertCheckers A Sn V P TSS ACDT.
 
 Import A V P TSS ACDT.
@@ -239,7 +231,7 @@ Qed.
 
 End CertCheckersImpl.
 
-Module Type ACMessage (A : NetAddr) (Sn : Signable) (V : Value Sn) (P : PKI A Sn) (TSS : ThresholdSignatureScheme A Sn)
+Module Type ACMessage (A : NetAddr) (Sn : Signable) (V : SignableValue Sn) (P : PKI A Sn) (TSS : ThresholdSignatureScheme A Sn)
   (ACDT : ACDataTypes A Sn V P TSS) <: MessageType.
 
 Import A V P TSS ACDT.
@@ -260,7 +252,7 @@ Qed.
 
 End ACMessage.
 
-Module ACMessageImpl (A : NetAddr) (Sn : Signable) (V : Value Sn) (P : PKI A Sn) (TSS : ThresholdSignatureScheme A Sn)
+Module ACMessageImpl (A : NetAddr) (Sn : Signable) (V : SignableValue Sn) (P : PKI A Sn) (TSS : ThresholdSignatureScheme A Sn)
   (ACDT : ACDataTypes A Sn V P TSS) <: MessageType <: ACMessage A Sn V P TSS ACDT.
 
 Include ACMessage A Sn V P TSS ACDT.

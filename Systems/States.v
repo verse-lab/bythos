@@ -62,6 +62,14 @@ Global Tactic Notation "destruct_localState" ident(w) ident(n) "as_" simple_intr
   let E := fresh "E" in
   (destruct_localState w n as_ pat eqn_ E); clear E.
 
+(* ask: can a faulty node produce something with type A, which meets some requirement P, 
+    by just using what is in the world? *)
+(* do not really make sense to give a proof saying that if produ_check holds, then P holds.
+    just for proving *)
+(* can be used to describe the adversary capability in the Dolev-Yao style *)
+Class producible (A : Type) (P : A -> Prop) :=
+  produ_check : World -> A -> Prop.
+
 End NetState.
 
 Module NetStateImpl (Export A : NetAddr) (Export M : MessageType) 

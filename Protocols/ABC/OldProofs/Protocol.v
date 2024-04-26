@@ -4,7 +4,7 @@ Import (coercions) ssrbool.
 From ABCProtocol.Systems Require Export Protocol.
 From ABCProtocol.Protocols.ABC Require Export Types.
 
-Module Type ACProtocol (A : NetAddr) (Sn : Signable) (V : Value Sn) (VBFT : ValueBFT A Sn V) 
+Module Type ACProtocol (A : NetAddr) (Sn : Signable) (V : SignableValue Sn) (VBFT : ValueBFT A Sn V) 
   (BTh : ByzThreshold A)
   (P : PKI A Sn) (TSS0 : ThresholdSignatureSchemePrim A Sn with Definition thres := BTh.t0) (* ! *)
   (TSS : ThresholdSignatureScheme A Sn with Module TSSPrim := TSS0)
@@ -217,7 +217,7 @@ Definition procInt (st : State) (tr : InternalTransition) :=
 
 End ACProtocol.
 
-Module ACProtocolImpl (A : NetAddr) (Sn : Signable) (V : Value Sn) (VBFT : ValueBFT A Sn V) 
+Module ACProtocolImpl (A : NetAddr) (Sn : Signable) (V : SignableValue Sn) (VBFT : ValueBFT A Sn V) 
   (BTh : ByzThreshold A)
   (P : PKI A Sn) (TSS0 : ThresholdSignatureSchemePrim A Sn with Definition thres := BTh.t0) (* ! *)
   (TSS : ThresholdSignatureScheme A Sn with Module TSSPrim := TSS0)

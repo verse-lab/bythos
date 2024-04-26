@@ -6,7 +6,7 @@ From ABCProtocol.Protocols.PB Require Export Types.
 
 From RecordUpdate Require Import RecordUpdate.
 
-Module Type PBProtocol (A : NetAddr) (R : PBTag) (Sn : Signable) (V : Value Sn) (Pf : PBProof Sn) (VBFT : ValueBFT A R Sn V Pf) 
+Module Type PBProtocol (A : NetAddr) (R : Round) (Sn : Signable) (V : Value) (Pf : PBProof Sn) (VBFT : ValueBFT A R Sn V Pf) 
   (BTh : ClassicByzThreshold A)
   (TSS0 : ThresholdSignatureSchemePrim A Sn with Definition thres := BTh.t0) (* ! *)
   (TSS : ThresholdSignatureScheme A Sn with Module TSSPrim := TSS0)
@@ -122,7 +122,7 @@ Definition procMsgWithCheck (st : State) (src : Address) (msg : Message) : State
 
 End PBProtocol.
 
-Module PBProtocolImpl (A : NetAddr) (R : PBTag) (Sn : Signable) (V : Value Sn) (Pf : PBProof Sn) (VBFT : ValueBFT A R Sn V Pf) 
+Module PBProtocolImpl (A : NetAddr) (R : Round) (Sn : Signable) (V : Value) (Pf : PBProof Sn) (VBFT : ValueBFT A R Sn V Pf) 
   (BTh : ClassicByzThreshold A)
   (TSS0 : ThresholdSignatureSchemePrim A Sn with Definition thres := BTh.t0) (* ! *)
   (TSS : ThresholdSignatureScheme A Sn with Module TSSPrim := TSS0)

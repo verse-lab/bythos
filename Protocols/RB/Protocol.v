@@ -6,8 +6,7 @@ From ABCProtocol.Protocols.RB Require Export Types.
 
 From RecordUpdate Require Import RecordUpdate.
 
-Module Type RBProtocol (A : NetAddr) (R : RBTag) (V : Value)
-  (VBFT : ValueBFT A R V) 
+Module Type RBProtocol (A : NetAddr) (R : Round) (V : Value) (VBFT : ValueBFT A R V) 
   (* although the fraction 1/3 will not be used in the protocol, 
       this protocol only makes sense with t0 being N/3 ...
       use module type to tell this restriction *)
@@ -15,11 +14,13 @@ Module Type RBProtocol (A : NetAddr) (R : RBTag) (V : Value)
   (P : SimplePacket A M) <: Protocol A M P BTh.
 
 Import A R V VBFT BTh M P.
-
+(*
 Inductive InternalTransition_ :=
   | SendAction (r : Round).
 
 Definition InternalTransition := InternalTransition_.
+*)
+Definition InternalTransition := Round.
 
 Definition AddrRdPair_eqdec : forall (ar1 ar2 : Address * Round), {ar1 = ar2} + {ar1 <> ar2}
   := prod_eq_dec Address_eqdec Round_eqdec.
@@ -58,19 +59,16 @@ Definition State := State_.
 Definition Init (n : Address) : State :=
   Node n (fun _ => false) (fun _ => None) (fun _ => None) (fun _ => nil) (fun _ => nil).
 
-Definition procInt (st : State) (tr : InternalTransition) : State * list Packet :=
+Definition procInt (st : State) (r : InternalTransition) : State * list Packet :=
   let: Node n smap emap vmap cnt omap := st in
-  match tr with
-  | SendAction r =>
-    if smap r 
-    then (st, nil) 
-    else 
-      let: smap' := map_update Round_eqdec r true smap in
-      let: st' := st <| sent := smap' |> in
-      let: msg := InitialMsg r (value_bft n r) in
-      let: pkts := broadcast n msg in
-      (st', pkts)
-  end.
+  if smap r 
+  then (st, nil) 
+  else 
+    let: smap' := map_update Round_eqdec r true smap in
+    let: st' := st <| sent := smap' |> in
+    let: msg := InitialMsg r (value_bft n r) in
+    let: pkts := broadcast n msg in
+    (st', pkts).
 
 (* TODO do things still work if we consider short-circuiting?
     it seems like the following heuristic will break when the triggering message is
@@ -191,8 +189,7 @@ Definition procMsgWithCheck (st : State) (src : Address) (msg : Message) : State
 
 End RBProtocol.
 
-Module RBProtocolImpl (A : NetAddr) (R : RBTag) (V : Value)
-  (VBFT : ValueBFT A R V) 
+Module RBProtocolImpl (A : NetAddr) (R : Round) (V : Value) (VBFT : ValueBFT A R V) 
   (BTh : ClassicByzThreshold A) (M : RBMessage A R V)
   (P : SimplePacket A M) <: Protocol A M P BTh <: RBProtocol A R V VBFT BTh M P.
 

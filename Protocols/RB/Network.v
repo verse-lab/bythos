@@ -5,7 +5,7 @@ Import ssreflect.SsrSyntax.
 From ABCProtocol.Systems Require Export Network.
 From ABCProtocol.Protocols.RB Require Export Protocol.
 
-Module RBAdversary (A : NetAddr) (R : RBTag) (V : Value) (VBFT : ValueBFT A R V) 
+Module RBAdversary (A : NetAddr) (R : Round) (V : Value) (VBFT : ValueBFT A R V) 
   (BTh : ClassicByzThreshold A) (BSett : ByzSetting A)
   (M : RBMessage A R V)
   (P : SimplePacket A M) 
@@ -20,7 +20,7 @@ Definition byz_constraints (m : Message) (w : World) : Prop :=
 
 End RBAdversary.
 
-Module RBNetwork (A : NetAddr) (R : RBTag) (V : Value) (VBFT : ValueBFT A R V) 
+Module RBNetwork (A : NetAddr) (R : Round) (V : Value) (VBFT : ValueBFT A R V) 
   (BTh : ClassicByzThreshold A) (BSett : RestrictedByzSetting A BTh).
 
 Import A R V VBFT BTh BSett.
@@ -54,7 +54,6 @@ Definition lift_psent_inv (P : StateMap -> PacketSoup -> PacketSoup -> Prop)
   : World -> Prop :=
   Eval unfold lift_psent_inv_ in fun w => lift_psent_inv_ P (localState w) (sentMsgs w).
 
-(* TODO there is no other case where the statement depends on the external n? *)
 Definition id_coh w : Prop := 
   forall n, is_byz n = false -> (localState w n).(id) = n.
 *)

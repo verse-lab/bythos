@@ -135,18 +135,6 @@ Proof.
     apply in_in_remove.
 Qed.
 
-Definition prod_eq_dec {A B : Type} (eq_dec_a : forall x y : A, {x = y} + {x <> y})
-  (eq_dec_b : forall x y : B, {x = y} + {x <> y}) :
-  forall x y : (A * B)%type, {x = y} + {x <> y}.
-Proof.
-  intros.
-  decide equality; try apply eq_dec_a; try apply eq_dec_b.
-Qed.
-
-Fact eqdec_refl {A B : Type} (eqdec : forall x y : A, {x = y} + {x <> y}) (x : A) (b1 b2 : B) :
-  (if eqdec x x then b1 else b2) = b1.
-Proof. destruct (eqdec _ _); auto; try contradiction. Qed.
-
 Fact in_cons_iff [A : Type] (l : list A) (x y : A) : In x (y :: l) <-> y = x \/ In x l.
 Proof. reflexivity. Qed.
 
@@ -159,7 +147,7 @@ Definition map_update [A B : Type] (A_eqdec : forall a1 a2 : A, {a1 = a2} + {a1 
 Fact map_update_refl {A B : Type} (A_eqdec : forall a1 a2 : A, {a1 = a2} + {a1 <> a2})
   (a : A) (b : B) (mp : A -> B) :
   map_update A_eqdec a b mp a = b.
-Proof. unfold map_update. now rewrite eqdec_refl. Qed.
+Proof. unfold map_update. now destruct (A_eqdec _ _). Qed.
 
 Fact map_update_intact {A B : Type} (A_eqdec : forall a1 a2 : A, {a1 = a2} + {a1 <> a2})
   (a a' : A) (mp : A -> B) :
@@ -170,18 +158,22 @@ Definition set_add_simple [A : Type] (A_eqdec : forall a1 a2 : A, {a1 = a2} + {a
   (a : A) (l : list A) : list A :=
   if in_dec A_eqdec a l then l else a :: l.
 
+Fact incl_set_add_simple {A : Type} (eqdec : forall a1 a2 : A, {a1 = a2} + {a1 <> a2})
+  (a : A) (l : list A) : incl l (set_add_simple eqdec a l).
+Proof. hnf. intros. unfold set_add_simple. destruct (in_dec _ _ _); simpl; tauto. Qed.
+
+Fact In_set_add_simple {A : Type} (eqdec : forall a1 a2 : A, {a1 = a2} + {a1 <> a2})
+  (a a' : A) (l : list A) : In a' (set_add_simple eqdec a l) <-> a = a' \/ In a' l.
+Proof. unfold set_add_simple. destruct (in_dec _ _ _); simpl; intuition congruence. Qed.
+
+Fact NoDup_set_add_simple {A : Type} (eqdec : forall a1 a2 : A, {a1 = a2} + {a1 <> a2})
+  (a : A) (l : list A) : List.NoDup l -> List.NoDup (set_add_simple eqdec a l).
+Proof. intros H. unfold set_add_simple. destruct (in_dec _ _ _); simpl; auto. now constructor. Qed.
+
 Definition Ineq [A : Type] (l1 l2 : list A) : Prop := forall x, In x l1 <-> In x l2.
 
 #[export] Instance Equivalence_Ineq {A : Type} : Equivalence (@Ineq A).
 Proof. constructor; hnf; unfold Ineq in *; firstorder. Qed.
-
-Fact sumbool_is_left [A : Prop] (dec : {A} + {~ A}) : 
-  (if dec then true else false) = true <-> A.
-Proof. destruct dec; intuition discriminate. Qed.
-
-Fact sumbool_is_right [A : Prop] (dec : {A} + {~ A}) : 
-  (if dec then true else false) = false <-> ~ A.
-Proof. destruct dec; intuition discriminate. Qed.
 (*
 Fact list_ifnil_destruct [A : Type] (l : list A) : {l = nil} + {l <> nil}.
 Proof. destruct l; [ now left | now right ]. Qed.

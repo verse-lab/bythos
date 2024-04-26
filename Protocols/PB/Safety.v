@@ -7,7 +7,7 @@ From ABCProtocol.Protocols.PB Require Export Invariant.
 From RecordUpdate Require Import RecordUpdate.
 From stdpp Require Import tactics. (* anyway *)
 
-Module PBSafety (A : NetAddr) (R : PBTag) (Sn : Signable) (V : Value Sn) (Pf : PBProof Sn) (VBFT : ValueBFT A R Sn V Pf) 
+Module PBSafety (A : NetAddr) (R : Round) (Sn : Signable) (V : Value) (Pf : PBProof Sn) (VBFT : ValueBFT A R Sn V Pf) 
   (BTh : ClassicByzThreshold A) (BSett : RestrictedByzSetting A BTh)
   (TSS0 : ThresholdSignatureSchemePrim A Sn with Definition thres := BTh.t0) (* ! *)
   (TSS : ThresholdSignatureScheme A Sn with Module TSSPrim := TSS0)
@@ -19,13 +19,6 @@ Import ssrbool. (* anyway *)
 Module Export PBInv := PBInvariant A R Sn V Pf VBFT BTh BSett TSS0 TSS PBDT.
 
 Set Implicit Arguments. (* anyway *)
-
-Create HintDb booldec.
-
-Fact is_left_unfold [A B : Prop] (b : {A} + {B}) : is_left b = if b then true else false.
-Proof eq_refl.
-
-Hint Rewrite -> is_left_unfold sumbool_is_left sumbool_is_right andb_true_iff negb_true_iff @eqdec_refl filter_In : booldec.
 
 Fact id_coh_always_holds : always_holds id_coh.
 Proof. intros w Hw. induction Hw; eauto using id_coh_is_invariant. hnf. intros. reflexivity. Qed.
@@ -69,13 +62,6 @@ Ltac saturate :=
     pose proof (h2l_invariants_always_holds H) as Hh2l
     (* pose proof (proj2 h2l_invariants _ H) as Hh2lbyz *)
   end.
-
-(* ask: can a faulty node produce something with type A, which meets some requirement P, 
-    by just using what is in the world? *)
-(* do not really make sense to give a proof saying that if produ_check holds, then P holds.
-    just for proving *)
-Class producible (A : Type) (P : A -> Prop) :=
-  produ_check : World -> A -> Prop.
 
 (* TODO the following definition of uniqueness is slightly awkward: 
     the proof by quorum intersection only works for a single instance of PB, 

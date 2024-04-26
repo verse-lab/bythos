@@ -86,8 +86,6 @@ Proof. apply filter_nonbyz_lower_bound_t0, valid_nodes_NoDup. Qed.
 
 End RestrictedByzSetting.
 
-(* constraints are synthetic ...? *)
-
 Module Type Adversary (Export A : NetAddr) (Export M : MessageType) 
   (Export BTh : ByzThreshold A) (Export BSett : ByzSetting A) 
   (Export P : PacketType) (Export Pr : Protocol A M P BTh) 
@@ -612,6 +610,37 @@ Proof. etransitivity. 2: eapply set_intersection_size; eassumption. lia. Qed.
 
 End Network.
 
+(* kind of useful, so put here *)
+Module CommonLiftOperations (Export A : NetAddr) (Export M : MessageType)
+  (Export BTh : ByzThreshold A) (Export BSett : ByzSetting A) 
+  (Export P : SimplePacket A M) (Export PSOp : PacketSoupOperations P)
+  (Export Pr : Protocol A M P BTh) (Export Ns : NetState A M P BTh Pr).
+
+Definition lift_point_to_edge {A : Type} (P : A -> Prop) : A -> A -> Prop :=
+  fun st st' => P st -> P st'.
+
+Definition lift_state_pair_inv (P : State -> State -> Prop) : World -> World -> Prop :=
+  fun w w' => forall n, P (w @ n) (w' @ n).
+
+Definition lift_state_inv (P : State -> Prop) : World -> Prop := fun w => forall n, P (w @ n).
+
+Definition lift_node_inv (P : PacketSoup -> State -> Prop) : World -> Prop :=
+  fun w => forall n, is_byz n = false -> P (sentMsgs w) (w @ n).
+
+Definition lift_pkt_inv' (P : Packet -> StateMap -> Prop) : PacketSoup -> StateMap -> Prop :=
+  fun psent stmap => forall p, In p psent -> P p stmap.
+
+Definition lift_pkt_inv (P : Packet -> StateMap -> Prop) : World -> Prop :=
+  Eval unfold lift_pkt_inv' in fun w => lift_pkt_inv' P (sentMsgs w) (localState w).
+
+Definition lift_pkt_inv_alt' (P : Packet -> PacketSoup -> Prop) : PacketSoup -> Prop :=
+  fun psent => forall p, In p psent -> P p psent.
+
+Definition lift_pkt_inv_alt (P : Packet -> PacketSoup -> Prop) : World -> Prop :=
+  Eval unfold lift_pkt_inv_alt' in fun w => lift_pkt_inv_alt' P (sentMsgs w).
+
+End CommonLiftOperations.
+
 Module NetworkImpl (Export A : NetAddr) (Export M : MessageType) 
   (Export BTh : ByzThreshold A) (Export BSett : ByzSetting A) 
   (Export P : SimplePacket A M) (Export PSOp : PacketSoupOperations P)
@@ -619,5 +648,6 @@ Module NetworkImpl (Export A : NetAddr) (Export M : MessageType)
   (Export Adv : Adversary A M BTh BSett P Pr Ns) <: Network A M BTh BSett P PSOp Pr Ns Adv.
 
 Include Network A M BTh BSett P PSOp Pr Ns Adv.
+Include CommonLiftOperations A M BTh BSett P PSOp Pr Ns. (* since usually NetworkImpl will be called when doing invariant proofs *)
 
 End NetworkImpl.

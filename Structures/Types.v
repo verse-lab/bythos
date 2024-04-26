@@ -2,7 +2,7 @@ From Coq Require Import List RelationClasses.
 From Coq Require ssrbool.
 Import (coercions) ssrbool.
 From ABCProtocol.Structures Require Export Address.
-From ABCProtocol.Utils Require Export ListFacts.
+From ABCProtocol.Utils Require Export ListFacts Misc.
 (*
 Module Type Signable.
 
@@ -330,3 +330,26 @@ Module SimplePacketImpl (Export A : NetAddr) (Export M : MessageType) <: (Simple
 Include SimplePacket A M.
 
 End SimplePacketImpl.
+
+(* some commonly used concepts *)
+
+Module Type Value.
+
+Parameter Value : Set.
+Parameter Value_eqdec : forall (v1 v2 : Value), {v1 = v2} + {v1 <> v2}.
+
+End Value.
+
+Module Type SignableValue (Sn : Signable).
+
+Include Value.
+Declare Instance VSn : Sn.signable Value.
+
+End SignableValue.
+
+Module Type Round.
+
+Parameter Round : Type.
+Parameter Round_eqdec : forall r1 r2 : Round, {r1 = r2} + {r1 <> r2}.
+
+End Round.

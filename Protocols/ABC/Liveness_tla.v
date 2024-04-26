@@ -6,7 +6,7 @@ From ABCProtocol.Protocols.ABC Require Export Liveness.
 
 From ABCProtocol.Properties Require Export Liveness_tla.
 
-Module ACLiveness2 (A : NetAddr) (Sn : Signable) (V : Value Sn) (VBFT : ValueBFT A Sn V) 
+Module ACLiveness2 (A : NetAddr) (Sn : Signable) (V : SignableValue Sn) (VBFT : ValueBFT A Sn V) 
   (BTh : ByzThreshold A) (BSett : ByzSetting A)
   (P : PKI A Sn) (TSS0 : ThresholdSignatureSchemePrim A Sn with Definition thres := BTh.t0) (* ! *)
   (TSS : ThresholdSignatureScheme A Sn with Module TSSPrim := TSS0).

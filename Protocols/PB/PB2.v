@@ -14,7 +14,7 @@ Definition Proof_eqdec := CombinedSignature_eqdec.
 
 End PBProofB.
 
-Module PB2 (Ad : NetAddr) (R : PBTag) (Sn : Signable) (V : Value Sn) (Pf : PBProof Sn) (VBFT : ValueBFT Ad R Sn V Pf) 
+Module PB2 (Ad : NetAddr) (R : Round) (Sn : Signable) (V : Value) (Pf : PBProof Sn) (VBFT : ValueBFT Ad R Sn V Pf) 
   (BTh : ClassicByzThreshold Ad)
   (BSettA : RestrictedByzSetting Ad BTh)
   (BSettB : RestrictedByzSetting Ad BTh)

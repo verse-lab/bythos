@@ -11,22 +11,7 @@ Parameter inputval : Value. (* to be broadcast *)
 End Leadership.
 *)
 
-Module Type Value.
-
-(* here, only requires that value has decidable equality *)
-Parameter Value : Set.
-Parameter Value_eqdec : forall (v1 v2 : Value), {v1 = v2} + {v1 <> v2}.
-
-End Value.
-
-Module Type RBTag.
-
-Parameter Round : Type.
-Parameter Round_eqdec : forall r1 r2 : Round, {r1 = r2} + {r1 <> r2}.
-
-End RBTag.
-
-Module Type ValueBFT (Export A : NetAddr) (Export R : RBTag) (Export V : Value).
+Module Type ValueBFT (Export A : NetAddr) (Export R : Round) (Export V : Value).
 
 (* fixing what to broadcast at each round *)
 
@@ -34,7 +19,7 @@ Parameter value_bft : Address -> Round -> Value.
 
 End ValueBFT.
 
-Module Type RBMessage (A : NetAddr) (R : RBTag)
+Module Type RBMessage (A : NetAddr) (R : Round)
   (V : Value (* not for signing here, though *)) <: MessageType.
 
 Import A R V.
@@ -54,7 +39,7 @@ Qed.
 
 End RBMessage.
 
-Module RBMessageImpl (A : NetAddr) (R : RBTag) (V : Value) <: MessageType <: RBMessage A R V.
+Module RBMessageImpl (A : NetAddr) (R : Round) (V : Value) <: MessageType <: RBMessage A R V.
 
 Include RBMessage A R V.
 

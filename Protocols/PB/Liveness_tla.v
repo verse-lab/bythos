@@ -6,7 +6,7 @@ From ABCProtocol.Protocols.PB Require Export Liveness.
 
 From ABCProtocol.Properties Require Export Liveness_tla.
 
-Module PBLiveness2 (A : NetAddr) (R : PBTag) (Sn : Signable) (V : Value Sn) (Pf : PBProof Sn) (VBFT : ValueBFT A R Sn V Pf) 
+Module PBLiveness2 (A : NetAddr) (R : Round) (Sn : Signable) (V : Value) (Pf : PBProof Sn) (VBFT : ValueBFT A R Sn V Pf) 
   (BTh : ClassicByzThreshold A) (BSett : RestrictedByzSetting A BTh)
   (TSS0 : ThresholdSignatureSchemePrim A Sn with Definition thres := BTh.t0) (* ! *)
   (TSS : ThresholdSignatureScheme A Sn with Module TSSPrim := TSS0)
@@ -17,6 +17,7 @@ Import ssrbool. (* anyway *)
 
 Module Export PBLive := PBLiveness A R Sn V Pf VBFT BTh BSett TSS0 TSS PBDT.
 Include Liveness A M BTh BSett P0 PSOp PBP Ns PBAdv PBN.
+Include PBN. Include PBInv. Include PBS. (* avoid too long qualified names *)
 
 Section A.
 

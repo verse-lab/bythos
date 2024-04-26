@@ -5,7 +5,7 @@ Import ssreflect.SsrSyntax.
 From ABCProtocol.Systems Require Export Network.
 From ABCProtocol.Protocols.ABC.OldProofs Require Export Protocol.
 
-Module ACAdversary (A : NetAddr) (Sn : Signable) (V : Value Sn) (VBFT : ValueBFT A Sn V) 
+Module ACAdversary (A : NetAddr) (Sn : Signable) (V : SignableValue Sn) (VBFT : ValueBFT A Sn V) 
   (BTh : ByzThreshold A) (BSett : ByzSetting A)
   (P : PKI A Sn) (TSS0 : ThresholdSignatureSchemePrim A Sn with Definition thres := BTh.t0) (* ! *)
   (TSS : ThresholdSignatureScheme A Sn with Module TSSPrim := TSS0)
@@ -63,7 +63,7 @@ Definition byz_constraints (m : Message) (w : World) : Prop :=
 
 End ACAdversary.
 
-Module ACNetwork (A : NetAddr) (Sn : Signable) (V : Value Sn) (VBFT : ValueBFT A Sn V) 
+Module ACNetwork (A : NetAddr) (Sn : Signable) (V : SignableValue Sn) (VBFT : ValueBFT A Sn V) 
   (BTh : ByzThreshold A) (BSett : ByzSetting A)
   (P : PKI A Sn) (TSS0 : ThresholdSignatureSchemePrim A Sn with Definition thres := BTh.t0) (* ! *)
   (TSS : ThresholdSignatureScheme A Sn with Module TSSPrim := TSS0).

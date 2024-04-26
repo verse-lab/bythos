@@ -6,7 +6,7 @@ From ABCProtocol.Protocols.RB Require Export Liveness.
 
 From ABCProtocol.Properties Require Export Liveness_tla.
 
-Module RBLiveness2 (A : NetAddr) (R : RBTag) (V : Value) (VBFT : ValueBFT A R V)
+Module RBLiveness2 (A : NetAddr) (R : Round) (V : Value) (VBFT : ValueBFT A R V)
   (BTh : ClassicByzThreshold A) (BSett : RestrictedByzSetting A BTh).
 
 Import A R V VBFT BTh BSett.
