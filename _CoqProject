@@ -59,3 +59,6 @@ Protocols/PB/Liveness.v
 Protocols/PB/Liveness_tla.v
 
 Protocols/PB/PB2.v
+
+Protocols/RBABC/Types.v
+Protocols/RBABC/Protocol.v
