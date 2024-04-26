@@ -16,7 +16,7 @@ Import A R V Pf VBFT BTh BSett TSS PBDT.
 Import ssrbool. (* anyway *)
 
 Module Export PBLive := PBLiveness A R Sn V Pf VBFT BTh BSett TSS0 TSS PBDT.
-Include Liveness A M BTh BSett P0 PSOp PBP Ns PBAdv PBN.
+Include LivenessTLA A M BTh BSett P0 PSOp PBP Ns PBAdv PBN.
 Include PBN. Include PBInv. Include PBS. (* avoid too long qualified names *)
 
 Section A.

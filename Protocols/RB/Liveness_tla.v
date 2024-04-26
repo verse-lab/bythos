@@ -13,7 +13,7 @@ Import A R V VBFT BTh BSett.
 Import ssrbool. (* anyway *)
 
 Module Export RBLive := RBLiveness A R V VBFT BTh BSett.
-Include Liveness A M BTh BSett P PSOp RBP Ns RBAdv RBN.
+Include LivenessTLA A M BTh BSett P PSOp RBP Ns RBAdv RBN.
 
 Section A.
 

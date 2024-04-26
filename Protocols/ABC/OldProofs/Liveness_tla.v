@@ -13,7 +13,7 @@ Module ACLiveness (A : NetAddr) (Sn : Signable) (V : SignableValue Sn) (VBFT : V
 Import A V VBFT BTh BSett P TSS.
 
 Module Export ACInv := ACInvariant A Sn V VBFT BTh BSett P TSS0 TSS.
-Include Liveness A M BTh BSett P0 PSOp ACP Ns ACAdv ACN.
+Include LivenessTLA A M BTh BSett P0 PSOp ACP Ns ACAdv ACN.
 
 (* now, really nice things *)
 

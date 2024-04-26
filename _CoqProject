@@ -21,6 +21,7 @@ Systems/Protocol.v
 Systems/States.v
 Systems/Network.v
 Properties/Invariant.v
+Properties/Liveness.v
 Properties/Liveness_tla.v
 Utils/Misc.v
 Utils/ListFacts.v

@@ -3,6 +3,7 @@ From Coq Require ssrbool ssreflect.
 Import (coercions) ssrbool.
 Import ssreflect.SsrSyntax.
 From ABCProtocol.Protocols.ABC Require Export Safety.
+From ABCProtocol.Properties Require Import Liveness.
 
 From RecordUpdate Require Import RecordUpdate.
 From stdpp Require Import tactics. (* anyway *)
@@ -16,23 +17,7 @@ Import A V VBFT BTh BSett P TSS.
 Import ssrbool. (* anyway *)
 
 Module Export ACS := ACSafety A Sn V VBFT BTh BSett P TSS0 TSS.
-
-Definition pkts_needed size w nonbyz_senders pkts (m : Address -> Message) (P : World -> Address -> Prop) : Prop :=
-  List.NoDup nonbyz_senders /\
-  size <= length nonbyz_senders /\
-  incl pkts (sentMsgs w) /\
-  Forall good_packet pkts /\ (* since pkts is under-specified *)
-  (forall n1,
-    In n1 nonbyz_senders -> 
-    is_byz n1 = false /\
-    P w n1 /\
-    (forall n2, is_byz n2 = false ->
-      exists used, In (mkP n1 n2 (m n1) used) pkts)).
-
-Definition mutual_receiving m w' :=
-  forall n1, is_byz n1 = false ->
-    forall n2, is_byz n2 = false ->
-      In (mkP n1 n2 (m n1) true) (sentMsgs w').
+Include Liveness A M BTh BSett P0 PSOp ACP Ns ACAdv ACN.
 
 Module Terminating_Convergence.
 
@@ -58,7 +43,7 @@ Section Proof_of_Terminating_Convergence.
   Hypotheses (H_w_reachable : reachable w) (Hstart : all_honest_nodes_submitted v w).
 
   Definition pkts_needed_in_round_1 nonbyz_senders pkts :=
-    pkts_needed (N - t0) w nonbyz_senders pkts valid_submitmsg submitted_v.
+    pkts_multi_to_all (N - t0) w nonbyz_senders pkts valid_submitmsg submitted_v.
 
   Let nonbyz_senders := (List.filter (fun n => negb (is_byz n)) valid_nodes).
 
@@ -306,7 +291,7 @@ Section Proof_of_Accountability.
     destruct H as ((Hnneq & (Hnonbyz_n1 & Hconf1) & (Hnonbyz_n2 & Hconf2) & Hv1 & Hv2 & Hvneq) & Hcheck1 & Hcheck2); clear H.
 
   Definition pkts_needed_in_round_2 pkts : Prop :=
-    pkts_needed 0 (* size does not matter here *) w (n1 :: n2 :: nil) pkts
+    pkts_multi_to_all 0 (* size does not matter here *) w (n1 :: n2 :: nil) pkts
     (fun n => (ConfirmMsg (value_bft n, zip_from_sigs (w @ n)))) (fun _ _ => True). (* do not need extra predicate *)
 
   Lemma round_2_pkts : exists pkts, pkts_needed_in_round_2 pkts.

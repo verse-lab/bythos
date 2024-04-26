@@ -9,7 +9,7 @@ From ABCProtocol.Utils Require Export TLAmore.
 (* this would require some time ... *)
 (* Export -(coercions) TLAmore. (* need to separate Require and Import; otherwise Coqdep will complain *) *)
 
-Module Liveness (Export A : NetAddr) (Export M : MessageType)
+Module LivenessTLA (Export A : NetAddr) (Export M : MessageType)
   (Export BTh : ByzThreshold A) (Export BSett : ByzSetting A) 
   (Export P : SimplePacket A M) (Export PSOp : PacketSoupOperations P)
   (Export Pr : Protocol A M P BTh) (Export Ns : NetState A M P BTh Pr) 
@@ -320,4 +320,4 @@ Global Tactic Notation "delivering" constr(lemma1) "which" "ends" "at" constr(le
   aux Htmp; 
   intros; simplify_eq; eapply lemma3; eauto; try (eapply lemma2; eauto).
 
-End Liveness.
+End LivenessTLA.

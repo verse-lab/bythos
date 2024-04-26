@@ -3,6 +3,7 @@ From Coq Require ssrbool ssreflect.
 Import (coercions) ssrbool.
 Import ssreflect.SsrSyntax.
 From ABCProtocol.Protocols.RB Require Export Safety.
+From ABCProtocol.Properties Require Import Liveness.
 
 From RecordUpdate Require Import RecordUpdate.
 From stdpp Require Import tactics. (* anyway *)
@@ -14,6 +15,7 @@ Import A R V VBFT BTh BSett.
 Import ssrbool. (* anyway *)
 
 Module Export RBS := RBSafety A R V VBFT BTh BSett.
+Include Liveness A M BTh BSett P PSOp RBP Ns RBAdv RBN.
 
 Set Implicit Arguments. (* anyway *)
 
@@ -25,23 +27,6 @@ Definition some_receives src r v w : Prop := exists n, is_byz n = false /\ In v 
 (* at the end *)
 Definition all_receives src r v w : Prop := forall n, is_byz n = false -> In v ((w @ n).(output) (src, r)).
 
-Definition pkts_needed size w nonbyz_senders pkts (m : Message) (P : World -> Address -> Prop) : Prop :=
-  List.NoDup nonbyz_senders /\
-  size <= length nonbyz_senders /\
-  incl pkts (sentMsgs w) /\
-  Forall good_packet pkts /\ (* since pkts is under-specified *)
-  (forall n1,
-    In n1 nonbyz_senders -> 
-    is_byz n1 = false /\
-    P w n1 /\
-    (forall n2, is_byz n2 = false ->
-      exists used, In (mkP n1 n2 m used) pkts)).
-
-Definition mutual_receiving m w' :=
-  forall n1, is_byz n1 = false -> 
-    forall n2, is_byz n2 = false ->
-      In (mkP n1 n2 m true) (sentMsgs w').
-
 Module Global_Liveness.
 
 Section Proof_of_Global_Liveness.
@@ -52,7 +37,7 @@ Section Proof_of_Global_Liveness.
 
   (* the structure of Round 1 and Round 2 are similar, so some conclusions might be reused *)
   Definition pkts_needed size w nonbyz_senders pkts :=
-    pkts_needed size w nonbyz_senders pkts (VoteMsg src r v) (fun w n => (w @ n).(voted) (src, r) = Some v).
+    pkts_multi_to_all size w nonbyz_senders pkts (fun _ => VoteMsg src r v) (fun w n => (w @ n).(voted) (src, r) = Some v).
 
   Lemma pkts_needed_by_voted_nodes w size (H_w_reachable : reachable w)
     nonbyz_senders (Hf_nonbyz : forall n, In n nonbyz_senders -> is_byz n = false)
@@ -181,7 +166,7 @@ Section Proof_of_Global_Liveness.
   Hypotheses (Hround2 : pkts_needed_in_round_2 nonbyz_senders pkts).
 
   Definition round_2_end w' :=
-    Eval unfold mutual_receiving in mutual_receiving (VoteMsg src r v) w'.
+    Eval unfold mutual_receiving in mutual_receiving (fun _ => VoteMsg src r v) w'.
 
   Fact round_2_end_suffcond w' (Hincl : incl (map receive_pkt pkts) (sentMsgs w')) :
     round_2_end w'.
@@ -286,7 +271,7 @@ Section Proof_of_Validity.
   Hypotheses (H_w_reachable : reachable w) (Hstart : round_2_start w).
 
   Definition pkts_needed_in_round_2 nonbyz_senders pkts : Prop :=
-    Eval unfold pkts_needed in pkts_needed (N - t0) w nonbyz_senders pkts (EchoMsg src r (value_bft src r))
+    Eval unfold pkts_multi_to_all in pkts_multi_to_all (N - t0) w nonbyz_senders pkts (fun _ => EchoMsg src r (value_bft src r))
       (fun w n => (w @ n).(echoed) (src, r) = Some (value_bft src r)).
 
   Let nonbyz_senders := (List.filter (fun n => negb (is_byz n)) valid_nodes).
@@ -317,7 +302,7 @@ Section Proof_of_Validity.
   Hypotheses (Hround2 : pkts_needed_in_round_2 nonbyz_senders pkts).
 
   Definition round_2_end w' :=
-    Eval unfold mutual_receiving in mutual_receiving (EchoMsg src r (value_bft src r)) w'.
+    Eval unfold mutual_receiving in mutual_receiving (fun _ => EchoMsg src r (value_bft src r)) w'.
 
   (* FIXME: this is repeating *)
   Fact round_2_end_suffcond w' (Hincl : incl (map receive_pkt pkts) (sentMsgs w')) :
