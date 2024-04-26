@@ -30,21 +30,27 @@ Definition pkt_inl (p : RBPk.Packet) : Packet :=
 Definition pkt_inr (p : ACPk.Packet) : Packet :=
   mkP (ACPk.src p) (ACPk.dst p) (inr (ACPk.msg p)) (ACPk.consumed p).
 
-Fixpoint pkts_filter_inl (psent : list Packet) : list RBPk.Packet :=
-  match psent with
-  | nil => nil
-  | (mkP src dst msg used) :: psent' =>
-    (match msg with inl msg' => (RBPk.mkP src dst msg' used) :: nil | _ => nil end) ++
-    pkts_filter_inl psent'
+Definition pkt_proj1 (p : Packet) : option RBPk.Packet :=
+  match p.(msg) with
+  | inl msg' => Some (RBPk.mkP p.(src) p.(dst) msg' p.(consumed))
+  | _ => None
   end.
 
-Fixpoint pkts_filter_inr (psent : list Packet) : list ACPk.Packet :=
-  match psent with
-  | nil => nil
-  | (mkP src dst msg used) :: psent' =>
-    (match msg with inr msg' => (ACPk.mkP src dst msg' used) :: nil | _ => nil end) ++
-    pkts_filter_inr psent'
+Definition pkt_proj2 (p : Packet) : option ACPk.Packet :=
+  match p.(msg) with
+  | inr msg' => Some (ACPk.mkP p.(src) p.(dst) msg' p.(consumed))
+  | _ => None
   end.
+
+(* FIXME: this seems actually reusable? *)
+Definition option_map_list [A B : Type] (f : A -> option B) (l : list A) : list B :=
+  List.flat_map (fun a => list.option_list (f a)) l.
+
+Definition pkts_filter_proj1 : list Packet -> list RBPk.Packet := Eval unfold option_map_list in
+  option_map_list pkt_proj1.
+
+Definition pkts_filter_proj2 : list Packet -> list ACPk.Packet := Eval unfold option_map_list in
+  option_map_list pkt_proj2.
 
 Definition InternalTransition := RBP.InternalTransition.
 
