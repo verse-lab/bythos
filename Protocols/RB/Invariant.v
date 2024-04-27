@@ -339,7 +339,7 @@ Record node_persistent_invariants st st' : Prop := {
   _ : id_persistent st st';
 }.
 
-#[export] Instance Transitive_node_persistent_invariants : Transitive node_persistent_invariants.
+Local Instance Transitive_node_persistent_invariants : Transitive node_persistent_invariants.
 Proof.
   hnf. intros ??? H H0. destruct H, H0. constructor.
   all: hnf; intuition.

@@ -39,7 +39,8 @@ Global Notation "w '@' n" := (localState w n) (at level 50, left associativity).
 Definition World_rel (w w' : World) : Prop :=
   (forall n, (w @ n) = (w' @ n)) /\ Ineq (sentMsgs w) (sentMsgs w').
 
-#[export] Instance Equivalence_World_rel : Equivalence World_rel.
+(* using Global to help it penetrate nested modules *)
+Global Instance Equivalence_World_rel : Equivalence World_rel.
 Proof.
   constructor; hnf.
   - intros. hnf; split; intros; reflexivity.

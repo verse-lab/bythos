@@ -298,7 +298,7 @@ Record node_state_invariants_pre' st st' : Prop := {
   _ : lift_point_to_edge output_is_delivery_cert st st';
 }.
 
-#[export] Instance Transitive_node_persistent_invariants : Transitive node_persistent_invariants.
+Local Instance Transitive_node_persistent_invariants : Transitive node_persistent_invariants.
 Proof.
   hnf. intros ??? H H0. destruct H, H0. constructor.
   all: hnf; intuition.
