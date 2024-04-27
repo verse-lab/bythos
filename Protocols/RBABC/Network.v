@@ -7,6 +7,9 @@ From ABCProtocol.Protocols.RBABC Require Export Protocol.
 From ABCProtocol.Protocols.ABC Require Import Network.
 From ABCProtocol.Protocols.RB Require Import Network.
 
+(* TODO this is inevitable for the refinement proofs, if we require worlds to be strictly equal *)
+From Coq Require Import FunctionalExtensionality.
+
 Module RBACAdversary (A : NetAddr) (R : Round) (ARP : AddrRoundPair A R) (Sn : Signable) (V : SignableValue Sn) (VBFT : ValueBFT A R V) 
   (BTh : ClassicByzThreshold A) (BSett : ByzSetting A)
   (RBM : RBMessage A R V)
@@ -111,5 +114,139 @@ Definition ssd_proj2 (q : system_step_descriptor) (w w' : RBN.Ns.World) : ACN.sy
     | _ => ACN.Idle
     end
   end.
+
+Fact stmap_proj1_upd stmap n st :
+  stmap_proj1 (upd n st stmap) = RBN.Ns.upd n st.(stRB) (stmap_proj1 stmap).
+Proof.
+  unfold stmap_proj1. apply functional_extensionality. (* !!!!!!!! *) 
+  intros ?. unfold upd, RBN.Ns.upd. now destruct_eqdec as_ ?.
+Qed.
+
+Fact stmap_proj2_upd stmap n st :
+  stmap_proj2 (upd n st stmap) = ACN.Ns.upd n st.(stAC) (stmap_proj2 stmap).
+Proof.
+  unfold stmap_proj2. apply functional_extensionality. (* !!!!!!!! *) 
+  intros ?. unfold upd, ACN.Ns.upd. now destruct_eqdec as_ ?.
+Qed.
+
+Fact pkts_filter_proj1_all pktsRB : pkts_filter_proj1 (map pkt_inl pktsRB) = pktsRB.
+Proof. induction pktsRB; simpl; auto. destruct a. simpl. congruence. Qed.
+
+Fact pkts_filter_proj1_no pktsAC : pkts_filter_proj1 (map pkt_inr pktsAC) = nil.
+Proof. induction pktsAC; simpl; auto. Qed.
+
+Fact pkts_filter_proj2_all pktsAC : pkts_filter_proj2 (map pkt_inr pktsAC) = pktsAC.
+Proof. induction pktsAC; simpl; auto. destruct a. simpl. congruence. Qed.
+
+Fact pkts_filter_proj2_no pktsRB : pkts_filter_proj2 (map pkt_inl pktsRB) = nil.
+Proof. induction pktsRB; simpl; auto. Qed.
+
+Fact pkts_filter_proj1_app l1 l2 : pkts_filter_proj1 (l1 ++ l2) = pkts_filter_proj1 l1 ++ pkts_filter_proj1 l2.
+Proof. apply flat_map_app. Qed. 
+
+Create HintDb pkts_filter.
+
+Hint Rewrite -> pkts_filter_proj1_all pkts_filter_proj1_no pkts_filter_proj2_all pkts_filter_proj2_no
+  pkts_filter_proj1_app app_nil_r : pkts_filter.
+
+(* TODO are the proofs below repeating? *)
+Fact procMsgWithCheck_proj1 st src mRB : forall st' pkts,
+  procMsgWithCheck st src (inl mRB) = (st', pkts) ->
+  let: res := RBN.RBP.procMsgWithCheck st.(stRB) src mRB in
+  st'.(stRB) = fst res /\ pkts_filter_proj1 pkts = snd res.
+Proof.
+  intros st' pkts E. simpl in E.
+  rewrite -> (surjective_pairing (RBN.RBP.procMsgWithCheck _ _ _)) in E.
+  destruct (triggered _ _) in E.
+  1: rewrite -> (surjective_pairing (ACN.ACP.procInt _ _)) in E.
+  all: revert E; intros [= <- <-]. (* TODO why simplify_eq does not work here? *)
+  all: simpl; now autorewrite with pkts_filter.
+Qed.
+
+Fact procMsgWithCheck_proj2 st src mAC : forall st' pkts,
+  procMsgWithCheck st src (inr mAC) = (st', pkts) ->
+  let: res := ACN.ACP.procMsgWithCheck st.(stAC) src mAC in
+  st'.(stAC) = fst res /\ pkts_filter_proj2 pkts = snd res.
+Proof.
+  intros st' pkts E. simpl in E.
+  rewrite -> (surjective_pairing (ACN.ACP.procMsgWithCheck _ _ _)) in E.
+  revert E; intros [= <- <-].
+  simpl; now autorewrite with pkts_filter.
+Qed.
+
+(* the definitions should be sound *)
+Fact ssd_proj1_sound q w w' (Hstep : system_step q w w') :
+  RBN.system_step (ssd_proj1 q) (world_proj1 w) (world_proj1 w').
+Proof.
+  inversion_step' Hstep; clear Hstep; simpl.
+  all: unfold world_proj1; simpl_world; rewrite ?stmap_proj1_upd. 
+  - constructor; eauto.
+  - destruct msg as [ mRB | mAC ]; simpl.
+    + eapply RBN.DeliverStep; try reflexivity; simpl; auto.
+      * apply option_map_list_In. eexists. split. apply Hpin. reflexivity.
+      * unfold stmap_proj1 at 1.
+        pose proof (procMsgWithCheck_proj1 _ _ _ _ _ Ef) as (E1 & E2).
+        rewrite -> (surjective_pairing (RBN.RBP.procMsgWithCheck _ _ _)), <- E1, <- E2.
+        f_equal. admit.
+    + eapply RBN.IdleStep; try reflexivity; simpl; auto.
+      rewrite -> (surjective_pairing (ACN.ACP.procMsgWithCheck _ _ _)) in Ef.
+      revert Ef. intros [= <- <-]. simpl. f_equal.
+      * apply functional_extensionality. (* !!!!!!!! *) 
+        intros ?. unfold stmap_proj1, RBN.Ns.upd. now destruct_eqdec as_ ->.
+      * admit.
+  - eapply RBN.InternStep; try reflexivity; simpl; auto.
+    unfold stmap_proj1 at 1. unfold procInt in E. 
+    rewrite -> (surjective_pairing (RBN.RBP.procInt _ _)) in E |- *.
+    revert E. intros [= <- <-]. simpl. f_equal.
+    admit.
+  - unfold world_proj1. simpl_world.
+    destruct m as [ mRB | mAC ]; simpl.
+    + eapply RBN.ByzStep; try reflexivity; simpl; auto.
+      f_equal. admit.
+    + eapply RBN.IdleStep; try reflexivity; simpl; auto.
+      f_equal. admit.
+Admitted.
+
+Fact ssd_proj2_sound q w w' (Hstep : system_step q w w') :
+  ACN.system_step (ssd_proj2 q (world_proj1 w) (world_proj1 w')) (world_proj2 w) (world_proj2 w').
+Proof.
+  inversion_step' Hstep; clear Hstep; simpl.
+  all: unfold world_proj2; simpl_world; rewrite ?stmap_proj2_upd. 
+  - constructor; eauto.
+  - destruct msg as [ mRB | mAC ]; simpl.
+    + unfold stmap_proj1. rewrite upd_refl.
+      pose proof (procMsgWithCheck_proj1 _ _ _ _ _ Ef) as (E1 & _).
+      rewrite E1. rewrite -> (surjective_pairing (RBN.RBP.procMsgWithCheck _ _ _)) in Ef.
+      destruct (triggered _ _) in Ef |- *.
+      * eapply ACN.InternStep; try reflexivity; simpl; auto.
+        unfold stmap_proj2 at 1. 
+        rewrite -> (surjective_pairing (ACN.ACP.procInt _ _)) in Ef |- *.
+        revert Ef. intros [= <- <-]. simpl. f_equal.
+        admit.
+      * eapply ACN.IdleStep; try reflexivity; simpl; auto.
+        revert Ef. intros [= <- <-]. simpl. f_equal.
+        --apply functional_extensionality. (* !!!!!!!! *) 
+          intros ?. unfold stmap_proj2, ACN.Ns.upd. now destruct_eqdec as_ ->.
+        --admit.
+    + eapply ACN.DeliverStep; try reflexivity; simpl; auto.
+      * apply option_map_list_In. eexists. split. apply Hpin. reflexivity.
+      * unfold stmap_proj2 at 1.
+        pose proof (procMsgWithCheck_proj2 _ _ _ _ _ Ef) as (E1 & E2).
+        rewrite -> (surjective_pairing (ACN.ACP.procMsgWithCheck _ _ _)), <- E1, <- E2.
+        f_equal. admit.
+  - eapply ACN.IdleStep; try reflexivity; simpl; auto.
+    unfold procInt in E. 
+    rewrite -> (surjective_pairing (RBN.RBP.procInt _ _)) in E.
+    revert E. intros [= <- <-]. simpl. f_equal.
+    + apply functional_extensionality. (* !!!!!!!! *) 
+      intros ?. unfold stmap_proj2, ACN.Ns.upd. now destruct_eqdec as_ ->.
+    + admit.
+  - unfold world_proj2. simpl_world.
+    destruct m as [ mRB | mAC ]; simpl.
+    + eapply ACN.IdleStep; try reflexivity; simpl; auto.
+      f_equal. admit.
+    + eapply ACN.ByzStep; try reflexivity; simpl; auto.
+      f_equal. admit.
+Admitted.
 
 End RBACNetwork.
