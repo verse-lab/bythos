@@ -1,4 +1,4 @@
-From Coq Require Import List Bool Lia.
+From Coq Require Import List Bool Lia PeanoNat.
 From Coq Require ssrbool ssreflect.
 Import (coercions) ssrbool.
 Import ssreflect.SsrSyntax.
@@ -126,6 +126,26 @@ Definition next_world (q : system_step_descriptor) (w : World) : World :=
     mkW (localState w) (sendout1 (mkP src dst m false) (sentMsgs w))
   end.
 
+Fixpoint final_world_n (f : nat -> system_step_descriptor) (w : World) (n : nat) : World :=
+  match n with
+  | O => w
+  | S n' => final_world_n (fun n => f (S n)) (next_world (f O) w) n'
+  end.
+
+Fact final_world_n_add : forall k n w f, 
+  final_world_n (fun n0 => f (k + n0)) (final_world_n f w k) n =
+  final_world_n f w (k + n).
+Proof.
+  intros k. induction k as [ | k IH ]; intros; simpl; try reflexivity.
+  rewrite <- IH. reflexivity.
+Qed.
+
+Corollary final_world_n_add_1 : forall n w f, 
+  final_world_n f w (S n) = next_world (f n) (final_world_n f w n).
+Proof.
+  intros. rewrite <- Nat.add_1_r at 1. rewrite <- final_world_n_add. simpl. now rewrite Nat.add_0_r. 
+Qed.
+
 (* TODO use this or indexed inductive relation? currently seems no difference *)
 Inductive system_step (q : system_step_descriptor) (w w' : World) : Prop :=
 | IdleStep of q = Idle & w = w'
@@ -230,23 +250,38 @@ Qed.
 
 Section Network_Model_Generic_Lemmas.
 
-Fact step_preserves_World_rel w1 w2 w1' w2' (H : World_rel w1 w1')
-  q (Hstep : system_step q w1 w2) (Hstep' : system_step q w1' w2') :
-  World_rel w2 w2'.
+Fact next_world_preserves_World_rel w1 w1' (H : World_rel w1 w1')
+  q : World_rel (next_world q w1) (next_world q w1').
 Proof.
-  inversion_step_ Hstep Ef; inversion_step_ Hstep' Ef'; try discriminate; auto.
-  all: destruct H as (Hstmap & Hpsent); hnf in Hpsent.
-  - injection Hq as <-. rewrite <- Hstmap in Ef'.
-    destruct (procMsgWithCheck _ _ _) in Ef, Ef'. subst.
+  destruct q; simpl; try assumption.
+  all: destruct H as (Hstmap & Hpsent); hnf in Hpsent; try rewrite <- Hstmap.
+  - destruct (procMsgWithCheck _ _ _).
     hnf. simpl. split; [ intros ?; unfold upd; now destruct_eqdec as_ ? | ].
     hnf. intros ?. autorewrite with psent. now rewrite !In_consume, Hpsent.
-  - revert Hq. intros [= <- <-]. rewrite <- Hstmap in Ef'.
-    destruct (procInt _ _) in Ef, Ef'. subst.
+  - destruct (procInt _ _).
     hnf. simpl. split; [ intros ?; unfold upd; now destruct_eqdec as_ ? | ].
     hnf. intros ?. autorewrite with psent. now rewrite Hpsent.
-  - revert Hq. intros [= <- <- <-].
-    subst. hnf; simpl. split; auto. 
+  - hnf. simpl. split; auto. 
     hnf. intros ?. autorewrite with psent. now rewrite Hpsent.
+Qed.
+
+Fact step_mirrors_World_rel w1 w1' w2 (H1 : World_rel w1 w1') 
+  q (H : system_step q w1 w2) 
+  (* needs this! *)
+  (Hbyz_rel : forall m w w', World_rel w w' -> byz_constraints m w <-> byz_constraints m w') :
+  let: w2' := next_world q w1' in World_rel w2 w2' -> system_step q w1' w2'.
+Proof with try solve [ reflexivity | assumption ].
+  intros H2. inversion_step_ H Ef; clear H; simpl in H2 |- *.
+  all: destruct H1 as (Hstmap1 & Hpsent1), H2 as (Hstmap2 & Hpsent2); hnf in Hpsent1; try rewrite <- Hstmap1.
+  - now apply IdleStep.
+  - eapply DeliverStep... all: try now apply Hpsent1.
+    rewrite <- Hstmap1.
+    now rewrite (surjective_pairing (procMsgWithCheck _ _ _)).
+  - eapply InternStep...
+    rewrite <- Hstmap1.
+    now rewrite (surjective_pairing (procInt _ _)).
+  - eapply ByzStep... 
+    rewrite <- Hbyz_rel; eauto. now hnf.
 Qed.
 
 (* atomicity of node state change (i.e., at most one node changes its state in one step) *)
