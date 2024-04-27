@@ -113,6 +113,19 @@ Inductive system_step_descriptor : Type :=
   | Byz (src dst : Address) (m : Message)
 .
 
+Definition next_world (q : system_step_descriptor) (w : World) : World :=
+  match q with
+  | Idle => w
+  | Deliver p => 
+    let: (st', ms) := procMsgWithCheck (w @ (dst p)) (src p) (msg p) in
+    mkW (upd (dst p) st' (localState w)) (sendout ms (consume p (sentMsgs w)))
+  | Intern proc t =>
+    let: (st', ms) := (procInt (w @ proc) t) in
+    mkW (upd proc st' (localState w)) (sendout ms (sentMsgs w))
+  | Byz src dst m =>
+    mkW (localState w) (sendout1 (mkP src dst m false) (sentMsgs w))
+  end.
+
 (* TODO use this or indexed inductive relation? currently seems no difference *)
 Inductive system_step (q : system_step_descriptor) (w w' : World) : Prop :=
 | IdleStep of q = Idle & w = w'
@@ -123,6 +136,8 @@ Inductive system_step (q : system_step_descriptor) (w w' : World) : Prop :=
       (* try modelling message duplication by not checking whether p has been consumed or not *)
       (* FIXME: parameterizing here shall result in different models *)
       is_byz (dst p) = false &
+      (* cannot reduce inside the inductive definition *)
+      (* let: ww := next_world (Deliver p) w in w' = ww *)
       let: (st', ms) := procMsgWithCheck (localState w (dst p)) (src p) (msg p) in
       w' = mkW (upd (dst p) st' (localState w))
                (sendout ms (consume p (sentMsgs w)))
@@ -141,6 +156,9 @@ Inductive system_step (q : system_step_descriptor) (w w' : World) : Prop :=
       w' = mkW (localState w)
                (sendout1 (mkP src dst m false) (sentMsgs w))
 .
+
+Fact next_world_sound q w w' (H : system_step q w w') : w' = next_world q w.
+Proof. inversion H; subst; simpl; auto. 1: now destruct (procMsgWithCheck _ _ _). 1: now destruct (procInt _ _). Qed.
 
 Local Ltac inversion_step_ H Heq :=
   (* conventional naming *)
