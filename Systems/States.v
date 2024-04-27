@@ -1,4 +1,4 @@
-From Coq Require Import List Lia.
+From Coq Require Import List Lia RelationClasses.
 From ABCProtocol.Systems Require Export Protocol.
 
 Module Type NetState (Export A : NetAddr) (Export M : MessageType) 
@@ -35,6 +35,17 @@ Definition initWorld := mkW initState nil.
 
 (* some handy things *)
 Global Notation "w '@' n" := (localState w n) (at level 50, left associativity).
+
+Definition World_rel (w w' : World) : Prop :=
+  (forall n, (w @ n) = (w' @ n)) /\ Ineq (sentMsgs w) (sentMsgs w').
+
+#[export] Instance Equivalence_World_rel : Equivalence World_rel.
+Proof.
+  constructor; hnf.
+  - intros. hnf; split; intros; reflexivity.
+  - intros x y (H & H0). hnf. split; intros; rewrite ?H, ?H0; reflexivity.
+  - intros x y z (H & H0) (H' & H0'). hnf. split; intros; rewrite ?H, ?H0, ?H', ?H0'; reflexivity.
+Qed.
 
 Global Tactic Notation "simpl_world" := simpl localState in *; simpl sentMsgs in *.
 
@@ -93,16 +104,12 @@ Axiom In_sendout : forall pkts psent p, In p (sendout pkts psent) <-> In p pkts 
 Axiom sendout0 : forall psent, sendout nil psent = psent.
 (* not sure if this is good for autorewrite? *)
 
-(* expedients *)
+(* expedient *)
 Axiom sendout1_sendout : forall p psent, sendout1 p psent = sendout (p :: nil) psent.
-Axiom flat_map_sendout : forall pkts psent f, 
-  List.flat_map f (sendout pkts psent) = sendout (flat_map f pkts) (flat_map f psent).
-Axiom flat_map_sendout1 : forall p psent f, 
-  List.flat_map f (sendout1 p psent) = sendout (f p) (flat_map f psent).
 
 Create HintDb psent.
 
-#[export] Hint Rewrite -> In_sendout1 In_sendout in_app_iff in_cons_iff : psent.
+Global Hint Rewrite -> In_sendout1 In_sendout in_app_iff in_cons_iff : psent.
 
 Fact incl_sendout_l (l1 l2 : list Packet) : incl l1 (sendout l1 l2).
 Proof. hnf. intros. rewrite In_sendout. now left. Qed.
@@ -150,14 +157,6 @@ Fact incl_sendout_app_r (l l1 l2 l3 : list Packet) (H : incl l (sendout l2 l3)) 
 Proof. hnf in H |- *. intros a HH. specialize (H _ HH). rewrite In_sendout in H |- *. rewrite in_app_iff. tauto. Qed.
 
 Fact sendout1_sendout : forall p psent, sendout1 p psent = sendout (p :: nil) psent.
-Proof. intros. reflexivity. Qed.
-
-Fact flat_map_sendout : forall pkts psent f, 
-  List.flat_map f (sendout pkts psent) = sendout (flat_map f pkts) (flat_map f psent).
-Proof. intros. apply flat_map_app. Qed.
-
-Fact flat_map_sendout1 : forall p psent f, 
-  List.flat_map f (sendout1 p psent) = sendout (f p) (flat_map f psent).
 Proof. intros. reflexivity. Qed.
 
 End PacketSoupOperationsImpl.

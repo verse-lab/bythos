@@ -212,6 +212,25 @@ Qed.
 
 Section Network_Model_Generic_Lemmas.
 
+Fact step_preserves_World_rel w1 w2 w1' w2' (H : World_rel w1 w1')
+  q (Hstep : system_step q w1 w2) (Hstep' : system_step q w1' w2') :
+  World_rel w2 w2'.
+Proof.
+  inversion_step_ Hstep Ef; inversion_step_ Hstep' Ef'; try discriminate; auto.
+  all: destruct H as (Hstmap & Hpsent); hnf in Hpsent.
+  - injection Hq as <-. rewrite <- Hstmap in Ef'.
+    destruct (procMsgWithCheck _ _ _) in Ef, Ef'. subst.
+    hnf. simpl. split; [ intros ?; unfold upd; now destruct_eqdec as_ ? | ].
+    hnf. intros ?. autorewrite with psent. now rewrite !In_consume, Hpsent.
+  - revert Hq. intros [= <- <-]. rewrite <- Hstmap in Ef'.
+    destruct (procInt _ _) in Ef, Ef'. subst.
+    hnf. simpl. split; [ intros ?; unfold upd; now destruct_eqdec as_ ? | ].
+    hnf. intros ?. autorewrite with psent. now rewrite Hpsent.
+  - revert Hq. intros [= <- <- <-].
+    subst. hnf; simpl. split; auto. 
+    hnf. intros ?. autorewrite with psent. now rewrite Hpsent.
+Qed.
+
 (* atomicity of node state change (i.e., at most one node changes its state in one step) *)
 (* FIXME: the following n can be known from q! *)
 Fact localState_change_atomic [q w w'] (H : system_step q w w') :
