@@ -1,4 +1,4 @@
-From Coq Require Import List Bool Lia ListSet Permutation PeanoNat.
+From Coq Require Import List Bool Lia ListSet Permutation PeanoNat RelationClasses.
 From Coq Require ssrbool ssreflect.
 Import (coercions) ssrbool.
 Import ssreflect.SsrSyntax.
@@ -16,6 +16,8 @@ Module LivenessTLA (Export A : NetAddr) (Export M : MessageType)
   (Export Adv : Adversary A M BTh BSett P Pr Ns) (Export N : Network A M BTh BSett P PSOp Pr Ns Adv).
 
 Section Preliminaries.
+
+Definition exec_rel (e e' : exec World) : Prop := forall n, World_rel (e n) (e' n).
 
 Definition init w := w = initWorld.
 
@@ -60,7 +62,12 @@ Qed.
 
 End Preliminaries.
 
-#[export] Hint Unfold init next : tla.
+Global Hint Unfold init next : tla.
+
+Global Instance Equivalence_exec_rel : Equivalence exec_rel.
+Proof.
+  constructor; hnf; intros; hnf in *; intros; try reflexivity; try now symmetry; try now transitivity (y n).
+Qed.
 
 Section Fairness.
 
