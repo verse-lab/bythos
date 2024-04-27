@@ -1,4 +1,4 @@
-From Coq Require Import List Lia.
+From Coq Require Import List Lia RelationClasses.
 From Coq Require ssrbool ssreflect.
 Import (coercions) ssrbool.
 Import ssreflect.SsrSyntax.
@@ -8,7 +8,7 @@ From ABCProtocol.Protocols.ABC Require Import Network.
 From ABCProtocol.Protocols.RB Require Import Network.
 
 (* TODO this is inevitable for the refinement proofs, if we require worlds to be strictly equal *)
-From Coq Require Import FunctionalExtensionality.
+(* From Coq Require Import FunctionalExtensionality. *)
 
 Module RBACAdversary (A : NetAddr) (R : Round) (ARP : AddrRoundPair A R) (Sn : Signable) (V : SignableValue Sn) (VBFT : ValueBFT A R V) 
   (BTh : ClassicByzThreshold A) (BSett : ByzSetting A)
@@ -49,6 +49,9 @@ Import A R ARP V VBFT BTh BSett P TSS0 TSS.
 
 Module RBN := RBNetwork A R V VBFT BTh BSett.
 Module ACN := ACNetwork A Sn V BTh BSett P TSS0 TSS.
+
+Existing Instance RBN.Ns.Equivalence_World_rel.
+Existing Instance ACN.Ns.Equivalence_World_rel.
 
 Module Export M <: MessageType := RBACMessageImpl A R Sn V P TSS ACN.ACDT RBN.M ACN.M.
 Module Export Pk <: SimplePacket A M := SimplePacketImpl A M.
@@ -114,7 +117,7 @@ Definition ssd_proj2 (q : system_step_descriptor) (w w' : RBN.Ns.World) : ACN.sy
     | _ => ACN.Idle
     end
   end.
-
+(*
 Fact stmap_proj1_upd stmap n st :
   stmap_proj1 (upd n st stmap) = RBN.Ns.upd n st.(stRB) (stmap_proj1 stmap).
 Proof.
@@ -128,7 +131,7 @@ Proof.
   unfold stmap_proj2. apply functional_extensionality. (* !!!!!!!! *) 
   intros ?. unfold upd, ACN.Ns.upd. now destruct_eqdec as_ ?.
 Qed.
-
+*)
 Fact pkts_filter_proj1_all pktsRB : pkts_filter_proj1 (map pkt_inl pktsRB) = pktsRB.
 Proof. induction pktsRB; simpl; auto. destruct a. simpl. congruence. Qed.
 
@@ -174,79 +177,171 @@ Proof.
   simpl; now autorewrite with pkts_filter.
 Qed.
 
+Local Hint Rewrite -> RBN.PC.In_consume ACN.PC.In_consume In_consume option_map_list_In : psent.
+
 (* the definitions should be sound *)
+
 Fact ssd_proj1_sound q w w' (Hstep : system_step q w w') :
-  RBN.system_step (ssd_proj1 q) (world_proj1 w) (world_proj1 w').
+  exists ww, RBN.system_step (ssd_proj1 q) (world_proj1 w) ww /\
+    RBN.Ns.World_rel ww (world_proj1 w').
 Proof.
   inversion_step' Hstep; clear Hstep; simpl.
-  all: unfold world_proj1; simpl_world; rewrite ?stmap_proj1_upd. 
-  - constructor; eauto.
+  all: unfold world_proj1; simpl_world.
+  - eexists. split; [ constructor; reflexivity | ]. reflexivity.
   - destruct msg as [ mRB | mAC ]; simpl.
-    + eapply RBN.DeliverStep; try reflexivity; simpl; auto.
+    + eexists. split; [ eapply RBN.DeliverStep; try reflexivity; simpl; auto | ].
       * apply option_map_list_In. eexists. split. apply Hpin. reflexivity.
       * unfold stmap_proj1 at 1.
         pose proof (procMsgWithCheck_proj1 _ _ _ _ _ Ef) as (E1 & E2).
         rewrite -> (surjective_pairing (RBN.RBP.procMsgWithCheck _ _ _)), <- E1, <- E2.
-        f_equal. admit.
-    + eapply RBN.IdleStep; try reflexivity; simpl; auto.
+        reflexivity.
+      * hnf; simpl. split; [ intros ?; unfold stmap_proj1, upd, RBN.Ns.upd; now destruct_eqdec as_ -> | ].
+        hnf. intros p. unfold pkts_filter_proj1. autorewrite with psent.
+        (* TODO cumbersome ... *)
+        split.
+        --intros [ (a & Hin & Hpj) | [ <- | ((a & Hin & Hpj) & Hneq) ] ].
+          ++exists a. autorewrite with psent. tauto.
+          ++exists (mkP src dst (inl mRB) true). autorewrite with psent. tauto.
+          ++exists a. autorewrite with psent. 
+            destruct a as [ ? ? [] ? ]; cbn in Hpj |- *; try discriminate.
+            injection Hpj as <-. eqsolve.
+        --intros (a & Hin & Hpj). autorewrite with psent in Hin.
+          simpl in Hin. destruct Hin as [ Hin | [ <- | (Hin & Hneq) ] ].
+          ++eauto.
+          ++cbn in Hpj. injection Hpj as <-. auto.
+          ++right. right. split; eauto. intros <-. apply Hneq. 
+            destruct a as [ ? ? [] ? ]; cbn in Hpj |- *; try discriminate.
+            congruence.
+    + eexists. split; [ eapply RBN.IdleStep; try reflexivity; simpl; auto | ].
       rewrite -> (surjective_pairing (ACN.ACP.procMsgWithCheck _ _ _)) in Ef.
-      revert Ef. intros [= <- <-]. simpl. f_equal.
-      * apply functional_extensionality. (* !!!!!!!! *) 
-        intros ?. unfold stmap_proj1, RBN.Ns.upd. now destruct_eqdec as_ ->.
-      * admit.
-  - eapply RBN.InternStep; try reflexivity; simpl; auto.
-    unfold stmap_proj1 at 1. unfold procInt in E. 
-    rewrite -> (surjective_pairing (RBN.RBP.procInt _ _)) in E |- *.
-    revert E. intros [= <- <-]. simpl. f_equal.
-    admit.
-  - unfold world_proj1. simpl_world.
-    destruct m as [ mRB | mAC ]; simpl.
-    + eapply RBN.ByzStep; try reflexivity; simpl; auto.
-      f_equal. admit.
-    + eapply RBN.IdleStep; try reflexivity; simpl; auto.
-      f_equal. admit.
-Admitted.
+      revert Ef. intros [= <- <-]. 
+      hnf; simpl. split; [ intros ?; unfold stmap_proj1, upd, RBN.Ns.upd; now destruct_eqdec as_ -> | ].
+      hnf. intros p. unfold pkts_filter_proj1. autorewrite with psent.
+      (* TODO cumbersome ... *)
+      split.
+      * intros (a & Hin & Hpj). exists a. split; auto. 
+        autorewrite with psent. right. right. split; auto. intros <-. discriminate.
+      * intros (a & Hin & Hpj). exists a. split; auto.
+        autorewrite with psent in Hin. destruct Hin as [ (a' & <- & Hin')%in_map_iff | [ <- | (? & ?) ] ]; auto; try discriminate.
+  - eexists. split; [ eapply RBN.InternStep; try reflexivity; simpl; auto | ].
+    1: rewrite -> (surjective_pairing (RBN.RBP.procInt _ _)); reflexivity.
+    unfold stmap_proj1 at 1. unfold procInt in E.
+    rewrite -> (surjective_pairing (RBN.RBP.procInt _ _)) in E.
+    revert E. intros [= <- <-].
+    hnf; simpl. split; [ intros ?; unfold stmap_proj1, upd, RBN.Ns.upd; now destruct_eqdec as_ -> | ].
+    hnf. intros p. unfold pkts_filter_proj1. autorewrite with psent.
+    (* TODO cumbersome ... *)
+    split.
+    + intros [ Hin | (a & Hin & Hpj) ].
+      --exists (pkt_inl p). autorewrite with psent. split; [ left; now apply in_map | apply pkt_proj1_refl ].
+      --exists a. autorewrite with psent. auto.
+    + intros (a & Hin & Hpj). autorewrite with psent in Hin. destruct Hin as [ (p' & <- & Hin')%in_map_iff | Hin ]; eauto.
+      apply pkt_proj1_refl_must in Hpj. subst. tauto.
+  - destruct m as [ mRB | mAC ]; simpl.
+    + eexists. split; [ eapply RBN.ByzStep; try reflexivity; simpl; auto | ].
+      simpl. hnf; simpl. split; auto.
+      hnf. intros p. unfold pkts_filter_proj1. autorewrite with psent.
+      (* TODO cumbersome ... *)
+      split.
+      * intros [ <- | (a & Hin & Hpj) ].
+        --eexists. autorewrite with psent. split; [ left; reflexivity | ]. reflexivity.
+        --exists a. autorewrite with psent. tauto.
+      * intros (a & Hin & Hpj). autorewrite with psent in Hin. destruct Hin as [ <- | Hin ]; eauto.
+        cbn in Hpj. injection Hpj as <-. now left.
+    + eexists. split; [ eapply RBN.IdleStep; try reflexivity; simpl; auto | ].
+      hnf; simpl. split; auto.
+      hnf. intros p. unfold pkts_filter_proj1. autorewrite with psent.
+      setoid_rewrite In_sendout1. firstorder. subst. discriminate.
+Qed.
 
 Fact ssd_proj2_sound q w w' (Hstep : system_step q w w') :
-  ACN.system_step (ssd_proj2 q (world_proj1 w) (world_proj1 w')) (world_proj2 w) (world_proj2 w').
+  exists ww, ACN.system_step (ssd_proj2 q (world_proj1 w) (world_proj1 w')) (world_proj2 w) ww /\
+    ACN.Ns.World_rel ww (world_proj2 w').
 Proof.
   inversion_step' Hstep; clear Hstep; simpl.
-  all: unfold world_proj2; simpl_world; rewrite ?stmap_proj2_upd. 
-  - constructor; eauto.
+  all: unfold world_proj2; simpl_world.
+  - eexists. split; [ constructor; reflexivity | ]. reflexivity.
   - destruct msg as [ mRB | mAC ]; simpl.
     + unfold stmap_proj1. rewrite upd_refl.
       pose proof (procMsgWithCheck_proj1 _ _ _ _ _ Ef) as (E1 & _).
       rewrite E1. rewrite -> (surjective_pairing (RBN.RBP.procMsgWithCheck _ _ _)) in Ef.
       destruct (triggered _ _) in Ef |- *.
-      * eapply ACN.InternStep; try reflexivity; simpl; auto.
-        unfold stmap_proj2 at 1. 
-        rewrite -> (surjective_pairing (ACN.ACP.procInt _ _)) in Ef |- *.
-        revert Ef. intros [= <- <-]. simpl. f_equal.
-        admit.
-      * eapply ACN.IdleStep; try reflexivity; simpl; auto.
-        revert Ef. intros [= <- <-]. simpl. f_equal.
-        --apply functional_extensionality. (* !!!!!!!! *) 
-          intros ?. unfold stmap_proj2, ACN.Ns.upd. now destruct_eqdec as_ ->.
-        --admit.
-    + eapply ACN.DeliverStep; try reflexivity; simpl; auto.
+      * eexists. split; [ eapply ACN.InternStep; try reflexivity; simpl; auto | ].
+        all: rewrite -> (surjective_pairing (ACN.ACP.procInt _ _)) in Ef.
+        1: unfold stmap_proj2 at 1; rewrite -> (surjective_pairing (ACN.ACP.procInt _ _)); reflexivity.
+        revert Ef. intros [= <- <-]. 
+        hnf; simpl. split; [ intros ?; unfold stmap_proj2, upd, ACN.Ns.upd; now destruct_eqdec as_ -> | ].
+        hnf. intros p. unfold pkts_filter_proj2. autorewrite with psent.
+        (* TODO cumbersome ... *)
+        split.
+        --intros [ Hin | (a & Hin & Hpj) ].
+          ++exists (pkt_inr p). autorewrite with psent. split; [ left; right; now apply in_map | apply pkt_proj2_refl ].
+          ++exists a. autorewrite with psent. split; auto. right. right. split; auto. intros <-. discriminate.
+        --intros (a & Hin & Hpj). autorewrite with psent in Hin. 
+          destruct Hin as [ [ Hin | Hin ] | [ <- | (Hin & Hneq) ] ]; eauto.
+          all: apply in_map_iff in Hin; destruct Hin as (a' & <- & Hin'); try discriminate.
+          apply pkt_proj2_refl_must in Hpj. subst. tauto.
+      * eexists. split; [ eapply ACN.IdleStep; try reflexivity; simpl; auto | ].
+        revert Ef. intros [= <- <-].
+        hnf; simpl. split; [ intros ?; unfold stmap_proj2, upd, ACN.Ns.upd; now destruct_eqdec as_ -> | ].
+        hnf. intros p. unfold pkts_filter_proj2. autorewrite with psent.
+        (* TODO cumbersome ... *)
+        split.
+        --intros (a & Hin & Hpj). exists a. autorewrite with psent. split; auto. right. right. split; auto. intros <-. discriminate.
+        --intros (a & Hin & Hpj). autorewrite with psent in Hin. 
+          destruct Hin as [ (a' & <- & Hin')%in_map_iff | [ <- | (Hin & Hneq) ] ]; eauto.
+    + eexists. split; [ eapply ACN.DeliverStep; try reflexivity; simpl; auto | ].
       * apply option_map_list_In. eexists. split. apply Hpin. reflexivity.
       * unfold stmap_proj2 at 1.
         pose proof (procMsgWithCheck_proj2 _ _ _ _ _ Ef) as (E1 & E2).
         rewrite -> (surjective_pairing (ACN.ACP.procMsgWithCheck _ _ _)), <- E1, <- E2.
-        f_equal. admit.
-  - eapply ACN.IdleStep; try reflexivity; simpl; auto.
+        reflexivity.
+      * hnf; simpl. split; [ intros ?; unfold stmap_proj2, upd, ACN.Ns.upd; now destruct_eqdec as_ -> | ].
+        hnf. intros p. unfold pkts_filter_proj2. autorewrite with psent.
+        (* TODO cumbersome ... *)
+        (* TODO repeating some proof above *)
+        split.
+        --intros [ (a & Hin & Hpj) | [ <- | ((a & Hin & Hpj) & Hneq) ] ].
+          ++exists a. autorewrite with psent. tauto.
+          ++exists (mkP src dst (inr mAC) true). autorewrite with psent. tauto.
+          ++exists a. autorewrite with psent. 
+            destruct a as [ ? ? [] ? ]; cbn in Hpj |- *; try discriminate.
+            injection Hpj as <-. eqsolve.
+        --intros (a & Hin & Hpj). autorewrite with psent in Hin.
+          simpl in Hin. destruct Hin as [ Hin | [ <- | (Hin & Hneq) ] ].
+          ++eauto.
+          ++cbn in Hpj. injection Hpj as <-. auto.
+          ++right. right. split; eauto. intros <-. apply Hneq. 
+            destruct a as [ ? ? [] ? ]; cbn in Hpj |- *; try discriminate.
+            congruence.
+  - eexists. split; [ eapply ACN.IdleStep; try reflexivity; simpl; auto | ].
     unfold procInt in E. 
     rewrite -> (surjective_pairing (RBN.RBP.procInt _ _)) in E.
-    revert E. intros [= <- <-]. simpl. f_equal.
-    + apply functional_extensionality. (* !!!!!!!! *) 
-      intros ?. unfold stmap_proj2, ACN.Ns.upd. now destruct_eqdec as_ ->.
-    + admit.
-  - unfold world_proj2. simpl_world.
+    revert E. intros [= <- <-].
+    hnf; simpl. split; [ intros ?; unfold stmap_proj2, upd, ACN.Ns.upd; now destruct_eqdec as_ -> | ].
+    hnf. intros p. unfold pkts_filter_proj2. autorewrite with psent.
+    (* TODO cumbersome ... *)
+    split.
+    + intros (a & Hin & Hpj). exists a. autorewrite with psent. auto.
+    + intros (a & Hin & Hpj). autorewrite with psent in Hin. 
+      destruct Hin as [ (a' & <- & Hin')%in_map_iff | ? ]; eauto. discriminate.
+  - (* TODO repeating the proof above *)
     destruct m as [ mRB | mAC ]; simpl.
-    + eapply ACN.IdleStep; try reflexivity; simpl; auto.
-      f_equal. admit.
-    + eapply ACN.ByzStep; try reflexivity; simpl; auto.
-      f_equal. admit.
-Admitted.
+    + eexists. split; [ eapply ACN.IdleStep; try reflexivity; simpl; auto | ].
+      hnf; simpl. split; auto.
+      hnf. intros p. unfold pkts_filter_proj2. autorewrite with psent.
+      (* TODO cumbersome ... *)
+      setoid_rewrite In_sendout1. firstorder. subst. discriminate.
+    + eexists. split; [ eapply ACN.ByzStep; try reflexivity; simpl; auto | ].
+      simpl. hnf; simpl. split; auto.
+      hnf. intros p. unfold pkts_filter_proj2. autorewrite with psent.
+      (* TODO cumbersome ... *)
+      split.
+      * intros [ <- | (a & Hin & Hpj) ].
+        --eexists. autorewrite with psent. split; [ left; reflexivity | ]. reflexivity.
+        --exists a. autorewrite with psent. tauto.
+      * intros (a & Hin & Hpj). autorewrite with psent in Hin. destruct Hin as [ <- | Hin ]; eauto.
+        cbn in Hpj. injection Hpj as <-. now left.
+Qed.
 
 End RBACNetwork.

@@ -42,6 +42,23 @@ Definition pkt_proj2 (p : Packet) : option ACPk.Packet :=
   | _ => None
   end.
 
+Global Arguments pkt_proj1 !_.
+Global Arguments pkt_proj2 !_.
+Global Arguments pkt_inl !_.
+Global Arguments pkt_inr !_.
+
+Fact pkt_proj1_refl p : pkt_proj1 (pkt_inl p) = Some p.
+Proof. now destruct p. Qed.
+
+Fact pkt_proj1_refl_must p p' : pkt_proj1 (pkt_inl p) = Some p' -> p = p'.
+Proof. destruct p. cbn. now intros [=]. Qed.
+
+Fact pkt_proj2_refl p : pkt_proj2 (pkt_inr p) = Some p.
+Proof. now destruct p. Qed.
+
+Fact pkt_proj2_refl_must p p' : pkt_proj2 (pkt_inr p) = Some p' -> p = p'.
+Proof. destruct p. cbn. now intros [=]. Qed.
+
 (* FIXME: this seems actually reusable? *)
 Definition option_map_list [A B : Type] (f : A -> option B) (l : list A) : list B :=
   List.flat_map (fun a => list.option_list (f a)) l.
@@ -56,10 +73,10 @@ Proof.
   - intros (a0 & [ <- | Hina0 ] & E0); try eauto. congruence.
 Qed.
 
-Definition pkts_filter_proj1 : list Packet -> list RBPk.Packet := Eval unfold option_map_list in
+Definition pkts_filter_proj1 : list Packet -> list RBPk.Packet :=
   option_map_list pkt_proj1.
 
-Definition pkts_filter_proj2 : list Packet -> list ACPk.Packet := Eval unfold option_map_list in
+Definition pkts_filter_proj2 : list Packet -> list ACPk.Packet :=
   option_map_list pkt_proj2.
 
 Definition InternalTransition := RBP.InternalTransition.
