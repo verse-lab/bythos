@@ -79,10 +79,12 @@ Qed.
 
 (* TODO have no way to go ... this might be too strong, but I have no better idea
     on how to avoid ambiguity. *)
-Definition disambiguation e f : Prop :=
+(* this may not always hold, but can be achieved at the level of network semantics
+    (by requiring all resulting worlds to be normalized) *)
+Definition disambiguation f (e : exec World) : Prop :=
   forall q n, system_step q (e n) (e (S n)) → f n = q.
 
-Fact exec_proj1_sound_fairness (e : exec World) f (H : e ⊨ nextf f) (Hig : disambiguation e f)
+Fact exec_proj1_sound_fairness (e : exec World) f (H : e ⊨ nextf f) (Hdg : disambiguation f e)
   (e' : exec RBN.Ns.World) (Hrel : RBLiveTLA.exec_rel e' (exec_proj1 e))
   (* (H' : e' ⊨ □ ⟨ RBLiveTLA.next ⟩) : *)
   (H' : e' ⊨ RBLiveTLA.nextf (ssdexec_proj1 f)) :
@@ -99,8 +101,21 @@ Proof.
   destruct Hfair as (k & Hstep). 
   (* key point: the correspondence between delivery steps *)
   exists k.
-  apply Hig in Hstep. hnf in H'. specialize (H' (k + n)). 
+  apply Hdg in Hstep. hnf in H'. specialize (H' (k + n)). 
   unfold ssdexec_proj1 in H'. rewrite Hstep in H'. now cbn in H'.
 Qed.
+
+Goal forall src r f (Hnonbyz_src : is_byz src = false),
+  ⌜ init ⌝ ∧ nextf f ∧ fairness ∧ disambiguation f ⊢
+  ⌜ λ w, (w @ src).(stRB).(sent) r ⌝ ~~> ⌜ λ _, True ⌝.
+Proof.
+  intros. hnf. intros e (Hini & Hf & Hfair & Hdg).
+  pose proof (exec_proj1_sound e f Hf) as (Hrel & Hf').
+  set (e' := exec_norm1 f e) in Hrel, Hf'.
+  eapply exec_proj1_sound_fairness in Hfair; eauto.
+  assert (e' ⊨ ⌜ RBLiveTLA.init ⌝) as Hini'.
+  { subst e'. unfold exec_norm1. hnf in Hini |- *. simpl. rewrite Hini. reflexivity. }
+  pose proof (conj Hini' (conj (RBLiveTLA.nextf_impl_next _ _ Hf') Hfair)) as HH%(RBLiveTLA.validity_in_tla _ r Hnonbyz_src).
+Abort.
 
 End RBACLiveness2.
