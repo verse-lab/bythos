@@ -65,7 +65,7 @@ Definition byz_constraints (m : Message) (w : World) : Prop :=
 
 End ACAdversary.
 
-Module ACNetwork (A : NetAddr) (Sn : Signable) (V : SignableValue Sn) (* (VBFT : ValueBFT A Sn V) *)
+Module Type ACNetworkType (A : NetAddr) (Sn : Signable) (V : SignableValue Sn) (* (VBFT : ValueBFT A Sn V) *)
   (BTh : ByzThreshold A) (BSett : ByzSetting A)
   (P : PKI A Sn) (TSS0 : ThresholdSignatureSchemePrim A Sn with Definition thres := BTh.t0) (* ! *)
   (TSS : ThresholdSignatureScheme A Sn with Module TSSPrim := TSS0).
@@ -83,5 +83,14 @@ Module Export Ns <: NetState A M P0 BTh ACP := NetStateImpl A M P0 BTh ACP.
 Module Export ACAdv <: Adversary A M BTh BSett P0 ACP Ns := ACAdversary A Sn V (* VBFT *) BTh BSett P TSS0 TSS ACDT CC M P0 ACP Ns.
 
 Include NetworkImpl A M BTh BSett P0 PSOp ACP Ns ACAdv.
+
+End ACNetworkType.
+
+Module ACNetwork (A : NetAddr) (Sn : Signable) (V : SignableValue Sn) (* (VBFT : ValueBFT A Sn V) *)
+  (BTh : ByzThreshold A) (BSett : ByzSetting A)
+  (P : PKI A Sn) (TSS0 : ThresholdSignatureSchemePrim A Sn with Definition thres := BTh.t0) (* ! *)
+  (TSS : ThresholdSignatureScheme A Sn with Module TSSPrim := TSS0) <: ACNetworkType A Sn V (* VBFT *) BTh BSett P TSS0 TSS.
+
+Include ACNetworkType A Sn V (* VBFT *) BTh BSett P TSS0 TSS.
 
 End ACNetwork.

@@ -43,15 +43,17 @@ End RBACAdversary.
 Module RBACNetwork (A : NetAddr) (R : Round) (ARP : AddrRoundPair A R) (Sn : Signable) (V : SignableValue Sn) (VBFT : ValueBFT A R V) 
   (BTh : ClassicByzThreshold A) (BSett : ByzSetting A)
   (P : PKI A Sn) (TSS0 : ThresholdSignatureSchemePrim A Sn with Definition thres := BTh.t0) (* ! *)
-  (TSS : ThresholdSignatureScheme A Sn with Module TSSPrim := TSS0).
+  (TSS : ThresholdSignatureScheme A Sn with Module TSSPrim := TSS0)
+  (RBN : RBNetworkType A R V VBFT BTh BSett)
+  (ACN : ACNetworkType A Sn V BTh BSett P TSS0 TSS).
 
 Import A R ARP V VBFT BTh BSett P TSS0 TSS.
-
+(*
 Module RBN := RBNetwork A R V VBFT BTh BSett.
 Module ACN := ACNetwork A Sn V BTh BSett P TSS0 TSS.
-
-Existing Instance RBN.Ns.Equivalence_World_rel.
-Existing Instance ACN.Ns.Equivalence_World_rel.
+*)
+(* Existing Instance RBN.Ns.Equivalence_World_rel.
+Existing Instance ACN.Ns.Equivalence_World_rel. *)
 
 Module Export M <: MessageType := RBACMessageImpl A R Sn V P TSS ACN.ACDT RBN.M ACN.M.
 Module Export Pk <: SimplePacket A M := SimplePacketImpl A M.

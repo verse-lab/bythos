@@ -20,7 +20,7 @@ Definition byz_constraints (m : Message) (w : World) : Prop :=
 
 End RBAdversary.
 
-Module RBNetwork (A : NetAddr) (R : Round) (V : Value) (VBFT : ValueBFT A R V) 
+Module Type RBNetworkType (A : NetAddr) (R : Round) (V : Value) (VBFT : ValueBFT A R V) 
   (BTh : ClassicByzThreshold A) (BSett : ByzSetting A).
 
 Import A R V VBFT BTh BSett.
@@ -57,4 +57,11 @@ Definition lift_psent_inv (P : StateMap -> PacketSoup -> PacketSoup -> Prop)
 Definition id_coh w : Prop := 
   forall n, is_byz n = false -> (localState w n).(id) = n.
 *)
+End RBNetworkType.
+
+Module RBNetwork (A : NetAddr) (R : Round) (V : Value) (VBFT : ValueBFT A R V) 
+  (BTh : ClassicByzThreshold A) (BSett : ByzSetting A) <: RBNetworkType A R V VBFT BTh BSett.
+
+Include RBNetworkType A R V VBFT BTh BSett.
+
 End RBNetwork.
