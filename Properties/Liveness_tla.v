@@ -17,11 +17,20 @@ Module LivenessTLA (Export A : NetAddr) (Export M : MessageType)
 
 Section Preliminaries.
 
-Definition exec_rel (e e' : exec World) : Prop := forall n, World_rel (e n) (e' n).
+Definition exec_rel (e e' : exec World) : Prop := ∀ n, World_rel (e n) (e' n).
 
 Definition init w := w = initWorld.
 
 Definition next w w' := ∃ q, system_step q w w'.
+
+(* use functions to eliminate ambiguity, which refers to the case where
+    multiple "q" may satisfy the "∃" above *)
+
+Definition nextf (f : exec system_step_descriptor) : predicate World :=
+  fun e => ∀ n, system_step (f n) (e n) (e (S n)).
+
+Fact nextf_impl_next f : (nextf f ⊢ □ ⟨next⟩).
+Proof. unseal. hnf. eexists. apply H. Qed.
 
 Fact is_invariant_in_tla [P] (H : is_invariant_step P) :
   ⌜ P ⌝ ∧ □ ⟨next⟩ ⊢ □ ⌜ P ⌝.
