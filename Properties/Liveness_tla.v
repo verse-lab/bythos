@@ -100,10 +100,24 @@ Qed.
 (* certainly, we would like to check whether this is actually what we want! *)
 (* semantically, what we want is ...? *)
 
+(*
+Fact consumed_is_changed_by_delivery_pre :
+  ∀ p, good_packet p → consumed p = false → ∀ w w', In p (sentMsgs w) →
+    w' = next_world (Deliver p) w → system_step (Deliver p) w w'.
+Proof.
+  intros. hnf in * |-. subst w'. eapply DeliverStep; try solve [ reflexivity | assumption | tauto ].
+  simpl. rewrite (surjective_pairing (procMsgWithCheck _ _ _)). reflexivity.
+Qed.
+*)
 Definition reliable_condition (e : exec World) :=
   ∀ p, good_packet p → consumed p = false → ∀ n, In p (sentMsgs (e n)) →
     ∃ k, system_step (Deliver p) (e (k + n)) (e (S (k + n))).
 
+(*
+Definition reliable_condition_ (e : exec World) :=
+  ∀ p, good_packet p → consumed p = false → ∀ n, In p (sentMsgs (e n)) →
+    ∃ k, e (S (k + n)) = next_world (Deliver p) (e (k + n)).
+*)
 (* a lemma which will be used below, stating that the existence of
     an undelivered message will only be changed by an delivery action
   hope this would work for different network models ... *)
@@ -143,6 +157,19 @@ Proof.
     exists k.
     split; [ constructor | assumption ].
 Qed.
+(*
+Fact reliable_condition_change [e : exec World] (Hrc : e ⊨ □ ⟨ next ⟩) :
+  reliable_condition e ↔ reliable_condition_ e.
+Proof.
+  split; intros H; hnf in H |- *; intros; saturate_assumptions!; destruct H as (k & H).
+  - exists k. now apply next_world_sound.
+  - 
+    assert (¬ In p (e (S (k + n))).(sentMsgs)) as Htmp.
+    { rewrite H /= (surjective_pairing (procMsgWithCheck _ _ _)) /= In_sendout In_consume. 
+      intuition.
+    apply consumed_is_changed_by_delivery in H
+    apply consumed_is_changed_by_delivery_pre in H.
+*)
 
 (* what if things go too strong *)
 (*
