@@ -27,6 +27,12 @@ Definition all_honest_nodes_submitted v w := forall n, is_byz n = false -> (w @ 
 (* end *)
 Definition all_honest_nodes_confirmed v w := forall n, is_byz n = false -> (w @ n).(conf) /\ (w @ n).(submitted_value) = Some v.
 
+Fact all_honest_nodes_submitted_stmap_peq_cong v : stmap_peq_cong (all_honest_nodes_submitted v).
+Proof. unfold stmap_peq_cong, all_honest_nodes_submitted. intros w w' Hs. hnf in Hs. now setoid_rewrite Hs. Qed.
+
+Fact all_honest_nodes_confirmed_stmap_peq_cong v : stmap_peq_cong (all_honest_nodes_confirmed v).
+Proof. unfold stmap_peq_cong, all_honest_nodes_confirmed. intros w w' Hs. hnf in Hs. now setoid_rewrite Hs. Qed.
+
 Section Proof_of_Terminating_Convergence.
 
   Variables (v : Value).

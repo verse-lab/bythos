@@ -15,6 +15,7 @@ Module RBACLiveness2 (A : NetAddr) (R : Round) (ARP : AddrRoundPair A R) (Sn : S
 Import A R ARP V VBFT BTh BSett P TSS0 TSS.
 Import ssrbool. (* anyway *)
 
+(* TODO seems like there are some diamond issue, but skip for now *)
 Module RBLiveTLA := RBLiveness2 A R V VBFT BTh BSett.
 Module ACLiveTLA := ACLiveness2 A Sn V BTh BSett P TSS0 TSS.
 
@@ -181,7 +182,7 @@ Fact leads_to_inr e P Q (H : exec_proj2 e ⊨ ⌜ P ⌝ ~~> ⌜ Q ⌝) :
 Proof. revert H. unseal. (* ??? *) Qed.
 
 Definition all_receives_RB src r v w : Prop :=
-  forall n, is_byz n = false -> In v ((w @ n).(stRB).(output) (src, r)).
+  RBLiveTLA.RBLive.all_receives src r v (world_proj1 w).
 
 Goal forall src r f (Hnonbyz_src : is_byz src = false),
   ⌜ init ⌝ ∧ nextf f ∧ fairness ∧ disambiguation f ⊢
@@ -196,6 +197,28 @@ Proof.
   apply RBLiveTLA.leads_to_exec_rel with (e':=exec_proj1 e) in HH; auto.
   - hnf; intros ?? (HHH & ?); now rewrite HHH.
   - apply RBN.Ns.stmap_peq_cong_implies_World_rel_cong, RBLiveTLA.RBLive.all_receives_stmap_peq_cong.
+Qed.
+
+Definition all_honest_nodes_submitted_AC v w : Prop :=
+  ACLiveTLA.ACLive.Terminating_Convergence.all_honest_nodes_submitted v (world_proj2 w).
+
+Definition all_honest_nodes_confirmed_AC v w : Prop :=
+  ACLiveTLA.ACLive.Terminating_Convergence.all_honest_nodes_confirmed v (world_proj2 w).
+
+Goal forall f v,
+  ⌜ init ⌝ ∧ nextf f ∧ fairness ∧ disambiguation f ⊢
+  ⌜ all_honest_nodes_submitted_AC v ⌝ ~~> ⌜ all_honest_nodes_confirmed_AC v ⌝.
+Proof.
+  intros. hnf. intros e (Hini & Hf & Hfair & Hdg).
+  pose proof (exec_norm2_sound_next e f Hf) as (Hrel & Hf').
+  pose proof (exec_norm2_sound_init e f Hini) as Hini'.
+  set (e' := exec_norm2 f e) in Hrel, Hf', Hini'.
+  eapply exec_norm2_sound_fairness in Hfair; eauto.
+  pose proof (conj Hini' (conj (ACLiveTLA.nextf_impl_next _ _ Hf') Hfair)) as HH%(ACLiveTLA.terminating_convergence_in_tla v num_byz_le_t0).
+  apply ACLiveTLA.leads_to_exec_rel with (e':=exec_proj2 e) in HH; auto.
+  all: apply ACN.Ns.stmap_peq_cong_implies_World_rel_cong; 
+    auto using ACLiveTLA.ACLive.Terminating_Convergence.all_honest_nodes_submitted_stmap_peq_cong, 
+      ACLiveTLA.ACLive.Terminating_Convergence.all_honest_nodes_confirmed_stmap_peq_cong.
 Qed.
 
 End RBACLiveness2.
