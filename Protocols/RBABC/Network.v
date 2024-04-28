@@ -155,8 +155,10 @@ Create HintDb pkts_filter.
 Hint Rewrite -> pkts_filter_proj1_all pkts_filter_proj1_no pkts_filter_proj2_all pkts_filter_proj2_no
   pkts_filter_proj1_app app_nil_r : pkts_filter.
 
+Set Implicit Arguments.
+
 (* TODO are the proofs below repeating? *)
-Fact procMsgWithCheck_proj1 st src mRB : forall st' pkts,
+Fact procMsgWithCheck_proj1 [st src mRB] : forall st' pkts,
   procMsgWithCheck st src (inl mRB) = (st', pkts) ->
   let: res := RBN.RBP.procMsgWithCheck st.(stRB) src mRB in
   st'.(stRB) = fst res /\ pkts_filter_proj1 pkts = snd res.
@@ -169,7 +171,7 @@ Proof.
   all: simpl; now autorewrite with pkts_filter.
 Qed.
 
-Fact procMsgWithCheck_proj2 st src mAC : forall st' pkts,
+Fact procMsgWithCheck_proj2 [st src mAC] : forall st' pkts,
   procMsgWithCheck st src (inr mAC) = (st', pkts) ->
   let: res := ACN.ACP.procMsgWithCheck st.(stAC) src mAC in
   st'.(stAC) = fst res /\ pkts_filter_proj2 pkts = snd res.
@@ -200,7 +202,7 @@ Proof.
       split; [ eapply RBN.DeliverStep; try reflexivity; simpl; auto | ].
       * apply option_map_list_In. eexists. split. apply Hpin. reflexivity.
       * rewrite -> (surjective_pairing (RBN.RBP.procMsgWithCheck _ _ _)). reflexivity.
-      * pose proof (procMsgWithCheck_proj1 _ _ _ _ _ Ef) as (E1 & E2). rewrite <- E1, <- E2.
+      * pose proof (procMsgWithCheck_proj1 Ef) as (E1 & E2). rewrite <- E1, <- E2.
         hnf; simpl. split; [ intros ?; unfold upd, RBN.Ns.upd; now destruct_eqdec as_ -> | ].
         hnf. intros p. unfold pkts_filter_proj1. autorewrite with psent.
         (* TODO cumbersome ... *)
@@ -260,6 +262,24 @@ Proof.
       setoid_rewrite In_sendout1. firstorder. subst. discriminate.
 Qed.
 
+Corollary reachable_proj1 w (Hr : reachable w) :
+  exists ww, RBN.Ns.World_rel ww (world_proj1 w) /\ RBN.reachable ww.
+Proof.
+  induction Hr as [ | q w w' Hstep Hr (ww & Hrel & Hr') ].
+  - exists RBN.Ns.initWorld. split; [ | now constructor ]. split; auto; try reflexivity.
+  - pose proof (ssd_proj1_sound Hstep) as (Ha & Hb).
+    symmetry in Hrel. pose proof Hrel as Hrel_. eapply RBN.step_mirrors_World_rel in Hrel.
+    2: apply Ha. 2: auto. 2: now apply RBN.next_world_preserves_World_rel.
+    eexists. split. 2: eapply RBN.ReachableStep; try apply Hrel. all: auto.
+    rewrite <- Hb. now apply RBN.next_world_preserves_World_rel. (* HMM ...? *)
+Qed.
+
+Corollary always_holds_proj1_apply w (Hr : reachable w) (P : RBN.Ns.World -> Prop)
+  (HP : RBN.Ns.World_rel_cong P) (Hinv : RBN.always_holds P) : P (world_proj1 w).
+Proof.
+  pose proof (reachable_proj1 Hr) as (ww & Hrel & Hr'). apply Hinv in Hr'. apply HP in Hrel. tauto.
+Qed.
+
 Fact ssd_proj2_sound q w :
   let: qq := ssd_proj2 q (world_proj1 w) (world_proj1 (next_world q w)) in
   let: ww := ACN.next_world qq (world_proj2 w) in
@@ -273,7 +293,7 @@ Proof.
   - split; [ constructor | ]; reflexivity.
   - destruct msg as [ mRB | mAC ]; simpl.
     + unfold stmap_proj1.
-      pose proof (procMsgWithCheck_proj1 _ _ _ _ _ Ef) as (E1 & _).
+      pose proof (procMsgWithCheck_proj1 Ef) as (E1 & _).
       rewrite -> (surjective_pairing (RBN.RBP.procMsgWithCheck _ _ _)) in Ef |- *.
       rewrite Ef. simpl. rewrite upd_refl, E1. 
       destruct (triggered _ _) in Ef |- *.
@@ -306,7 +326,7 @@ Proof.
       split; [ eapply ACN.DeliverStep; try reflexivity; simpl; auto | ].
       * apply option_map_list_In. eexists. split. apply Hpin. reflexivity.
       * rewrite -> (surjective_pairing (ACN.ACP.procMsgWithCheck _ _ _)). reflexivity.
-      * pose proof (procMsgWithCheck_proj2 _ _ _ _ _ Ef) as (E1 & E2). rewrite <- E1, <- E2.
+      * pose proof (procMsgWithCheck_proj2 Ef) as (E1 & E2). rewrite <- E1, <- E2.
         hnf; simpl. split; [ intros ?; unfold stmap_proj2, upd, ACN.Ns.upd; now destruct_eqdec as_ -> | ].
         hnf. intros p. unfold pkts_filter_proj2. autorewrite with psent.
         (* TODO cumbersome ... *)

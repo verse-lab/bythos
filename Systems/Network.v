@@ -268,6 +268,7 @@ Qed.
 Fact step_mirrors_World_rel w1 w1' w2 (H1 : World_rel w1 w1') 
   q (H : system_step q w1 w2) 
   (* needs this! *)
+  (* FIXME: rewrite using World_rel_cong? *)
   (Hbyz_rel : forall m w w', World_rel w w' -> byz_constraints m w -> byz_constraints m w') :
   let: w2' := next_world q w1' in World_rel w2 w2' -> system_step q w1' w2'.
 Proof with try solve [ reflexivity | assumption ].
@@ -720,5 +721,12 @@ Module NetworkImpl (Export A : NetAddr) (Export M : MessageType)
 
 Include Network A M BTh BSett P PSOp Pr Ns Adv.
 Include CommonLiftOperations A M BTh BSett P PSOp Pr Ns. (* since usually NetworkImpl will be called when doing invariant proofs *)
+
+Fact lift_state_pair_inv_mirrors_World_rel [w1 w1' w2 w2']
+  (H1 : World_rel w1 w1') (H2 : World_rel w2 w2') (P : State -> State -> Prop)
+  (H : lift_state_pair_inv P w1 w2) : lift_state_pair_inv P w1' w2'.
+Proof.
+  hnf in H |- *. intros n. specialize (H n). hnf in H1, H2. now rewrite <- (proj1 H1), <- (proj1 H2).
+Qed.
 
 End NetworkImpl.
