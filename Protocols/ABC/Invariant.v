@@ -459,38 +459,42 @@ Record node_state_invariants_pre st st' : Prop := {
   and manage the proof context. 
 *)
 Fact inv_buffer_received_only_pre q (Hq_ : forall n t, q <> Intern n t) 
-  w w' (Hstep : system_step q w w') 
-  (H : forall n, (w @ n).(id) = n /\ (is_byz n = false -> inv_buffer_received (sentMsgs w) (w @ n))
-    /\ ((w @ n).(submitted_value) -> (w @ n).(msg_buffer) = nil)) :
+  w w' (Hstep : system_step q w w') : (* FIXME: this should be changed into next_world! system_step is too strong *)
   (* we need all four of them for the induction proof *)
-  forall n, (w' @ n).(id) = n /\ (is_byz n = false -> inv_buffer_received (sentMsgs w') (w' @ n))
-    /\ ((w' @ n).(submitted_value) -> (w' @ n).(msg_buffer) = nil)
-    /\ submitted_value_persistent (w @ n) (w' @ n).
+  (forall nn, ((forall n, (w @ n).(id) = n /\ (is_byz n = false -> inv_buffer_received (sentMsgs w) (w @ n))
+    /\ ((w @ n).(submitted_value) -> (w @ n).(msg_buffer) = nil)) -> 
+    (w' @ nn).(id) = nn /\ (is_byz nn = false -> inv_buffer_received (sentMsgs w') (w' @ nn))
+      /\ ((w' @ nn).(submitted_value) -> (w' @ nn).(msg_buffer) = nil)) /\
+    (w' @ nn).(submitted_value) = (w @ nn).(submitted_value)).
 Proof with (intros; rewrite ?sendout0; try (rewrite In_sendout; right); eauto using In_consume_fwd_full').
-  intros n. specialize (H n). destruct H as (Hcoh & Hrcv & Hs).
+  intros n. 
   unfold inv_buffer_received, submitted_value_persistent in *.
   inversion_step' Hstep; clear Hstep; auto.
-  3:{ split_and?; auto. intros. rewrite In_sendout1. right. eapply Hrcv; eauto. }
+  3:{ split_and?; auto. intros H. specialize (H n). destruct H as (Hcoh & Hrcv & Hs). 
+    split_and?; auto. intros. rewrite In_sendout1. right. eapply Hrcv; eauto. }
   2: exfalso; eapply Hq_; reflexivity.
   unfold upd.
   destruct (Address_eqdec _ _) as [ <- | Hneq ].
-  2: split_and?; auto...
+  2: split_and?; auto. 2: intros H; specialize (H n); destruct_and? H; split_and?; auto...
   destruct (procMsg _ _ _) as [ (st', ms) | ] eqn:E in Ef; simplify_eq.
-  2: split_and?; auto...
+  2: split_and?; auto. 2: intros H; specialize (H dst); destruct_and? H; split_and?; auto...
   (* get stf first *)
-  destruct (w @ dst) as [ dst' conf ov from lsigs sigs rlcerts rcerts buffer ] eqn: Est. simpl_state. subst dst'.
+  destruct (w @ dst) as [ dst' cf ov from lsigs sigs rlcerts rcerts buffer ] eqn:Est. simpl_state.
   destruct msg as [ v ls s | (v, cs) | (v, nsigs) ]; simpl in E; simplify_eq. (* pair inj *)
   - destruct ov as [ vthis | ].
-    + destruct (andb _ _) eqn:EE, conf in E; try discriminate; simplify_eq; simpl.
-      1: split_and?; auto...
-      destruct (in_dec _ _ _) as [ | Hnotin ] in E; try discriminate. simplify_eq. simpl.
-      split_and?; auto...
-    + simplify_eq. simpl. split_and?; auto; try discriminate. 
-      intros ?? [ <- | Hin ]; simpl... rewrite In_consume. tauto.
+    + (* TODO why Est disappeared? seems the problem is in "destruct cf in E" or "conf". *)
+      (* destruct (andb _ _) eqn:EE, conf in E; try discriminate. *)
+      destruct (andb _ _) eqn:EE in E; try discriminate. destruct cf; try discriminate; simplify_eq; simpl. 
+      * split_and?; auto. intros H. specialize (H dst). rewrite Est in H. simpl_state. destruct_and? H; split_and?; auto...
+      * destruct (in_dec _ _ _) as [ | Hnotin ] in E; try discriminate. simplify_eq. simpl.
+        split_and?; auto. intros H. specialize (H dst). rewrite Est in H. simpl_state. destruct_and? H; split_and?; auto...
+    + simplify_eq. simpl. split_and?; auto.
+      intros H. specialize (H dst). rewrite Est in H. simpl_state. destruct_and? H. subst.
+      split_and?; auto; try discriminate. intros ?? [ <- | Hin ]; simpl... rewrite In_consume. tauto.
   - destruct (combined_verify _ _) eqn:EE in E; try discriminate.
-    simplify_eq. split_and?; auto...
+    simplify_eq. simpl_state. split_and?; auto. intros H. specialize (H dst). rewrite Est in H. simpl_state. destruct_and?; split_and?; auto...
   - destruct (andb _ _) eqn:EE in E; try discriminate.
-    simplify_eq. split_and?; auto...
+    simplify_eq. simpl_state. split_and?; auto. intros H. specialize (H dst). rewrite Est in H. simpl_state. destruct_and?; split_and?; auto...
 Qed.
 
 Fact inv_buffer_received_only q w w' (Hstep : system_step q w w') 
@@ -501,7 +505,8 @@ Fact inv_buffer_received_only q w w' (Hstep : system_step q w w')
     /\ submitted_value_persistent (w @ n) (w' @ n).
 Proof.
   destruct q as [ | | n [ v0 ] | ]. 
-  1,2,4: eapply inv_buffer_received_only_pre; try eassumption; auto.
+  1,2,4: intros k; unshelve epose proof (inv_buffer_received_only_pre _ Hstep k) as (Ha & Hb); auto;
+    specialize (Ha H); unfold submitted_value_persistent; eqsolve.
   unfold inv_buffer_received, submitted_value_persistent in *. intros n0.  
   inversion_step' Hstep; intros; try discriminate.
   revert Hq. intros [= <-]. subst.
@@ -533,11 +538,11 @@ Proof.
     epose proof (DeliverStep (Deliver (mkP src n msg true)) (mkW (upd n stb (localState w)) (sentMsgs w))
       _ _ eq_refl Hrcv Hnonbyz ?[Goalq]).
     [Goalq]: simpl; rewrite upd_refl, E0; reflexivity.
-    eapply inv_buffer_received_only_pre with (n:=n) in H0; auto.
-    2:{ simpl. intros. unfold upd. destruct (Address_eqdec _ _) as [ <- | Hneq ]; auto.
+    eapply inv_buffer_received_only_pre with (nn:=n) in H0; auto. simpl_state. destruct H0 as (H0 & Hq2). unshelve epose proof (H0 _) as H0'.
+    1:{ simpl. intros. unfold upd. destruct (Address_eqdec _ _) as [ <- | Hneq ]; auto.
       split_and?; auto. unfold inv_buffer_received. rewrite Hsb. simpl. contradiction. }
-    simpl in H0. rewrite !upd_refl in H0. destruct H0 as (? & _ & Hq1 & Hq2).
-    hnf in Hq2. destruct (stb.(submitted_value)) eqn:Ea; try discriminate. specialize (Hq2 _ eq_refl).
+    simpl in H0'. rewrite !upd_refl in H0'. destruct H0' as (? & _ & Hq1).
+    hnf in Hq2. destruct (stb.(submitted_value)) eqn:Ea; try discriminate. rewrite !upd_refl, Ea in Hq2. 
     isSome_rewrite; auto.
 Qed.
 
