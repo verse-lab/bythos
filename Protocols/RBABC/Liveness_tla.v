@@ -81,6 +81,7 @@ Qed.
     on how to avoid ambiguity. *)
 (* this may not always hold, but can be achieved at the level of network semantics
     (by requiring all resulting worlds to be normalized) *)
+(* NOTE: this is stronger than what is actually needed, which is something like next_proj1 *)
 Definition disambiguation f (e : exec World) : Prop :=
   forall q n, system_step q (e n) (e (S n)) → f n = q.
 
