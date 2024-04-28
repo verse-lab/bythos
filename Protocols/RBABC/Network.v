@@ -259,23 +259,28 @@ Proof.
       setoid_rewrite In_sendout1. firstorder. subst. discriminate.
 Qed.
 
-Fact ssd_proj2_sound q w w' (Hstep : system_step q w w') :
-  exists ww, ACN.system_step (ssd_proj2 q (world_proj1 w) (world_proj1 w')) (world_proj2 w) ww /\
+Fact ssd_proj2_sound q w :
+  let: qq := ssd_proj2 q (world_proj1 w) (world_proj1 (next_world q w)) in
+  let: ww := ACN.next_world qq (world_proj2 w) in
+  forall w' (Hstep : system_step q w w'),
+    ACN.system_step qq (world_proj2 w) ww /\
     ACN.Ns.World_rel ww (world_proj2 w').
 Proof.
+  intros w' Hstep.
   inversion_step' Hstep; clear Hstep; simpl.
   all: unfold world_proj2; simpl_world.
-  - eexists. split; [ constructor; reflexivity | ]. reflexivity.
+  - split; [ constructor | ]; reflexivity.
   - destruct msg as [ mRB | mAC ]; simpl.
-    + unfold stmap_proj1. rewrite upd_refl.
+    + unfold stmap_proj1.
       pose proof (procMsgWithCheck_proj1 _ _ _ _ _ Ef) as (E1 & _).
-      rewrite E1. rewrite -> (surjective_pairing (RBN.RBP.procMsgWithCheck _ _ _)) in Ef.
+      rewrite -> (surjective_pairing (RBN.RBP.procMsgWithCheck _ _ _)) in Ef |- *.
+      rewrite Ef. simpl. rewrite upd_refl, E1. 
       destruct (triggered _ _) in Ef |- *.
-      * eexists. split; [ eapply ACN.InternStep; try reflexivity; simpl; auto | ].
+      * split; [ eapply ACN.InternStep; try reflexivity; simpl; auto | ].
         all: rewrite -> (surjective_pairing (ACN.ACP.procInt _ _)) in Ef.
-        1: unfold stmap_proj2 at 1; rewrite -> (surjective_pairing (ACN.ACP.procInt _ _)); reflexivity.
+        all: simpl; unfold stmap_proj2; rewrite -> (surjective_pairing (ACN.ACP.procInt _ _)); try reflexivity.
         revert Ef. intros [= <- <-]. 
-        hnf; simpl. split; [ intros ?; unfold stmap_proj2, upd, ACN.Ns.upd; now destruct_eqdec as_ -> | ].
+        hnf. simpl. split; [ intros ?; unfold stmap_proj2, upd, ACN.Ns.upd; now destruct_eqdec as_ -> | ].
         hnf. intros p. unfold pkts_filter_proj2. autorewrite with psent.
         (* TODO cumbersome ... *)
         split.
@@ -286,7 +291,7 @@ Proof.
           destruct Hin as [ [ Hin | Hin ] | [ <- | (Hin & Hneq) ] ]; eauto.
           all: apply in_map_iff in Hin; destruct Hin as (a' & <- & Hin'); try discriminate.
           apply pkt_proj2_refl_must in Hpj. subst. tauto.
-      * eexists. split; [ eapply ACN.IdleStep; try reflexivity; simpl; auto | ].
+      * split; [ eapply ACN.IdleStep; try reflexivity; simpl; auto | ].
         revert Ef. intros [= <- <-].
         hnf; simpl. split; [ intros ?; unfold stmap_proj2, upd, ACN.Ns.upd; now destruct_eqdec as_ -> | ].
         hnf. intros p. unfold pkts_filter_proj2. autorewrite with psent.
@@ -295,13 +300,13 @@ Proof.
         --intros (a & Hin & Hpj). exists a. autorewrite with psent. split; auto. right. right. split; auto. intros <-. discriminate.
         --intros (a & Hin & Hpj). autorewrite with psent in Hin. 
           destruct Hin as [ (a' & <- & Hin')%in_map_iff | [ <- | (Hin & Hneq) ] ]; eauto.
-    + eexists. split; [ eapply ACN.DeliverStep; try reflexivity; simpl; auto | ].
+    + unfold stmap_proj2.
+      rewrite -> (surjective_pairing (ACN.ACP.procMsgWithCheck _ _ _)).
+      split; [ eapply ACN.DeliverStep; try reflexivity; simpl; auto | ].
       * apply option_map_list_In. eexists. split. apply Hpin. reflexivity.
-      * unfold stmap_proj2 at 1.
-        pose proof (procMsgWithCheck_proj2 _ _ _ _ _ Ef) as (E1 & E2).
-        rewrite -> (surjective_pairing (ACN.ACP.procMsgWithCheck _ _ _)), <- E1, <- E2.
-        reflexivity.
-      * hnf; simpl. split; [ intros ?; unfold stmap_proj2, upd, ACN.Ns.upd; now destruct_eqdec as_ -> | ].
+      * rewrite -> (surjective_pairing (ACN.ACP.procMsgWithCheck _ _ _)). reflexivity.
+      * pose proof (procMsgWithCheck_proj2 _ _ _ _ _ Ef) as (E1 & E2). rewrite <- E1, <- E2.
+        hnf; simpl. split; [ intros ?; unfold stmap_proj2, upd, ACN.Ns.upd; now destruct_eqdec as_ -> | ].
         hnf. intros p. unfold pkts_filter_proj2. autorewrite with psent.
         (* TODO cumbersome ... *)
         (* TODO repeating some proof above *)
@@ -319,7 +324,7 @@ Proof.
           ++right. right. split; eauto. intros <-. apply Hneq. 
             destruct a as [ ? ? [] ? ]; cbn in Hpj |- *; try discriminate.
             congruence.
-  - eexists. split; [ eapply ACN.IdleStep; try reflexivity; simpl; auto | ].
+  - split; [ eapply ACN.IdleStep; try reflexivity; simpl; auto | ].
     unfold procInt in E. 
     rewrite -> (surjective_pairing (RBN.RBP.procInt _ _)) in E.
     revert E. intros [= <- <-].
@@ -332,12 +337,12 @@ Proof.
       destruct Hin as [ (a' & <- & Hin')%in_map_iff | ? ]; eauto. discriminate.
   - (* TODO repeating the proof above *)
     destruct m as [ mRB | mAC ]; simpl.
-    + eexists. split; [ eapply ACN.IdleStep; try reflexivity; simpl; auto | ].
+    + split; [ eapply ACN.IdleStep; try reflexivity; simpl; auto | ].
       hnf; simpl. split; auto.
       hnf. intros p. unfold pkts_filter_proj2. autorewrite with psent.
       (* TODO cumbersome ... *)
       setoid_rewrite In_sendout1. firstorder. subst. discriminate.
-    + eexists. split; [ eapply ACN.ByzStep; try reflexivity; simpl; auto | ].
+    + split; [ eapply ACN.ByzStep; try reflexivity; simpl; auto | ].
       simpl. hnf; simpl. split; auto.
       hnf. intros p. unfold pkts_filter_proj2. autorewrite with psent.
       (* TODO cumbersome ... *)
