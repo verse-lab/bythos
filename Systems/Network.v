@@ -268,7 +268,7 @@ Qed.
 Fact step_mirrors_World_rel w1 w1' w2 (H1 : World_rel w1 w1') 
   q (H : system_step q w1 w2) 
   (* needs this! *)
-  (Hbyz_rel : forall m w w', World_rel w w' -> byz_constraints m w <-> byz_constraints m w') :
+  (Hbyz_rel : forall m w w', World_rel w w' -> byz_constraints m w -> byz_constraints m w') :
   let: w2' := next_world q w1' in World_rel w2 w2' -> system_step q w1' w2'.
 Proof with try solve [ reflexivity | assumption ].
   intros H2. inversion_step_ H Ef; clear H; simpl in H2 |- *.
@@ -280,8 +280,7 @@ Proof with try solve [ reflexivity | assumption ].
   - eapply InternStep...
     rewrite <- Hstmap1.
     now rewrite (surjective_pairing (procInt _ _)).
-  - eapply ByzStep... 
-    rewrite <- Hbyz_rel; eauto. now hnf.
+  - eapply ByzStep... firstorder.
 Qed.
 
 (* atomicity of node state change (i.e., at most one node changes its state in one step) *)

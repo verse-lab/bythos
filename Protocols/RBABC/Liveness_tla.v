@@ -1,4 +1,5 @@
-From Coq Require Import List Bool Lia PeanoNat ListSet Permutation RelationClasses ClassicalChoice.
+From Coq Require Import List Bool Lia PeanoNat ListSet Permutation RelationClasses. 
+(* From Coq Require Import ClassicalChoice. *)
 From Coq Require ssrbool ssreflect.
 Import (coercions) ssrbool.
 Import ssreflect.SsrSyntax.
@@ -30,8 +31,14 @@ Definition exec_proj2 (e : exec World) : exec ACN.Ns.World := fun n => world_pro
 Definition ssdexec_proj1 (f : exec system_step_descriptor) : exec RBN.system_step_descriptor :=
   fun n => (ssd_proj1 (f n)).
 
+Definition ssdexec_proj2 (f : exec system_step_descriptor) (e : exec World) : exec ACN.system_step_descriptor :=
+  fun n => (ssd_proj2 (f n) (world_proj1 (e n)) (world_proj1 (e (S n)))).
+
 Definition exec_norm1 f (e : exec World) : exec RBN.Ns.World :=
   RBN.final_world_n (ssdexec_proj1 f) (world_proj1 (e 0)).
+
+Definition exec_norm2 f (e : exec World) : exec ACN.Ns.World :=
+  ACN.final_world_n (ssdexec_proj2 f e) (world_proj2 (e 0)).
 (* unique interpretability ... *)
 (*
 Definition next_proj1 (w1 w1' : RBN.Ns.World) : Prop :=
@@ -52,10 +59,10 @@ Fact exec_proj1_sound (e : exec World) (H : e ⊨ □ ⟨ next ⟩) :
 Fact exec_norm1_0 e f : exec_norm1 f e 0 = exec_proj1 e 0.
 Proof eq_refl.
 
-Fact exec_proj1_sound_init e (H : e ⊨ ⌜ init ⌝) : (exec_proj1 e ⊨ ⌜ RBLiveTLA.init ⌝).
+Corollary exec_proj1_sound_init e (H : e ⊨ ⌜ init ⌝) : (exec_proj1 e ⊨ ⌜ RBLiveTLA.init ⌝).
 Proof. hnf in H |- *. unfold exec_proj1. rewrite H. reflexivity. Qed.
 
-Fact exec_norm1_sound_init e f (H : e ⊨ ⌜ init ⌝) : (exec_norm1 f e ⊨ ⌜ RBLiveTLA.init ⌝).
+Corollary exec_norm1_sound_init e f (H : e ⊨ ⌜ init ⌝) : (exec_norm1 f e ⊨ ⌜ RBLiveTLA.init ⌝).
 Proof. hnf. rewrite exec_norm1_0. now apply exec_proj1_sound_init. Qed.
 
 Fact exec_norm1_sound_next (e : exec World) f (Hf : e ⊨ nextf f) :
@@ -84,6 +91,36 @@ Proof.
     (* + intros k. hnf. intros q w w' Hstep. rewrite !drop_n /=.
       pose proof (ssd_proj1_sound _ _ _ Hstep) as (Ha & Hb).
       subst e'. rewrite RBN.final_world_n_add_1. eapply RBN.step_mirrors_World_rel. *)
+Qed.
+
+Fact exec_norm2_0 e f : exec_norm2 f e 0 = exec_proj2 e 0.
+Proof eq_refl.
+
+Corollary exec_proj2_sound_init e (H : e ⊨ ⌜ init ⌝) : (exec_proj2 e ⊨ ⌜ ACLiveTLA.init ⌝).
+Proof. hnf in H |- *. unfold exec_proj2. rewrite H. reflexivity. Qed.
+
+Corollary exec_norm2_sound_init e f (H : e ⊨ ⌜ init ⌝) : (exec_norm2 f e ⊨ ⌜ ACLiveTLA.init ⌝).
+Proof. hnf. rewrite exec_norm2_0. now apply exec_proj2_sound_init. Qed.
+
+Fact exec_norm2_sound_next (e : exec World) f (Hf : e ⊨ nextf f) :
+  let: e' := exec_norm2 f e in
+    ACLiveTLA.exec_rel e' (exec_proj2 e) ∧
+    (e' ⊨ ACLiveTLA.nextf (ssdexec_proj2 f e)).
+Proof.
+  autounfold with tla in Hf. hnf in Hf. apply and_wlog_r.
+  - hnf. intros n. unfold exec_proj2, exec_norm2.
+    induction n as [ | n IH ]; try reflexivity.
+    rewrite ACN.final_world_n_add_1.
+    pose proof (ssd_proj2_sound _ _ _ (Hf n)) as (_ & H).
+    rewrite -H. pose proof (Hf n) as EE%next_world_sound. rewrite -!EE. now apply ACN.next_world_preserves_World_rel.
+  - intros Hrel.
+    split_and?; autounfold with tla.
+    + intros k. (* exists (ssd_proj1 (f k)). rewrite !drop_n /=. *)
+      pose proof (ssd_proj2_sound _ _ _ (Hf k)) as (Ha & Hb).
+      pose proof (Hf k) as EE%next_world_sound. rewrite -EE in Ha Hb. 
+      unfold exec_norm2 in *. rewrite ACN.final_world_n_add_1. eapply ACN.step_mirrors_World_rel.
+      1: symmetry; apply Hrel. 1: apply Ha. 1: apply ACAdv.byz_constraints_World_rel.
+      specialize (Hrel (S k)). rewrite ACN.final_world_n_add_1 in Hrel. rewrite Hb Hrel. reflexivity. 
 Qed.
 
 (* TODO have no way to go ... this might be too strong, but I have no better idea
@@ -115,8 +152,32 @@ Proof.
   unfold ssdexec_proj1 in H'. rewrite Hstep in H'. now cbn in H'.
 Qed.
 
+Fact exec_norm2_sound_fairness (e : exec World) f (H : e ⊨ nextf f) (Hdg : disambiguation f e)
+  (e' : exec ACN.Ns.World) (Hrel : ACLiveTLA.exec_rel e' (exec_proj2 e))
+  (H' : e' ⊨ ACLiveTLA.nextf (ssdexec_proj2 f e)) :
+  (e ⊨ fairness) → (e' ⊨ ACLiveTLA.fairness).
+Proof.
+  (* change view, get k *)
+  intros Hfair%fairness_adequate; auto. 2: eapply nextf_impl_next, H. 
+  apply ACLiveTLA.fairness_adequate; auto. 1: eapply ACLiveTLA.nextf_impl_next, H'. 
+  hnf in Hfair |- *. intros [ src dst msg ? ] (Hs & Hd). simpl in *. intros -> n Hin.
+  specialize (Hfair (mkP src dst (inr msg) false) (conj Hs Hd) eq_refl n).
+  apply (proj2 (Hrel n)) in Hin. unfold exec_proj2, world_proj2 in Hin. simpl in Hin.
+  apply option_map_list_In in Hin. destruct Hin as ([ ? ? [] ? ] & Hin & Hpj); try discriminate.
+  cbn in Hpj. revert Hpj. intros [= -> -> -> ->]. specialize (Hfair Hin).
+  destruct Hfair as (k & Hstep). 
+  (* key point: the correspondence between delivery steps *)
+  exists k.
+  apply Hdg in Hstep. hnf in H'. specialize (H' (k + n)). 
+  unfold ssdexec_proj2 in H'. rewrite Hstep in H'. now cbn in H'.
+Qed.
+
 Fact leads_to_inl e P Q (H : exec_proj1 e ⊨ ⌜ P ⌝ ~~> ⌜ Q ⌝) :
   e ⊨ ⌜ λ w, P (world_proj1 w) ⌝ ~~> ⌜ λ w, Q (world_proj1 w) ⌝.
+Proof. revert H. unseal. (* ??? *) Qed.
+
+Fact leads_to_inr e P Q (H : exec_proj2 e ⊨ ⌜ P ⌝ ~~> ⌜ Q ⌝) :
+  e ⊨ ⌜ λ w, P (world_proj2 w) ⌝ ~~> ⌜ λ w, Q (world_proj2 w) ⌝.
 Proof. revert H. unseal. (* ??? *) Qed.
 
 Definition all_receives_RB src r v w : Prop :=
