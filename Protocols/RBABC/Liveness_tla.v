@@ -184,7 +184,7 @@ Proof. revert H. unseal. (* ??? *) Qed.
 Definition all_receives_RB src r v w : Prop :=
   RBLiveTLA.RBLive.all_receives src r v (world_proj1 w).
 
-Goal forall src r f (Hnonbyz_src : is_byz src = false),
+Lemma go1 : forall src r f (Hnonbyz_src : is_byz src = false),
   ⌜ init ⌝ ∧ nextf f ∧ fairness ∧ disambiguation f ⊢
   ⌜ λ w, (w @ src).(stRB).(sent) r ⌝ ~~> ⌜ all_receives_RB src r (value_bft src r) ⌝.
 Proof.
@@ -205,7 +205,7 @@ Definition all_honest_nodes_submitted_AC v w : Prop :=
 Definition all_honest_nodes_confirmed_AC v w : Prop :=
   ACLiveTLA.ACLive.Terminating_Convergence.all_honest_nodes_confirmed v (world_proj2 w).
 
-Goal forall f v,
+Lemma go2 : forall f v,
   ⌜ init ⌝ ∧ nextf f ∧ fairness ∧ disambiguation f ⊢
   ⌜ all_honest_nodes_submitted_AC v ⌝ ~~> ⌜ all_honest_nodes_confirmed_AC v ⌝.
 Proof.
@@ -314,5 +314,25 @@ Proof.
     rewrite -surjective_pairing in Htmp2. saturate_assumptions!. now subst.
   - apply inv1 in E; auto. rewrite E in Hin. contradiction.
 Qed.
+
+Lemma connector w (Hr : reachable w) :
+  all_receives_RB arp.1 arp.2 (value_bft arp.1 arp.2) w ->
+  all_honest_nodes_submitted_AC (value_bft arp.1 arp.2) w.
+Proof.
+  intros H. hnf in H |- *. intros n Hnonbyz. saturate_assumptions!.
+  rewrite <- surjective_pairing in H. apply inv1' in H; auto.
+Qed.
+
+Lemma validity_overall f (Hnonbyz : is_byz arp.1 = false) :
+  ⌜ init ⌝ ∧ nextf f ∧ fairness ∧ disambiguation f ⊢
+  ⌜ λ w, (w @ arp.1).(stRB).(sent) arp.2 ⌝ ~~> ⌜ all_honest_nodes_confirmed_AC (value_bft arp.1 arp.2) ⌝.
+Proof.
+  tla_apply (leads_to_trans _ (⌜ all_honest_nodes_submitted_AC (value_bft arp.1 arp.2) ⌝)); tla_split.
+  1: tla_apply (leads_to_trans _ (⌜ all_receives_RB arp.1 arp.2 (value_bft arp.1 arp.2) ⌝)); tla_split.
+  all: auto using go1, go2.
+  (* TODO make a rule? *)
+  intros e (Hini & Hnext & _ & _). unseal. exists 0. simpl. apply connector; auto.
+  apply reachable_in_tla. split; auto. now apply nextf_impl_next in Hnext.
+Qed. 
 
 End RBACLiveness2.
