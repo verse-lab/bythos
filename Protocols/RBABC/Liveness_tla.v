@@ -221,93 +221,72 @@ Proof.
       ACLiveTLA.ACLive.Terminating_Convergence.all_honest_nodes_confirmed_stmap_peq_cong.
 Qed.
 
-Goal forall w, reachable w -> 
+Lemma inv1 : forall w, reachable w -> 
   forall n, is_byz n = false ->
     (* this holds for any num_byz *)
-    ((ACN.Ns.localState (world_proj2 w) n).(submitted_value) = None ->
-      (RBN.Ns.localState (world_proj1 w) n).(output) arp = nil).
+    ((ACN.Ns.localState (world_proj2 w) n).(submitted_value) = None <->
+      (RBN.Ns.localState (world_proj1 w) n).(output) arp = nil) /\
+    (forall v, (ACN.Ns.localState (world_proj2 w) n).(submitted_value) = Some v ->
+      In v ((RBN.Ns.localState (world_proj1 w) n).(output) arp)).
 Proof.
   intros w Hr n Hnonbyz. induction Hr as [ | q w w' Hstep Hr IH ].
   - now cbn.
-  - (* brute-force discussion is inevitable? *)
+  - (* preparation *)
+    (* output persistence *)
+    pose proof (ssd_proj1_sound Hstep) as (Hstep' & Hrel).
+    pose proof (RBLiveTLA.RBLive.RBS.RBInv.persistent_invariants Hstep') as Htmp.
+    apply (RBN.lift_state_pair_inv_mirrors_World_rel (w1:=world_proj1 w) ltac:(reflexivity) Hrel) in Htmp.
+    pick output_persistent as_ Ho by_ (pose proof (Htmp n) as []). specialize (Ho arp.1 arp.2). rewrite -surjective_pairing in Ho.
+    clear Htmp Hstep' Hrel.
+
+    (* brute-force discussion is inevitable? *)
     (* TODO need to reason about how handlers deal with some specific fields ... very cumbersome *)
     inversion_step' Hstep; auto.
-    all: unfold world_proj1, stmap_proj1, world_proj2, stmap_proj2 in IH |- *; simpl in IH |- *.
+    all: unfold world_proj1, stmap_proj1, world_proj2, stmap_proj2 in Ho, IH |- *; simpl in Ho, IH |- *.
     all: unfold upd; destruct_eqdec as_ ->; auto.
+    all: rewrite upd_refl in Ho.
     + destruct msg as [ mRB | mAC ].
       * rewrite (surjective_pairing (RBN.RBP.procMsgWithCheck _ _ _)) in Ef.
         destruct (triggered _ _) as [ v | ] eqn:Etr in Ef.
         --rewrite -> (surjective_pairing (ACN.ACP.procInt _ _)) in Ef. simplify_eq. simpl.
+          unfold triggered in Etr. 
+          do 2 (match type of Etr with (match ?qq with _ => _ end = _) => destruct qq eqn:?; try discriminate end). simplify_eq.
+          apply proj1, proj2 in IH. saturate_assumptions.
           admit. (* prove! *)
-        --simplify_eq. simpl. intros H. specialize (IH H). unfold triggered in Etr. rewrite IH in Etr.
-          match type of Etr with (match ?qq with _ => _ end = _) => now destruct qq end.
+        --simplify_eq. simpl. split. 
+          ++rewrite (proj1 IH). unfold triggered in Etr.
+            match type of Etr with (match ?qq with _ => _ end = _) => destruct qq eqn:E end.
+            **match type of Etr with (match ?qq with _ => _ end = _) => now destruct qq end.
+            **split; intros H; try discriminate. specialize (Ho _ (or_introl eq_refl)). simpl in Ho. now rewrite H in Ho.
+          ++intros v H. pose proof (proj2 IH v H) as H0. apply Ho in H0. now simpl in H0.
       * rewrite (surjective_pairing (ACN.ACP.procMsgWithCheck _ _ _)) in Ef. simplify_eq. simpl.
-        intros H. 
         (* indirectly *)
         eapply ssd_proj2_sound in Hstep. cbn in Hstep. unfold world_proj2, stmap_proj2 in Hstep. simpl in Hstep.
         rewrite (surjective_pairing (ACN.ACP.procMsgWithCheck _ _ _)) in Hstep. simpl in Hstep.
         destruct Hstep as (Hstep & Hrel). apply inv_buffer_received_only_pre with (nn:=n) in Hstep; auto. simpl in Hstep.
-        apply proj2 in Hstep. rewrite ACN.Ns.upd_refl H in Hstep. now apply IH.
+        apply proj2 in Hstep. rewrite ACN.Ns.upd_refl in Hstep. now rewrite Hstep.
     + (* this part of brute force is not difficult *)
       unfold procInt in E. rewrite (surjective_pairing (RBN.RBP.procInt _ _)) in E. simplify_eq. simpl.
-      intros H. specialize (IH H). 
-      unfold RBN.RBP.procInt. destruct (w @ n).(stRB). destruct (sent0 t); simpl; auto.
+      unfold RBN.RBP.procInt. destruct (w @ n).(stRB) as [ ? sent0 ???? ]. destruct (sent0 t); simpl; auto.
 Admitted.
 
-Goal forall w, reachable w -> 
+Lemma inv1' : forall w, reachable w -> 
   forall n, is_byz n = false ->
     (* this holds for any num_byz *)
     (forall v, In v ((RBN.Ns.localState (world_proj1 w) n).(output) arp) ->
       (ACN.Ns.localState (world_proj2 w) n).(submitted_value) = Some v).
 Proof.
-  intros w Hr n Hnonbyz. induction Hr as [ | q w w' Hstep Hr IH ].
-  - now cbn.
-  - (* brute-force discussion is inevitable? *)
-    inversion_step' Hstep; auto.
-    all: unfold world_proj1, stmap_proj1, world_proj2, stmap_proj2 in IH |- *; simpl in IH |- *.
-    all: unfold upd; destruct_eqdec as_ ->; auto.
-    + destruct msg as [ mRB | mAC ].
-      * (* need single output below *)
-        pose proof (RBLiveTLA.RBLive.RBS.output_uniqueness_always_holds) as Htmp2.
-        eapply always_holds_proj1_apply in Htmp2; try apply (ReachableStep Hstep); auto.
-        (* TODO move this subgoal somewhere else? *)
-        2:{ intros ?? Hre. unfold RBLiveTLA.RBLive.RBS.output_uniqueness. now setoid_rewrite (proj1 Hre). }
-        unfold world_proj1, stmap_proj1 in Htmp2. hnf in Htmp2. cbn in Htmp2. 
-
-        rewrite (surjective_pairing (RBN.RBP.procMsgWithCheck _ _ _)) in Ef.
-        destruct (triggered _ _) as [ v | ] eqn:Etr in Ef.
-        --rewrite -> (surjective_pairing (ACN.ACP.procInt _ _)) in Ef. simplify_eq. simpl.
-          (* make use of triggered *)
-          unfold triggered in Etr. intros v0.
-          do 2 (match type of Etr with (match ?qq with _ => _ end = _) => destruct qq eqn:?; try discriminate end). simplify_eq. 
-          (* unify v0 and v *)
-          specialize (Htmp2 n n arp.1 arp.2 v0 v Hnonbyz Hnonbyz). 
-          rewrite upd_refl /= -surjective_pairing Heql0 in Htmp2.
-          intros H. specialize (Htmp2 H (or_introl eq_refl)). subst v0.
-          admit. (* also need to prove above *)
-        --simplify_eq. simpl. intros. apply IH. unfold triggered in Etr.
-          match type of Etr with (match ?qq with _ => _ end = _) => destruct qq eqn:E end.
-          ++match type of Etr with (match ?qq with _ => _ end = _) => now destruct qq end.
-          ++(* persistence *)
-            pose proof (ssd_proj1_sound Hstep) as (Hstep' & Hrel).
-            pose proof (RBLiveTLA.RBLive.RBS.RBInv.persistent_invariants Hstep') as Htmp.
-            apply (RBN.lift_state_pair_inv_mirrors_World_rel (w1:=world_proj1 w) ltac:(reflexivity) Hrel) in Htmp.
-            pick output_persistent as_ Ho by_ (pose proof (Htmp n) as []). specialize (Ho arp.1 arp.2 v0).
-            unfold world_proj1, stmap_proj1 in Ho. cbn in Ho. rewrite upd_refl -surjective_pairing E /= in Ho.
-            specialize (Ho (or_introl eq_refl)).
-            specialize (Htmp2 n n arp.1 arp.2 v0 v Hnonbyz Hnonbyz). 
-            rewrite upd_refl /= -surjective_pairing in Htmp2. saturate_assumptions!. subst. simpl. tauto.
-      * rewrite (surjective_pairing (ACN.ACP.procMsgWithCheck _ _ _)) in Ef. simplify_eq. simpl.
-        intros v H. saturate_assumptions!.
-        (* indirectly *)
-        (* TODO repeating the proof above *)
-        eapply ssd_proj2_sound in Hstep. cbn in Hstep. unfold world_proj2, stmap_proj2 in Hstep. simpl in Hstep.
-        rewrite (surjective_pairing (ACN.ACP.procMsgWithCheck _ _ _)) in Hstep. simpl in Hstep.
-        destruct Hstep as (Hstep & Hrel). apply inv_buffer_received_only_pre with (nn:=n) in Hstep; auto. simpl in Hstep.
-        apply proj2 in Hstep. now rewrite ACN.Ns.upd_refl IH in Hstep.
-    + (* this part of brute force is not difficult *)
-      unfold procInt in E. rewrite (surjective_pairing (RBN.RBP.procInt _ _)) in E. simplify_eq. simpl.
-      unfold RBN.RBP.procInt. destruct (w @ n).(stRB). destruct (sent0 t); simpl; auto.
-Admitted.
+  intros w Hr n Hnonbyz v Hin. destruct (submitted_value _) as [ v0 | ] eqn:E.
+  - apply inv1 in E; auto.
+    (* single output *)
+    pose proof (RBLiveTLA.RBLive.RBS.output_uniqueness_always_holds) as Htmp2.
+    eapply always_holds_proj1_apply in Htmp2; try apply Hr; auto.
+    (* TODO move this subgoal somewhere else? *)
+    2:{ intros ?? Hre. unfold RBLiveTLA.RBLive.RBS.output_uniqueness. now setoid_rewrite (proj1 Hre). }
+    unfold world_proj1, stmap_proj1 in Htmp2. hnf in Htmp2. cbn in Htmp2. 
+    specialize (Htmp2 n n arp.1 arp.2 v0 v Hnonbyz Hnonbyz). 
+    rewrite -surjective_pairing in Htmp2. saturate_assumptions!. now subst.
+  - apply inv1 in E; auto. rewrite E in Hin. contradiction.
+Qed.
 
 End RBACLiveness2.
