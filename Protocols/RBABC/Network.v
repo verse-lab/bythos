@@ -36,6 +36,7 @@ Definition byz_constraints (m : Message) (w : World) : Prop :=
   | inl mRB => True
   | inr mAC => ACAdv.byz_constraints mAC (ACNs.mkW (ACNs.localState ACNs.initWorld) (* this part does not contribute *)
     (pkts_filter_proj2 (sentMsgs w)))
+    (* essentially world_proj2 *)
   end.
 
 End RBACAdversary.
