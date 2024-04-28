@@ -375,4 +375,16 @@ Proof.
         cbn in Hpj. injection Hpj as <-. now left.
 Qed.
 
+Corollary reachable_proj2 w (Hr : reachable w) :
+  exists ww, ACN.Ns.World_rel ww (world_proj2 w) /\ ACN.reachable ww.
+Proof.
+  induction Hr as [ | q w w' Hstep Hr (ww & Hrel & Hr') ].
+  - exists ACN.Ns.initWorld. split; [ | now constructor ]. split; auto; try reflexivity.
+  - pose proof (ssd_proj2_sound Hstep) as (Ha & Hb).
+    symmetry in Hrel. pose proof Hrel as Hrel_. eapply ACN.step_mirrors_World_rel in Hrel.
+    2: apply Ha. 2: now apply ACAdv.byz_constraints_World_rel. 2: now apply ACN.next_world_preserves_World_rel.
+    eexists. split. 2: eapply ACN.ReachableStep; try apply Hrel. all: auto.
+    rewrite <- Hb. now apply ACN.next_world_preserves_World_rel.
+Qed.
+
 End RBACNetwork.

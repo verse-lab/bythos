@@ -1027,6 +1027,7 @@ Qed.
 Fact psent_mnt_sound_pre n t w w' (Hstep : system_step (Intern n t) w w') (Hw : reachable w) :
   (lift_pkt_inv' inv_submitmsg_receive (sentMsgs w) (localState w) ->
     lift_pkt_inv' inv_submitmsg_receive (sentMsgs w') (localState w')) /\
+  (match t with SubmitIntTrans v => ((w @ n).(submitted_value) = None -> (w' @ n).(submitted_value) = Some v) end) /\
   exists l : list psent_mnt_type,
     psent_mnt (Pid (sentMsgs w)) l (sentMsgs w') /\ state_effect (localState w') (PSKnonbyz (Pid (sentMsgs w)) l).
 Proof.
@@ -1037,7 +1038,7 @@ Proof.
   pose proof (inv_buffer_received_always_holds Hw Hnonbyz) as Hrcv. hnf in Hrcv. 
   destruct_localState w n as_ [ ? conf ov from lsigs sigs rlcerts rcerts buffer ] eqn_ Est. simpl_state.
   simpl in E.
-  destruct ov. 1: simplify_eq; split; [ | psent_analyze ].
+  destruct ov. 1: simplify_eq; split; [ | split; [ discriminate | psent_analyze ] ].
   1:{ rewrite sendout0. intros Hq. hnf in Hq |- *. intros p Hin. specialize (Hq _ Hin). 
     unfold inv_submitmsg_receive in Hq |- *. now rewrite <- Est, -> upd_intact. }
   destruct (fold_right _ _ _) as (st_, ps_) eqn:Efr in E. simplify_eq.
@@ -1100,7 +1101,7 @@ Proof.
   }
   destruct Hgoal as (_ & Hv & Hre & Hfresh & l & Ha & HH).
   (* use the accumulation of state_effect_recv to prove the invariant! *)
-  split.
+  split_and?.
   1:{ intros Hq. hnf in Hq |- *. intros p Hin. autorewrite with psent in Hin.
     unfold inv_submitmsg_receive in Hq |- *. destruct Hin as [ [ Hin | Hin ] | Hin ].
     - eapply Forall_forall in Hin; try eassumption; simpl in Hin. hnf. rewrite Hin. now destruct (msg p).
@@ -1110,6 +1111,7 @@ Proof.
       rewrite Est in Hq. hnf in Hq |- *. simpl in Hq |- *. rewrite Hv.
       destruct msg as [ v0_ lsig0 sig0 | | ], used; auto.
       saturate_assumptions. eapply Forall_forall in Hq; try eassumption. simpl in Hq. now rewrite Hv in Hq. }
+  1: now rewrite upd_refl, Hv. 
   match goal with |- context[SubmitMsg ?v ?lsig ?sig] =>
     let m := constr:(SubmitMsg v lsig sig) in
     exists ((mkPMT (broadcast n m) (PSbcast n m) (broadcast_all_fresh n m) eq_refl) :: l) end.
@@ -1155,7 +1157,7 @@ Proof.
       exists (PSKnonbyz (Puse (sentMsgs w) (mkP src dst msg used) Hpin) l). simpl. unfold state_effect_recv. rewrite upd_refl.
       split_and?; try tauto. now rewrite psent_mnt_base_change.
   - eapply psent_mnt_sound_pre in Hstep; auto.
-    simpl in Hstep. destruct Hstep as (? & l & Hstep). destruct_and? Hstep.
+    simpl in Hstep. destruct Hstep as (? & _ & (l & Hstep)). destruct_and? Hstep.
     split; auto. exists (PSKnonbyz (Pid (sentMsgs w)) l). now simpl.
   - split.
     + intros Hq. hnf in Hq |- *. intros p Hin. rewrite In_sendout1 in Hin. 

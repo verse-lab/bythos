@@ -248,11 +248,37 @@ Proof.
     + destruct msg as [ mRB | mAC ].
       * rewrite (surjective_pairing (RBN.RBP.procMsgWithCheck _ _ _)) in Ef.
         destruct (triggered _ _) as [ v | ] eqn:Etr in Ef.
-        --rewrite -> (surjective_pairing (ACN.ACP.procInt _ _)) in Ef. simplify_eq. simpl.
+        --(* prepare for the indirectly ... *)
+          (* TODO streamline this? *)
+          pose proof (reachable_proj2 Hr) as (w_ & Hrel_ & Hr_).
+          pose proof Hrel_ as Htmp. apply ACN.next_world_preserves_World_rel with (q:=ACN.Intern n (SubmitIntTrans v)) in Htmp.
+          cbn in Htmp. rewrite (proj1 Hrel_) in Htmp. unfold world_proj2, stmap_proj2 in Htmp. simpl in Htmp.
+          rewrite -> (surjective_pairing (ACN.ACP.procInt _ _)) in Htmp. 
+          (* another way around *)
+          eapply ssd_proj2_sound in Hstep. cbn in Hstep. unfold world_proj2, stmap_proj2 in Hstep. simpl in Hstep.
+          rewrite (surjective_pairing (RBN.RBP.procMsgWithCheck _ _ _)) Etr in Hstep.
+          rewrite -> (surjective_pairing (ACN.ACP.procInt _ _)) in Ef, Hstep. simplify_eq. simpl in Hstep |- *.
+          unfold world_proj1, stmap_proj1, world_proj2, stmap_proj2 in Hstep. rewrite !upd_refl /= Etr in Hstep.
+          (* TODO why keep rewriting ... *)
+          cbn in Hstep. rewrite -> (surjective_pairing (ACN.ACP.procInt _ _)) in Hstep. simpl in Hstep. 
+          (* step for the reachable one *)
+          destruct Hstep as (Hstep & Hrel).
+          pose proof Hstep as Hstep_. eapply ACN.step_mirrors_World_rel in Hstep; try apply ACAdv.byz_constraints_World_rel. (* FIXME: this is bad! *)
+          2: symmetry; apply Hrel_.
+          (* 2: rewrite Htmp.  *)
+          (* TODO why keep rewriting ... *)
+          2: simpl; rewrite -> (proj1 Hrel_), -> (surjective_pairing (ACN.ACP.procInt _ _)).
+          2: simpl; unfold stmap_proj2; rewrite -> (surjective_pairing (ACN.ACP.procInt _ _)).
+          2: simpl; rewrite Htmp; reflexivity.
+          (* discuss *)
           unfold triggered in Etr. 
           do 2 (match type of Etr with (match ?qq with _ => _ end = _) => destruct qq eqn:?; try discriminate end). simplify_eq.
           apply proj1, proj2 in IH. saturate_assumptions.
-          admit. (* prove! *)
+          (* indirectly *)
+          rewrite Hrel in Htmp. apply psent_mnt_sound_pre in Hstep; auto. destruct Hstep as (_ & Hstep & _). rewrite (proj1 Hrel_) in Hstep. specialize (Hstep IH).
+          (* TODO why keep rewriting ... *)
+          simpl in Hstep. rewrite -> (surjective_pairing (ACN.ACP.procInt _ _)), -> (proj1 Hrel_) in Hstep. simpl in Hstep. rewrite -> ACN.Ns.upd_refl in Hstep.
+          setoid_rewrite Hstep. simpl. clear. eqsolve.
         --simplify_eq. simpl. split. 
           ++rewrite (proj1 IH). unfold triggered in Etr.
             match type of Etr with (match ?qq with _ => _ end = _) => destruct qq eqn:E end.
@@ -268,7 +294,7 @@ Proof.
     + (* this part of brute force is not difficult *)
       unfold procInt in E. rewrite (surjective_pairing (RBN.RBP.procInt _ _)) in E. simplify_eq. simpl.
       unfold RBN.RBP.procInt. destruct (w @ n).(stRB) as [ ? sent0 ???? ]. destruct (sent0 t); simpl; auto.
-Admitted.
+Qed.
 
 Lemma inv1' : forall w, reachable w -> 
   forall n, is_byz n = false ->
