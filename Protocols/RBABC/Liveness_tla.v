@@ -49,7 +49,16 @@ Fact exec_proj1_sound (e : exec World) (H : e ⊨ □ ⟨ next ⟩) :
     RBLiveTLA.exec_rel e' (exec_proj1 e) ∧
     (e' ⊨ □ ⟨ RBLiveTLA.next ⟩).
 *)
-Fact exec_proj1_sound (e : exec World) f (Hf : e ⊨ nextf f) :
+Fact exec_norm1_0 e f : exec_norm1 f e 0 = exec_proj1 e 0.
+Proof eq_refl.
+
+Fact exec_proj1_sound_init e (H : e ⊨ ⌜ init ⌝) : (exec_proj1 e ⊨ ⌜ RBLiveTLA.init ⌝).
+Proof. hnf in H |- *. unfold exec_proj1. rewrite H. reflexivity. Qed.
+
+Fact exec_norm1_sound_init e f (H : e ⊨ ⌜ init ⌝) : (exec_norm1 f e ⊨ ⌜ RBLiveTLA.init ⌝).
+Proof. hnf. rewrite exec_norm1_0. now apply exec_proj1_sound_init. Qed.
+
+Fact exec_norm1_sound_next (e : exec World) f (Hf : e ⊨ nextf f) :
   let: e' := exec_norm1 f e in
     RBLiveTLA.exec_rel e' (exec_proj1 e) ∧
     (* (e' ⊨ □ ⟨ RBLiveTLA.next ⟩). *)
@@ -85,7 +94,7 @@ Qed.
 Definition disambiguation f (e : exec World) : Prop :=
   forall q n, system_step q (e n) (e (S n)) → f n = q.
 
-Fact exec_proj1_sound_fairness (e : exec World) f (H : e ⊨ nextf f) (Hdg : disambiguation f e)
+Fact exec_norm1_sound_fairness (e : exec World) f (H : e ⊨ nextf f) (Hdg : disambiguation f e)
   (e' : exec RBN.Ns.World) (Hrel : RBLiveTLA.exec_rel e' (exec_proj1 e))
   (* (H' : e' ⊨ □ ⟨ RBLiveTLA.next ⟩) : *)
   (H' : e' ⊨ RBLiveTLA.nextf (ssdexec_proj1 f)) :
@@ -106,17 +115,26 @@ Proof.
   unfold ssdexec_proj1 in H'. rewrite Hstep in H'. now cbn in H'.
 Qed.
 
+Fact leads_to_inl e P Q (H : exec_proj1 e ⊨ ⌜ P ⌝ ~~> ⌜ Q ⌝) :
+  e ⊨ ⌜ λ w, P (world_proj1 w) ⌝ ~~> ⌜ λ w, Q (world_proj1 w) ⌝.
+Proof. revert H. unseal. (* ??? *) Qed.
+
+Definition all_receives_RB src r v w : Prop :=
+  forall n, is_byz n = false -> In v ((w @ n).(stRB).(output) (src, r)).
+
 Goal forall src r f (Hnonbyz_src : is_byz src = false),
   ⌜ init ⌝ ∧ nextf f ∧ fairness ∧ disambiguation f ⊢
-  ⌜ λ w, (w @ src).(stRB).(sent) r ⌝ ~~> ⌜ λ _, True ⌝.
+  ⌜ λ w, (w @ src).(stRB).(sent) r ⌝ ~~> ⌜ all_receives_RB src r (value_bft src r) ⌝.
 Proof.
   intros. hnf. intros e (Hini & Hf & Hfair & Hdg).
-  pose proof (exec_proj1_sound e f Hf) as (Hrel & Hf').
-  set (e' := exec_norm1 f e) in Hrel, Hf'.
-  eapply exec_proj1_sound_fairness in Hfair; eauto.
-  assert (e' ⊨ ⌜ RBLiveTLA.init ⌝) as Hini'.
-  { subst e'. unfold exec_norm1. hnf in Hini |- *. simpl. rewrite Hini. reflexivity. }
+  pose proof (exec_norm1_sound_next e f Hf) as (Hrel & Hf').
+  pose proof (exec_norm1_sound_init e f Hini) as Hini'.
+  set (e' := exec_norm1 f e) in Hrel, Hf', Hini'.
+  eapply exec_norm1_sound_fairness in Hfair; eauto.
   pose proof (conj Hini' (conj (RBLiveTLA.nextf_impl_next _ _ Hf') Hfair)) as HH%(RBLiveTLA.validity_in_tla _ r Hnonbyz_src).
-Abort.
+  apply RBLiveTLA.leads_to_exec_rel with (e':=exec_proj1 e) in HH; auto.
+  - hnf; intros ?? (HHH & ?); now rewrite HHH.
+  - apply RBN.Ns.stmap_peq_cong_implies_World_rel_cong, RBLiveTLA.RBLive.all_receives_stmap_peq_cong.
+Qed.
 
 End RBACLiveness2.

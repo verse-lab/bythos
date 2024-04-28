@@ -27,6 +27,9 @@ Definition some_receives src r v w : Prop := exists n, is_byz n = false /\ In v 
 (* at the end *)
 Definition all_receives src r v w : Prop := forall n, is_byz n = false -> In v ((w @ n).(output) (src, r)).
 
+Fact all_receives_stmap_peq_cong src r v : stmap_peq_cong (all_receives src r v).
+Proof. unfold stmap_peq_cong, all_receives. intros w w' Hs. hnf in Hs. now setoid_rewrite Hs. Qed.
+
 Module Global_Liveness.
 
 Section Proof_of_Global_Liveness.

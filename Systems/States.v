@@ -36,8 +36,23 @@ Definition initWorld := mkW initState nil.
 (* some handy things *)
 Global Notation "w '@' n" := (localState w n) (at level 50, left associativity).
 
-Definition World_rel (w w' : World) : Prop :=
-  (forall n, (w @ n) = (w' @ n)) /\ Ineq (sentMsgs w) (sentMsgs w').
+(* pointwise eq *)
+Definition stmap_peq (stmap stmap' : StateMap) : Prop :=
+  forall n, stmap n = stmap' n.
+
+Definition World_rel (w w' : World) : Prop := Eval unfold stmap_peq in
+  stmap_peq (localState w) (localState w') /\ Ineq (sentMsgs w) (sentMsgs w').
+
+(* usually, we only need this *)
+Definition stmap_peq_cong (P : World -> Prop) : Prop :=
+  forall w w', stmap_peq (localState w) (localState w') -> P w <-> P w'.
+
+(* FIXME: make this a typeclass *)
+Definition World_rel_cong (P : World -> Prop) : Prop :=
+  forall w w', World_rel w w' -> P w <-> P w'.
+
+Fact stmap_peq_cong_implies_World_rel_cong P : stmap_peq_cong P -> World_rel_cong P.
+Proof. intros H. hnf in H |- *. intros ?? (? & ?). now saturate_assumptions!. Qed.
 
 (* using Global to help it penetrate nested modules *)
 Global Instance Equivalence_World_rel : Equivalence World_rel.

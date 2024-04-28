@@ -339,6 +339,15 @@ Qed.
 
 End Fairness.
 
+(* relational *)
+Lemma leads_to_exec_rel [e e' : exec World] (H : exec_rel e e')
+  (P Q : World → Prop) (HP : World_rel_cong P) (HQ : World_rel_cong Q) :
+  (e ⊨ ⌜ P ⌝ ~~> ⌜ Q ⌝) → (e' ⊨ ⌜ P ⌝ ~~> ⌜ Q ⌝).
+Proof.
+  unseal. pose proof (HP _ _ (H k)) as Htmp. rewrite <- Htmp in H1. saturate_assumptions!.
+  destruct H0 as (k0 & H0). exists k0. eapply HQ. 2: apply H0. symmetry. apply H.
+Qed.
+
 (* empirical, but maybe useful? *)
 Local Ltac aux Htmp :=
   match type of Htmp with
