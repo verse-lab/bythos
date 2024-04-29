@@ -3,6 +3,7 @@
 -Q Properties ABCProtocol.Properties
 -Q Utils ABCProtocol.Utils
 -Q Protocols ABCProtocol.Protocols
+-Q Composition ABCProtocol.Composition
 
 # Referring to the submodules
 -Q coqtla/src TLA
@@ -59,6 +60,7 @@ Protocols/PB/Liveness.v
 Protocols/PB/Liveness_tla.v
 
 Protocols/PB/PB2.v
+Protocols/PB/PB3.v
 
 Protocols/RBABC/Types.v
 Protocols/RBABC/Protocol.v
