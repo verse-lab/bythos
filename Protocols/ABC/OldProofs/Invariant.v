@@ -2,7 +2,7 @@ From Coq Require Import List Bool Lia ListSet Permutation RelationClasses.
 From Coq Require ssrbool ssreflect.
 Import (coercions) ssrbool.
 Import ssreflect.SsrSyntax.
-From ABCProtocol.Protocols.ABC.OldProofs Require Export Network.
+From Bythos.Protocols.ABC.OldProofs Require Export Network.
 
 Module ACInvariant (A : NetAddr) (Sn : Signable) (V : SignableValue Sn) (VBFT : ValueBFT A Sn V) 
   (BTh : ByzThreshold A) (BSett : ByzSetting A)

@@ -2,7 +2,7 @@ From Coq Require Import Bool List PeanoNat Lia.
 From Coq Require ssrbool ssreflect.
 Import (coercions) ssrbool.
 Import ssreflect.SsrSyntax.
-From ABCProtocol.Structures Require Export Types.
+From Bythos.Structures Require Export Types.
 
 Module Type ByzThreshold (Export A : NetAddr).
 

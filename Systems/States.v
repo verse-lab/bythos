@@ -1,5 +1,5 @@
 From Coq Require Import List Lia RelationClasses.
-From ABCProtocol.Systems Require Export Protocol.
+From Bythos.Systems Require Export Protocol.
 
 Module Type NetState (Export A : NetAddr) (Export M : MessageType) 
   (Export P : PacketType) (Export BTh : ByzThreshold A) (Export Pr : Protocol A M P BTh).

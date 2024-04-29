@@ -2,9 +2,9 @@ From Coq Require Import List Bool Lia PeanoNat ListSet Permutation RelationClass
 From Coq Require ssrbool ssreflect.
 Import (coercions) ssrbool.
 Import ssreflect.SsrSyntax.
-From ABCProtocol.Protocols.PB Require Export Liveness.
+From Bythos.Protocols.PB Require Export Liveness.
 
-From ABCProtocol.Properties Require Export Liveness_tla.
+From Bythos.Properties Require Export Liveness_tla.
 
 Module PBLiveness2 (A : NetAddr) (R : Round) (Sn : Signable) (V : Value) (Pf : PBProof Sn) (VBFT : ValueBFT A R Sn V Pf) 
   (BTh : ClassicByzThreshold A) (BSett : RestrictedByzSetting A BTh)

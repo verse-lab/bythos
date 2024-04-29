@@ -1,7 +1,7 @@
 From Coq Require Import List.
 From Coq Require ssrbool.
 Import (coercions) ssrbool.
-From ABCProtocol.Structures Require Export Types.
+From Bythos.Structures Require Export Types.
 
 (* the following should be generally useful when composing two protocols, 
     no matter how they are composed *)

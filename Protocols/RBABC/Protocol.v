@@ -1,10 +1,10 @@
 From Coq Require Import Bool List PeanoNat.
 From Coq Require ssrbool.
 Import (coercions) ssrbool.
-From ABCProtocol.Composition Require Export Protocol.
-From ABCProtocol.Protocols.RBABC Require Export Types.
-From ABCProtocol.Protocols.ABC Require Import Protocol.
-From ABCProtocol.Protocols.RB Require Import Protocol.
+From Bythos.Composition Require Export Protocol.
+From Bythos.Protocols.RBABC Require Export Types.
+From Bythos.Protocols.ABC Require Import Protocol.
+From Bythos.Protocols.RB Require Import Protocol.
 
 Module RBACTrigger (A : NetAddr) (R : Round) (ARP : AddrRoundPair A R) (Sn : Signable) (V : SignableValue Sn) (VBFT : ValueBFT A R V) 
   (BTh : ClassicByzThreshold A) (RBM : RBMessage A R V)

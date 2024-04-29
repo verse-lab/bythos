@@ -1,8 +1,8 @@
 From Coq Require Import Bool List ListSet PeanoNat Lia.
 From Coq Require ssrbool.
 Import (coercions) ssrbool.
-From ABCProtocol.Systems Require Export Protocol.
-From ABCProtocol.Protocols.RB Require Export Types.
+From Bythos.Systems Require Export Protocol.
+From Bythos.Protocols.RB Require Export Types.
 
 From RecordUpdate Require Import RecordUpdate.
 

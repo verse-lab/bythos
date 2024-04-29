@@ -1,9 +1,9 @@
 From Coq Require Import List.
 From Coq Require ssrbool.
 Import (coercions) ssrbool.
-From ABCProtocol.Composition Require Export Types.
-From ABCProtocol.Protocols.ABC Require Export Types.
-From ABCProtocol.Protocols.RB Require Export Types.
+From Bythos.Composition Require Export Types.
+From Bythos.Protocols.ABC Require Export Types.
+From Bythos.Protocols.RB Require Export Types.
 
 (* TODO it seems that if we allow multiple instances of ABC to run at the same time, 
     then it is possible for adversaries to collect signatures from different instances

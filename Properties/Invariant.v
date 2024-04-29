@@ -2,7 +2,7 @@ From Coq Require Import List Bool Lia.
 From Coq Require ssrbool ssreflect.
 Import (coercions) ssrbool.
 Import ssreflect.SsrSyntax.
-From ABCProtocol.Systems Require Export Network.
+From Bythos.Systems Require Export Network.
 
 From RecordUpdate Require Export RecordUpdate.
 From stdpp Require Export tactics. (* anyway *)

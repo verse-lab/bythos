@@ -2,8 +2,8 @@ From Coq Require Import List Bool Lia PeanoNat.
 From Coq Require ssrbool ssreflect.
 Import (coercions) ssrbool.
 Import ssreflect.SsrSyntax.
-From ABCProtocol.Systems Require Export Network.
-From ABCProtocol.Composition Require Export States.
+From Bythos.Systems Require Export Network.
+From Bythos.Composition Require Export States.
 
 (* FIXME: without making it a module type, we cannot compose CompNetwork *)
 

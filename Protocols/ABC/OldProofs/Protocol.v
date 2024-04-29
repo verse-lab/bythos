@@ -1,8 +1,8 @@
 From Coq Require Import Bool List.
 From Coq Require ssrbool.
 Import (coercions) ssrbool.
-From ABCProtocol.Systems Require Export Protocol.
-From ABCProtocol.Protocols.ABC Require Export Types.
+From Bythos.Systems Require Export Protocol.
+From Bythos.Protocols.ABC Require Export Types.
 
 Module Type ACProtocol (A : NetAddr) (Sn : Signable) (V : SignableValue Sn) (VBFT : ValueBFT A Sn V) 
   (BTh : ByzThreshold A)

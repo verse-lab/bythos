@@ -2,7 +2,7 @@ From Coq Require Import List Bool Lia ListSet Permutation PeanoNat.
 From Coq Require ssrbool ssreflect.
 Import (coercions) ssrbool.
 Import ssreflect.SsrSyntax.
-From ABCProtocol.Systems Require Export Network.
+From Bythos.Systems Require Export Network.
 
 Module Liveness (Export A : NetAddr) (Export M : MessageType)
   (Export BTh : ByzThreshold A) (Export BSett : ByzSetting A) 

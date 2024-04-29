@@ -1,9 +1,9 @@
--Q Structures ABCProtocol.Structures
--Q Systems ABCProtocol.Systems
--Q Properties ABCProtocol.Properties
--Q Utils ABCProtocol.Utils
--Q Protocols ABCProtocol.Protocols
--Q Composition ABCProtocol.Composition
+-Q Structures Bythos.Structures
+-Q Systems Bythos.Systems
+-Q Properties Bythos.Properties
+-Q Utils Bythos.Utils
+-Q Protocols Bythos.Protocols
+-Q Composition Bythos.Composition
 
 # Referring to the submodules
 -Q coqtla/src TLA

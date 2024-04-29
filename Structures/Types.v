@@ -1,8 +1,8 @@
 From Coq Require Import List RelationClasses.
 From Coq Require ssrbool.
 Import (coercions) ssrbool.
-From ABCProtocol.Structures Require Export Address.
-From ABCProtocol.Utils Require Export ListFacts Misc.
+From Bythos.Structures Require Export Address.
+From Bythos.Utils Require Export ListFacts Misc.
 (*
 Module Type Signable.
 

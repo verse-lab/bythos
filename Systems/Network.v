@@ -2,7 +2,7 @@ From Coq Require Import List Bool Lia PeanoNat.
 From Coq Require ssrbool ssreflect.
 Import (coercions) ssrbool.
 Import ssreflect.SsrSyntax.
-From ABCProtocol.Systems Require Export States.
+From Bythos.Systems Require Export States.
 
 Module Type ByzSetting (Export A : NetAddr).
 

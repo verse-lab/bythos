@@ -2,9 +2,9 @@ From Coq Require Import List Bool Lia ListSet Permutation PeanoNat RelationClass
 From Coq Require ssrbool ssreflect.
 Import (coercions) ssrbool.
 Import ssreflect.SsrSyntax.
-From ABCProtocol.Systems Require Export Network.
+From Bythos.Systems Require Export Network.
 
-From ABCProtocol.Utils Require Export TLAmore. 
+From Bythos.Utils Require Export TLAmore. 
 (* used this to suppress warning about coercion, but now anyway *)
 (* this would require some time ... *)
 (* Export -(coercions) TLAmore. (* need to separate Require and Import; otherwise Coqdep will complain *) *)

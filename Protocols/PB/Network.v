@@ -2,8 +2,8 @@ From Coq Require Import List Lia.
 From Coq Require ssrbool ssreflect.
 Import (coercions) ssrbool.
 Import ssreflect.SsrSyntax.
-From ABCProtocol.Systems Require Export Network.
-From ABCProtocol.Protocols.PB Require Export Protocol.
+From Bythos.Systems Require Export Network.
+From Bythos.Protocols.PB Require Export Protocol.
 
 Module PBAdversary (A : NetAddr) (R : Round) (Sn : Signable) (V : Value) (Pf : PBProof Sn) (VBFT : ValueBFT A R Sn V Pf) 
   (BTh : ClassicByzThreshold A) (BSett : ByzSetting A)

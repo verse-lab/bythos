@@ -1,6 +1,6 @@
 From Coq Require Import List Lia RelationClasses.
-From ABCProtocol.Systems Require Export States.
-From ABCProtocol.Composition Require Export Protocol.
+From Bythos.Systems Require Export States.
+From Bythos.Composition Require Export Protocol.
 
 Module CompNetState (A : NetAddr) (M1 M2 : MessageType) (BTh : ByzThreshold A)
   (CM : CompMessage M1 M2) (Pk1 : SimplePacket A M1) (Pk2 : SimplePacket A M2)

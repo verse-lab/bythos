@@ -2,8 +2,8 @@ From Coq Require Import List Bool Lia PeanoNat ListSet Permutation RelationClass
 From Coq Require ssrbool ssreflect.
 Import (coercions) ssrbool.
 Import ssreflect.SsrSyntax.
-From ABCProtocol.Protocols.RB Require Export Safety.
-From ABCProtocol.Properties Require Import Liveness.
+From Bythos.Protocols.RB Require Export Safety.
+From Bythos.Properties Require Import Liveness.
 
 From RecordUpdate Require Import RecordUpdate.
 From stdpp Require Import tactics. (* anyway *)

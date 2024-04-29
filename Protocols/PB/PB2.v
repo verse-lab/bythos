@@ -2,7 +2,7 @@ From Coq Require Import List Bool Lia PeanoNat ListSet Permutation RelationClass
 From Coq Require ssrbool ssreflect.
 Import (coercions) ssrbool.
 Import ssreflect.SsrSyntax.
-From ABCProtocol.Protocols.PB Require Export Liveness_tla.
+From Bythos.Protocols.PB Require Export Liveness_tla.
 
 Module Type PBProofB (A : NetAddr) (Sn : Signable) (BTh : ClassicByzThreshold A) (TSS0 : ThresholdSignatureSchemePrim A Sn with Definition thres := BTh.t0) (* ! *)
 (TSS : ThresholdSignatureScheme A Sn with Module TSSPrim := TSS0) <: PBProof Sn. (* Proof type of B *)
