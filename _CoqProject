@@ -66,3 +66,9 @@ Protocols/RBABC/Types.v
 Protocols/RBABC/Protocol.v
 Protocols/RBABC/Network.v
 Protocols/RBABC/Liveness_tla.v
+
+Composition/Types.v
+Composition/Protocol.v
+Composition/States.v
+Composition/Network.v
+Composition/Liveness_tla.v
