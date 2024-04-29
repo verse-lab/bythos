@@ -59,20 +59,6 @@ Proof. now destruct p. Qed.
 Fact pkt_proj2_refl_must p p' : pkt_proj2 (pkt_inr p) = Some p' -> p = p'.
 Proof. destruct p. cbn. now intros [=]. Qed.
 
-(* FIXME: this seems actually reusable? *)
-Definition option_map_list [A B : Type] (f : A -> option B) (l : list A) : list B :=
-  List.flat_map (fun a => list.option_list (f a)) l.
-
-Fact option_map_list_In [A B : Type] (f : A -> option B) (l : list A) (b : B) :
-  In b (option_map_list f l) <-> exists a : A, In a l /\ f a = Some b.
-Proof.
-  induction l as [ | a l IH ]; simpl. 1: firstorder. 
-  rewrite in_app_iff, IH. destruct (f a) eqn:E; simpl; split; try solve [ firstorder ].
-  - intros [ [ -> | ] | (a0 & Hina0 & E0) ]; try eauto. contradiction.
-  - intros (a0 & [ <- | Hina0 ] & E0); try eauto. left. left. congruence.
-  - intros (a0 & [ <- | Hina0 ] & E0); try eauto. congruence.
-Qed.
-
 Definition pkts_filter_proj1 : list Packet -> list RBPk.Packet :=
   option_map_list pkt_proj1.
 
