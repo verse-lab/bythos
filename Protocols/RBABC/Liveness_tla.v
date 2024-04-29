@@ -87,7 +87,7 @@ Proof.
     + intros k. (* exists (ssd_proj1 (f k)). rewrite !drop_n /=. *)
       pose proof (ssd_proj1_sound (Hf k)) as (Ha & Hb).
       unfold exec_norm1 in *. rewrite RBN.final_world_n_add_1. eapply RBN.step_mirrors_World_rel.
-      1: symmetry; apply Hrel. 1: apply Ha. 1: intros; auto. (* nice *)
+      1: symmetry; apply Hrel. 1: apply Ha. 1: intros; hnf; auto. (* nice *)
       specialize (Hrel (S k)). rewrite RBN.final_world_n_add_1 in Hrel. rewrite Hb Hrel. reflexivity.
     (* + intros k. hnf. intros q w w' Hstep. rewrite !drop_n /=.
       pose proof (ssd_proj1_sound _ _ _ Hstep) as (Ha & Hb).

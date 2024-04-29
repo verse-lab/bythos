@@ -268,8 +268,7 @@ Qed.
 Fact step_mirrors_World_rel w1 w1' w2 (H1 : World_rel w1 w1') 
   q (H : system_step q w1 w2) 
   (* needs this! *)
-  (* FIXME: rewrite using World_rel_cong? *)
-  (Hbyz_rel : forall m w w', World_rel w w' -> byz_constraints m w -> byz_constraints m w') :
+  (Hbyz_rel : forall m, World_rel_cong (byz_constraints m)) :
   let: w2' := next_world q w1' in World_rel w2 w2' -> system_step q w1' w2'.
 Proof with try solve [ reflexivity | assumption ].
   intros H2. inversion_step_ H Ef; clear H; simpl in H2 |- *.

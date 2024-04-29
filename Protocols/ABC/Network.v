@@ -63,9 +63,9 @@ Definition byz_constraints (m : Message) (w : World) : Prop :=
   | ConfirmMsg c => cert_correct (sentMsgs w) c
   end.
 
-Fact byz_constraints_World_rel m w w' (Hrel : World_rel w w') (Hc : byz_constraints m w) :
-  byz_constraints m w'.
+Fact byz_constraints_World_rel m : World_rel_cong (byz_constraints m).
 Proof.
+  intros w w' Hrel Hc.
   destruct m as [ | (v, cs) | (v, nsigs) ]; hnf in Hc |- *; auto; 
     repeat progress (intros; saturate_assumptions!; hnf in Hc |- * ).
   - destruct Hc as (? & ? & ? & Hin). apply (proj2 Hrel) in Hin. eauto.

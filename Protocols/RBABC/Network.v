@@ -269,7 +269,7 @@ Proof.
   - exists RBN.Ns.initWorld. split; [ | now constructor ]. split; auto; try reflexivity.
   - pose proof (ssd_proj1_sound Hstep) as (Ha & Hb).
     symmetry in Hrel. pose proof Hrel as Hrel_. eapply RBN.step_mirrors_World_rel in Hrel.
-    2: apply Ha. 2: auto. 2: now apply RBN.next_world_preserves_World_rel.
+    2: apply Ha. 2: intros; hnf; auto. 2: now apply RBN.next_world_preserves_World_rel.
     eexists. split. 2: eapply RBN.ReachableStep; try apply Hrel. all: auto.
     rewrite <- Hb. now apply RBN.next_world_preserves_World_rel. (* HMM ...? *)
 Qed.

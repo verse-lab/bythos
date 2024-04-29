@@ -45,14 +45,14 @@ Definition World_rel (w w' : World) : Prop := Eval unfold stmap_peq in
 
 (* usually, we only need this *)
 Definition stmap_peq_cong (P : World -> Prop) : Prop :=
-  forall w w', stmap_peq (localState w) (localState w') -> P w <-> P w'.
+  forall w w', stmap_peq (localState w) (localState w') -> P w -> P w'.
 
 (* FIXME: make this a typeclass *)
 Definition World_rel_cong (P : World -> Prop) : Prop :=
-  forall w w', World_rel w w' -> P w <-> P w'.
+  forall w w', World_rel w w' -> P w -> P w'.
 
 Fact stmap_peq_cong_implies_World_rel_cong P : stmap_peq_cong P -> World_rel_cong P.
-Proof. intros H. hnf in H |- *. intros ?? (? & ?). now saturate_assumptions!. Qed.
+Proof. intros H. hnf in H |- *. intros ?? (H0 & _). now specialize (H _ _ H0). Qed.
 
 (* using Global to help it penetrate nested modules *)
 Global Instance Equivalence_World_rel : Equivalence World_rel.
