@@ -3,7 +3,8 @@ From Coq Require Import List Bool Lia PeanoNat ListSet Permutation RelationClass
 From Coq Require ssrbool ssreflect.
 Import (coercions) ssrbool.
 Import ssreflect.SsrSyntax.
-From ABCProtocol.Protocols.RBABC Require Export Network.
+From ABCProtocol.Composition Require Export Liveness_tla.
+From ABCProtocol.Protocols.RBABC Require Export Protocol.
 From ABCProtocol.Protocols.ABC Require Import Liveness_tla.
 From ABCProtocol.Protocols.RB Require Import Liveness_tla.
 
@@ -21,6 +22,13 @@ Module ACLiveTLA := ACLiveness2 A Sn V BTh BSett P TSS0 TSS.
 
 Import RBLiveTLA.RBLive.RBS.RBInv ACLiveTLA.ACLive.ACS.ACInv.
 
+Module Export CM := CompMessageImpl RBN.M ACN.M.
+Module Export SCPT := RBACTrigger A R ARP Sn V VBFT BTh RBN.M P TSS0 TSS ACN.ACDT ACN.CC ACN.M
+  CM RBN.P ACN.P0 RBN.RBP ACN.ACP.
+
+Include CompLiveness2 A RBN.M ACN.M BTh RBN.P ACN.P0 RBN.RBP ACN.ACP SCPT RBN.Ns ACN.Ns
+  BSett RBN.RBAdv ACN.ACAdv RBN.PSOp ACN.PSOp RBN ACN.
+(*
 Module Export RBACN := RBACNetwork A R ARP Sn V VBFT BTh BSett P TSS0 TSS RBN ACN.
 
 Include LivenessTLA A M BTh BSett Pk PSOp RBACP Ns RBACAdv RBACN.
@@ -180,16 +188,16 @@ Proof. revert H. unseal. (* ??? *) Qed.
 Fact leads_to_inr e P Q (H : exec_proj2 e ⊨ ⌜ P ⌝ ~~> ⌜ Q ⌝) :
   e ⊨ ⌜ λ w, P (world_proj2 w) ⌝ ~~> ⌜ λ w, Q (world_proj2 w) ⌝.
 Proof. revert H. unseal. (* ??? *) Qed.
-
+*)
 Definition all_receives_RB src r v w : Prop :=
   RBLiveTLA.RBLive.all_receives src r v (world_proj1 w).
 
 Lemma go1 : forall src r f (Hnonbyz_src : is_byz src = false),
   ⌜ init ⌝ ∧ nextf f ∧ fairness ∧ disambiguation f ⊢
-  ⌜ λ w, (w @ src).(stRB).(sent) r ⌝ ~~> ⌜ all_receives_RB src r (value_bft src r) ⌝.
+  ⌜ λ w, (w @ src).(st1).(sent) r ⌝ ~~> ⌜ all_receives_RB src r (value_bft src r) ⌝.
 Proof.
   intros. hnf. intros e (Hini & Hf & Hfair & Hdg).
-  pose proof (exec_norm1_sound_next e f Hf) as (Hrel & Hf').
+  pose proof (exec_norm1_sound_next ltac:(intros; hnf; auto) e f Hf) as (Hrel & Hf').
   pose proof (exec_norm1_sound_init e f Hini) as Hini'.
   set (e' := exec_norm1 f e) in Hrel, Hf', Hini'.
   eapply exec_norm1_sound_fairness in Hfair; eauto.
@@ -210,7 +218,7 @@ Lemma go2 : forall f v,
   ⌜ all_honest_nodes_submitted_AC v ⌝ ~~> ⌜ all_honest_nodes_confirmed_AC v ⌝.
 Proof.
   intros. hnf. intros e (Hini & Hf & Hfair & Hdg).
-  pose proof (exec_norm2_sound_next e f Hf) as (Hrel & Hf').
+  pose proof (exec_norm2_sound_next ACAdv.byz_constraints_World_rel e f Hf) as (Hrel & Hf').
   pose proof (exec_norm2_sound_init e f Hini) as Hini'.
   set (e' := exec_norm2 f e) in Hrel, Hf', Hini'.
   eapply exec_norm2_sound_fairness in Hfair; eauto.
@@ -247,10 +255,10 @@ Proof.
     all: rewrite upd_refl in Ho.
     + destruct msg as [ mRB | mAC ].
       * rewrite (surjective_pairing (RBN.RBP.procMsgWithCheck _ _ _)) in Ef.
-        destruct (triggered _ _) as [ v | ] eqn:Etr in Ef.
+        destruct (trigger_procMsg _ _) as [ [ v ] | ] eqn:Etr in Ef.
         --(* prepare for the indirectly ... *)
           (* TODO streamline this? *)
-          pose proof (reachable_proj2 Hr) as (w_ & Hrel_ & Hr_).
+          pose proof (reachable_proj2 Hr ACAdv.byz_constraints_World_rel) as (w_ & Hrel_ & Hr_).
           pose proof Hrel_ as Htmp. apply ACN.next_world_preserves_World_rel with (q:=ACN.Intern n (SubmitIntTrans v)) in Htmp.
           cbn in Htmp. rewrite (proj1 Hrel_) in Htmp. unfold world_proj2, stmap_proj2 in Htmp. simpl in Htmp.
           rewrite -> (surjective_pairing (ACN.ACP.procInt _ _)) in Htmp. 
@@ -271,7 +279,7 @@ Proof.
           2: simpl; unfold stmap_proj2; rewrite -> (surjective_pairing (ACN.ACP.procInt _ _)).
           2: simpl; rewrite Htmp; reflexivity.
           (* discuss *)
-          unfold triggered in Etr. 
+          unfold trigger_procMsg in Etr. 
           do 2 (match type of Etr with (match ?qq with _ => _ end = _) => destruct qq eqn:?; try discriminate end). simplify_eq.
           apply proj1, proj2 in IH. saturate_assumptions.
           (* indirectly *)
@@ -280,7 +288,7 @@ Proof.
           simpl in Hstep. rewrite -> (surjective_pairing (ACN.ACP.procInt _ _)), -> (proj1 Hrel_) in Hstep. simpl in Hstep. rewrite -> ACN.Ns.upd_refl in Hstep.
           setoid_rewrite Hstep. simpl. clear. eqsolve.
         --simplify_eq. simpl. split. 
-          ++rewrite (proj1 IH). unfold triggered in Etr.
+          ++rewrite (proj1 IH). unfold trigger_procMsg in Etr.
             match type of Etr with (match ?qq with _ => _ end = _) => destruct qq eqn:E end.
             **match type of Etr with (match ?qq with _ => _ end = _) => now destruct qq end.
             **split; intros H; try discriminate. specialize (Ho _ (or_introl eq_refl)). simpl in Ho. now rewrite H in Ho.
@@ -292,8 +300,8 @@ Proof.
         destruct Hstep as (Hstep & Hrel). apply inv_buffer_received_only_pre with (nn:=n) in Hstep; auto. simpl in Hstep.
         apply proj2 in Hstep. rewrite ACN.Ns.upd_refl in Hstep. now rewrite Hstep.
     + (* this part of brute force is not difficult *)
-      unfold procInt in E. rewrite (surjective_pairing (RBN.RBP.procInt _ _)) in E. simplify_eq. simpl.
-      unfold RBN.RBP.procInt. destruct (w @ n).(stRB) as [ ? sent0 ???? ]. destruct (sent0 t); simpl; auto.
+      unfold procInt, trigger_procInt in E. rewrite (surjective_pairing (RBN.RBP.procInt _ _)) in E. simplify_eq. simpl.
+      unfold RBN.RBP.procInt. destruct (w @ n).(st1) as [ ? sent0 ???? ]. destruct (sent0 t); simpl; auto.
 Qed.
 
 Lemma inv1' : forall w, reachable w -> 
@@ -307,6 +315,7 @@ Proof.
     (* single output *)
     pose proof (RBLiveTLA.RBLive.RBS.output_uniqueness_always_holds) as Htmp2.
     eapply always_holds_proj1_apply in Htmp2; try apply Hr; auto.
+    2: intros; hnf; auto.
     (* TODO move this subgoal somewhere else? *)
     2:{ intros ?? Hre. unfold RBLiveTLA.RBLive.RBS.output_uniqueness. now setoid_rewrite (proj1 Hre). }
     unfold world_proj1, stmap_proj1 in Htmp2. hnf in Htmp2. cbn in Htmp2. 
@@ -325,7 +334,7 @@ Qed.
 
 Lemma validity_overall f (Hnonbyz : is_byz arp.1 = false) :
   ⌜ init ⌝ ∧ nextf f ∧ fairness ∧ disambiguation f ⊢
-  ⌜ λ w, (w @ arp.1).(stRB).(sent) arp.2 ⌝ ~~> ⌜ all_honest_nodes_confirmed_AC (value_bft arp.1 arp.2) ⌝.
+  ⌜ λ w, (w @ arp.1).(st1).(sent) arp.2 ⌝ ~~> ⌜ all_honest_nodes_confirmed_AC (value_bft arp.1 arp.2) ⌝.
 Proof.
   tla_apply (leads_to_trans _ (⌜ all_honest_nodes_submitted_AC (value_bft arp.1 arp.2) ⌝)); tla_split.
   1: tla_apply (leads_to_trans _ (⌜ all_receives_RB arp.1 arp.2 (value_bft arp.1 arp.2) ⌝)); tla_split.

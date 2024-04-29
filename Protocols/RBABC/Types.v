@@ -1,7 +1,7 @@
 From Coq Require Import List.
 From Coq Require ssrbool.
 Import (coercions) ssrbool.
-From ABCProtocol.Structures Require Export Types.
+From ABCProtocol.Composition Require Export Types.
 From ABCProtocol.Protocols.ABC Require Export Types.
 From ABCProtocol.Protocols.RB Require Export Types.
 
@@ -41,7 +41,7 @@ Include SingleValueBFT A V LS.
 
 End SingleValueBFTImpl.
 *)
-
+(*
 Module Type RBACMessage (A : NetAddr) (R : Round) (Sn : Signable) (V : SignableValue Sn) (P : PKI A Sn) (TSS : ThresholdSignatureScheme A Sn)
   (ACDT : ACDataTypes A Sn V P TSS)
   (* module type ...!!! *)
@@ -65,3 +65,4 @@ Module RBACMessageImpl (A : NetAddr) (R : Round) (Sn : Signable) (V : SignableVa
 Include RBACMessage A R Sn V P TSS ACDT RBM ACM.
 
 End RBACMessageImpl.
+*)

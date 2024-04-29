@@ -1,4 +1,4 @@
-From Coq Require Import List Lia RelationClasses.
+(* From Coq Require Import List Lia RelationClasses.
 From Coq Require ssrbool ssreflect.
 Import (coercions) ssrbool.
 Import ssreflect.SsrSyntax.
@@ -387,4 +387,4 @@ Proof.
     rewrite <- Hb. now apply ACN.next_world_preserves_World_rel.
 Qed.
 
-End RBACNetwork.
+End RBACNetwork. *)
