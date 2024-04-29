@@ -59,8 +59,8 @@ Protocols/PB/Safety.v
 Protocols/PB/Liveness.v
 Protocols/PB/Liveness_tla.v
 
-Protocols/PB/PB2.v
-Protocols/PB/PB3.v
+Protocols/PB/Iterated/PB2.v
+Protocols/PB/Iterated/PB3.v
 
 Protocols/RBABC/Types.v
 Protocols/RBABC/Protocol.v
