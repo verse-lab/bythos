@@ -2,7 +2,7 @@ From Coq Require Import List RelationClasses.
 From Coq Require ssrbool.
 Import (coercions) ssrbool.
 From Bythos.Structures Require Export Address.
-From Bythos.Utils Require Export ListFacts Misc.
+From Bythos.Utils Require Export ListFacts.
 (*
 Module Type Signable.
 
