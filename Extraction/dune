@@ -1,0 +1,4 @@
+(executable
+  (name main)
+  (libraries Protocols Companions Shim Configuration)
+  (flags -w -33))

@@ -259,9 +259,10 @@ Module Type JustAList.
 Parameter t : Set.
 Parameter t_eqdec : forall a b : t, {a = b} + {a <> b}.
 
-Parameter elements : list t.
-Parameter elements_not_empty : elements <> nil.
-Parameter elements_NoDup : List.NoDup elements.
+(* elements may not be determined until some point, so model it into a function *)
+Parameter elements : unit -> list t.
+Parameter elements_not_empty : elements tt <> nil.
+Parameter elements_NoDup : List.NoDup (elements tt).
 
 End JustAList.
 
@@ -269,16 +270,17 @@ Module AddrAsFiniteType3 (A : JustAList) <: NetAddr.
 
 Import MembershipFiniteType.
 
-Local Notation fin_mem := (fin_mem A.t_eqdec A.elements).
+Local Notation elts := (A.elements tt).
+Local Notation fin_mem := (fin_mem A.t_eqdec elts).
 
 Definition Address := fin_mem.
-Definition Address_eqdec := @fin_mem_eqdec _ A.t_eqdec A.elements.
+Definition Address_eqdec := @fin_mem_eqdec _ A.t_eqdec elts.
 Definition Address_inhabitant : Address.
-  pose proof A.elements_not_empty as H. destruct A.elements as [ | a ? ] eqn:E; try contradiction.
+  pose proof A.elements_not_empty as H. destruct elts as [ | a ? ] eqn:E; try contradiction.
   eapply FM with (a:=a). unfold ssrbool.is_left. rewrite (proj2 (sumbool_is_left _)); hnf; auto. rewrite E. apply (or_introl eq_refl).
 Qed.
 
-Definition valid_nodes : list Address := fin_mem_lift A.elements (fin_mem_lift_qualified _ (incl_refl _)).
+Definition valid_nodes : list Address := fin_mem_lift elts (fin_mem_lift_qualified _ (incl_refl _)).
 Lemma valid_nodes_NoDup : List.NoDup valid_nodes.
 Proof. apply fin_mem_lift_NoDup, A.elements_NoDup. Qed.
 Lemma Address_is_finite : forall a : Address, In a valid_nodes.
