@@ -132,16 +132,41 @@ let recv_pkt fd =
   let src = get_name_for_read_fd fd in
   (src, pkt)
 
+(* a (more debugging-friendly?) version from DiSeL *)
+let get_pkt =
+  let max_errors = 3 in
+  let errors = ref 0 in
+  let rec aux = function
+    | [] -> None
+    | fd :: fds -> begin
+      try
+        Some (recv_pkt fd)
+      with e -> begin
+        (* TODO emm ... but how can it raise an exception? *)
+        Printf.printf "Got exception: %s\n" (Printexc.to_string e);
+        Printexc.print_backtrace Stdlib.stdout;
+        errors := !errors + 1;
+        if !errors < max_errors
+        then aux fds
+        else begin
+          Printf.printf "Too many errors; aborting.\n%!";
+          raise e
+        end
+      end
+    end
+  in aux
+
+(*
 let rec get_pkt = function
   | [] -> None
   | fd :: fds ->
       try
-        (* TODO emm ... how can it raise an exception? *)
         Some (recv_pkt fd)
       with _ ->
       begin
         get_pkt fds
       end
+*)
 
 let send_pkt dst pkt =
   let fd = get_write_fd dst in
@@ -149,5 +174,7 @@ let send_pkt dst pkt =
   let chunk = Bytes.of_string s in
   send_chunk fd chunk
 
+(* NOTE: another design choice: whether to keep dst in the packet to be sent. 
+    for now, keep it for debugging purpose *)
 let send_all pkts =
-  List.iter (fun pkt -> send_pkt (fst pkt) (snd pkt)) pkts
+  List.iter (fun pkt -> send_pkt (fst pkt) pkt) pkts

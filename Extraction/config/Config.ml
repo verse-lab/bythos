@@ -4,4 +4,6 @@ let me_port = ref (-1)
 
 (* (IP, port) *)
 type address = (string * int)
+let string_of_address ((ip, port) : address) = ip ^ "@" ^ string_of_int port
+
 let cluster : address list ref = ref []

@@ -1,3 +1,5 @@
+(* some simple functions. not related to any protocol or the shim layer *)
+
 let rec list_index a l =
   let rec aux l' =
     match l' with

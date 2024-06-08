@@ -90,11 +90,6 @@ awk.Makefile
 .Makefile.coq.d
 *.cache
 
-# Toychain-specific
+# extraction related
 _build
-*.byte
-*.native
-# Profiling
-gmon.out
-perf.data*
-perf.hist*
+*.exe
