@@ -28,6 +28,7 @@ Utils/Misc.v
 Utils/ListFacts.v
 Utils/TLAmore.v
 Utils/Tactics.v
+Utils/Fintype.v
 # Utils/InfSeqAdaptor.v
 
 Protocols/ABC/Types.v
