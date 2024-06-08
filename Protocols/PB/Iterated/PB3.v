@@ -2,7 +2,7 @@ From Coq Require Import List Bool Lia PeanoNat ListSet Permutation RelationClass
 From Coq Require ssrbool ssreflect.
 Import (coercions) ssrbool.
 Import ssreflect.SsrSyntax.
-From Bythos.Protocols.PB Require Export PB2.
+From Bythos.Protocols.PB.Iterated Require Export PB2.
 
 Module PB3 (Ad : NetAddr) (R : Round) (Sn : Signable) (V : Value) (Pf : PBProof Sn) (VBFT : ValueBFT Ad R Sn V Pf) 
   (BTh : ClassicByzThreshold Ad)
