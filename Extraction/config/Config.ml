@@ -1,6 +1,7 @@
 (* requiring the IP of a node itself to be an argument sounds not very reasonable *)
 let me_ip = ref ""
 let me_port = ref (-1)
+let behavior_mode = ref 0
 
 (* (IP, port) *)
 type address = (string * int)

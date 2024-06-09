@@ -7,7 +7,6 @@ open Configuration.Config
 (* doing it here might be easier than doing it in Coq? *)
 
 (* somehow delay the instantiations of everything below, since cluster will only be ready at runtime *)
-(* also make use of the first class module in OCaml *)
 module Lazymod (A : sig end) = struct
 
 module Peers:JustAList with type t = address = PeersPre
@@ -54,20 +53,6 @@ let procMsg_simpler st src msg =
   let (st', pkts) = RBP.procMsgWithCheck st src msg in
   (st', List.map packet_simplify pkts)
 
-let get_minimal_protocol a = 
-  (* print_string "now: ";
-  List.iter (fun (ip, port) -> Printf.printf " %s %d" ip port) A.valid_nodes;
-  print_newline (); *)
-  Random.init !me_port;
-  {
-  st = RBP.coq_Init a;
-  procInt = procInt_simpler;
-  procMsg = procMsg_simpler
-} 
-
-type protocol_RB = (RBP.coq_State, RBP.RealRBMessageImpl.coq_Message, 
-  RBP.coq_InternalTransition, address) minimal_protocol
-
 (* TODO can we automate the string_of derivations for these types?
     neither ppx_import nor ppx_deriving works, since the types are inside a functor *)
 
@@ -82,33 +67,52 @@ let string_of_message m =
   | EchoMsg (orig, r, v) -> String.concat "" ["Echo ("; string_of_address orig; ", "; string_of_round r; ", "; string_of_round v; ")"]
   | VoteMsg (orig, r, v) -> String.concat "" ["Vote ("; string_of_address orig; ", "; string_of_round r; ", "; string_of_round v; ")"]
 
-(* the code below implements the logic about how to actually run procInt and procMsg *)
-
-let update_and_send st' pkts pr =
-  pr.st <- st';
+let update_and_send st' pkts st_ref =
+  st_ref := st';
   Printf.printf "sending:"; print_newline ();
   List.iter (fun (dst, msg) -> Printf.printf "  %s to %s" (string_of_message msg) (string_of_address dst); print_newline ()) pkts;
   Shim.Net.send_all pkts;
   Some (st', pkts)
 
+(* the code below implements the behavior of the node. 
+    for a non-faulty node, the behavior refers to how to actually run procInt and procMsg. 
+    for a Byzantine node, the behavior can be arbitrary, as long as the node does not terminate. *)
+
 let procInt_wrapper =
   let cur_round = ref 0 in
   let lst_time = ref (-1) in
-  let aux (pr : protocol_RB) = begin
+  let aux st_ref = begin
     let tm = int_of_float (Unix.time ()) in
     if (tm mod 10 = !me_port mod 10) && (tm <> !lst_time)
     then begin
       lst_time := tm;
       cur_round := !cur_round + 1;
-      let (st', pkts) = pr.procInt pr.st !cur_round in
-      update_and_send st' pkts pr
+      let (st', pkts) = procInt_simpler !st_ref !cur_round in
+      update_and_send st' pkts st_ref
     end
     else None
   end in aux
 
-let procMsg_wrapper (sender : address) (msg : RBP.RealRBMessageImpl.coq_Message) (pr : protocol_RB) =
+let procMsg_wrapper sender msg st_ref =
   Printf.printf "receiving %s from %s" (string_of_message msg) (string_of_address sender); print_newline ();
-  let (st', pkts) = pr.procMsg pr.st sender msg in
-  update_and_send st' pkts pr
+  let (st', pkts) = procMsg_simpler !st_ref sender msg in
+  update_and_send st' pkts st_ref
+
+(* the function f is basically procMsg_wrapper_wrapper *)
+let run a = function
+  | 0 ->
+    Random.init !me_port;
+    let st = ref (RBP.coq_Init a) in
+    let loop f = begin
+      while true do
+        ignore (procInt_wrapper st);
+        ignore (f procMsg_wrapper st)
+      done
+    end in loop
+  | _ ->
+    (* dead node *)
+    let loop f = begin
+      while true do () done
+    end in loop
 
 end (* Lazymod end *)

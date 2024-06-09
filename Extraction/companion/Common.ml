@@ -32,10 +32,14 @@ module RoundPre =
 
   end
 
+(* DEPRECATED since the logic of protocol execution should be described
+    with more precise things (e.g., while-loops) *)
 (* a minimal description of a protocol executed on a node *)
 (* notably, Byzantine nodes can also use this *)
+(*
 type ('st, 'msg, 'itr, 'node) minimal_protocol = {
   mutable st : 'st;
   procInt : 'st -> 'itr -> 'st * ('node * 'msg) list;
   procMsg : 'st -> 'node -> 'msg -> 'st * ('node * 'msg) list
 }
+*)

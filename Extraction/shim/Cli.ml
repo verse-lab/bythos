@@ -23,6 +23,9 @@ let speclist = [
   ("-cluster", 
     Arg.Rest_all parse_cluster, 
     " Specify all the peer nodes in the system as IP port pairs");
+  ("-mode", 
+    Arg.Set_int behavior_mode,
+    " Specify the behavior mode of the node (0=non Byzantine)");
   ("-help", 
     Arg.Unit (fun () -> show_help := true), 
     " Show the help message");
@@ -31,7 +34,7 @@ let speclist = [
     "") (* want to hide this *)
 ]
 
-let usage_msg = ("Usage: " ^ Sys.argv.(0) ^ " -me <IP> <port> -cluster [<IP> <port> ...]")
+let usage_msg = ("Usage: " ^ Sys.argv.(0) ^ " [-mode <mode_id>] -me <IP> <port> -cluster [<IP> <port> ...]")
 
 let print_help () =
   print_string (Arg.usage_string (Arg.align speclist) usage_msg);
