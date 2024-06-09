@@ -49,4 +49,4 @@ let debug_print () =
   printf "Me IP: %s\n" !me_ip;
   printf "Me port: %d\n" !me_port;
   printf "Cluster:\n";
-  List.iter (fun (id1, id2) -> printf "  %s %d\n" id1 id2) !cluster
+  List.iter (fun addr -> printf "  %s\n" (string_of_address addr)) !cluster

@@ -3,8 +3,6 @@ open Shim.Net
 open Companions.Common
 open Configuration.Config
 
-open Companions.RB
-
 (* the wrapper of wrapper; adapted from Toychain/DiSeL *)
 let procMsg_wrapper_wrapper f pr =
   let _ = check_for_new_connections () in
@@ -18,7 +16,7 @@ let procMsg_wrapper_wrapper f pr =
     | Some (src, (dst, msg)) ->
       if dst <> (!me_ip, !me_port)
       then begin
-        Printf.printf "dst: %s %d %!" (fst dst) (snd dst);
+        Printf.printf "dst: %s %!" (string_of_address dst);
         Printf.printf " - packet sent in error? (we're not the destination!)";
         print_newline ();
         None
@@ -29,7 +27,7 @@ let procMsg_wrapper_wrapper f pr =
 
 let main_loop () =
   (* first class module! *)
-  let module RealRBP = Lazymod (struct end) in
+  let module RealRBP = Companions.RB.Lazymod (struct end) in
   let pr = RealRBP.get_minimal_protocol (!me_ip, !me_port) in
   while true do
     (* a very simple logic *)
