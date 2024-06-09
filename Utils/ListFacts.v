@@ -2,6 +2,7 @@ From Coq Require Import Bool List Permutation RelationClasses.
 
 (* FIXME: change the file name into the more general "Utils" later! *)
 
+(* FIXME: this function actually exists in the standard library *)
 Definition NoDup_eqdec [A : Type] (A_eqdec : forall (a1 a2 : A), {a1 = a2} + {a1 <> a2}) : 
   forall l : list A, {NoDup l} + {~ NoDup l}.
 Proof.
