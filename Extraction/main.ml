@@ -7,10 +7,12 @@ open Companions.RB
 
 (* the wrapper of wrapper; adapted from Toychain/DiSeL *)
 let procMsg_wrapper_wrapper f pr =
-  let () = check_for_new_connections () in
+  let _ = check_for_new_connections () in
+  (* check whether some packet has been delivered to some socket *)
   let fds = get_all_read_fds () in
   let (ready_fds, _, _) = retry_until_no_eintr (fun () -> Unix.select fds [] [] 0.0) in
   begin
+    (* only process a single packet each time *)
     match get_pkt ready_fds with
     | None -> (* nothing available *) None
     | Some (src, (dst, msg)) ->

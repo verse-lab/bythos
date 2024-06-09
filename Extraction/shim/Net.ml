@@ -1,11 +1,12 @@
 (* a large portion of the code is adapted from Toychain and DiSeL *)
 (* unless specified, a function defined here is adapted from the function with the same name
     appearing in both Toychain and DiSeL *)
+(* small note: the "fd" below can be to some extent interpreted as "socket" *)
 
 open Unix
 open Configuration.Config
 
-(* this only appears in Toychain ... do not know why
+(* this only appears in Toychain ... it can make function calls more robust?
     some function calls are wrapped with this, 
     apart from which the function calls are the same as in DiSeL *)
 (* Interrupt-resistant versions of system calls  *)
@@ -13,19 +14,7 @@ let rec retry_until_no_eintr f =
   try f ()
   with Unix.Unix_error (EINTR, _, _) -> retry_until_no_eintr f
 
-let num_nodes = 32
-(* NOTE: use IP port pair to index nodes, instead of using an encoded integer *)
-let read_fds : (Unix.file_descr, address) Hashtbl.t = Hashtbl.create num_nodes
-let write_fds : (address, Unix.file_descr) Hashtbl.t = Hashtbl.create num_nodes
-
-(*
-let get_addr_port name =
-  try List.assoc name !cluster
-  with Not_found -> failwith (Printf.sprintf "Unknown IP address: %s" name)
-*)
-
-let get_name_for_read_fd fd =
-  Hashtbl.find read_fds fd
+(** low-level sending and receiving **)
 
 (* TODO FIXME: receive all at once is one of the issues with Verdi *) (* COPIED COMMENT *)
 let send_chunk (fd : file_descr) (buf : bytes) : unit =
@@ -64,37 +53,59 @@ let receive_chunk (fd : file_descr) : bytes =
         (Printf.sprintf "receive_chunk: message of length %d did not arrive all at once." len);
   buf
 
+(** managing connections **)
+
+let num_nodes = 32
+(* NOTE: use IP port pair to index nodes, instead of using an encoded integer *)
+(* fd |--> addr: from fd, the current node can receive packets from another node at addr *)
+let read_fds : (Unix.file_descr, address) Hashtbl.t = Hashtbl.create num_nodes
+(* addr |--> fd: through fd, the current node can send packets to another node at addr *)
+let write_fds : (address, Unix.file_descr) Hashtbl.t = Hashtbl.create num_nodes
+
+let get_all_read_fds () =
+  Hashtbl.fold (fun fd _ acc -> fd :: acc) read_fds []
+
+let get_name_for_read_fd fd =
+  Hashtbl.find read_fds fd
+
+let build_connection_to ((ip, port) : address) =
+  let write_fd = socket PF_INET SOCK_STREAM 0 in
+  (* let (ip, port) = get_addr_port cfg addr in *)
+  let entry = gethostbyname ip in
+  let node_addr = ADDR_INET (Array.get entry.h_addr_list 0, port) in
+  (* let chunk = Bytes.of_string (string_of_int cfg.me) in *)
+  (* NOTE: send the IP port pair here, since it is not straightforward
+      to obtain the client IP from the `node_addr` returned by `accept()` *)
+  let chunk = Marshal.to_bytes (!me_ip, !me_port) [] in
+  retry_until_no_eintr (fun () -> connect write_fd node_addr);
+  send_chunk write_fd chunk;
+  Hashtbl.add write_fds (ip, port) write_fd;
+  write_fd
+
+let get_write_fd (addr : address) =
+  try Hashtbl.find write_fds addr
+  with Not_found ->
+    (* at this point, the current node has not made a connection to the node at addr yet *)
+    build_connection_to addr
+
+(* the listening socket of the current node *)
 (* TODO temporarily use this. 
     would it be better if we make it a lazy value? or make it allocated dynamically? *)
 let listen_fd : file_descr = socket PF_INET SOCK_STREAM 0
 
-let get_write_fd (name : address) =
-  try Hashtbl.find write_fds name
-  with Not_found ->
-    let write_fd = socket PF_INET SOCK_STREAM 0 in
-    (* let (ip, port) = get_addr_port cfg name in *)
-    let (ip, port) = name in
-    let entry = gethostbyname ip in
-    let node_addr = ADDR_INET (Array.get entry.h_addr_list 0, port) in
-    (* let chunk = Bytes.of_string (string_of_int cfg.me) in *)
-    (* NOTE: essentially sending the IP port pair, since it is not straightforward
-        to obtain the client IP from the `node_addr` returned by `accept()` *)
-    let chunk = Marshal.to_bytes (!me_ip, !me_port) [] in
-    retry_until_no_eintr (fun () -> connect write_fd node_addr);
-    send_chunk write_fd chunk;
-    Hashtbl.add write_fds name write_fd;
-    write_fd
-
+(* set up the listening socket *)
 let setup () =
   Printexc.record_backtrace true;
   (* the_cfg := Some cfg;
   let (_, port) = get_addr_port cfg cfg.me in *)
   let port = !me_port in
   Printf.printf "listening on port %d" port; print_newline ();
+  (* get around those "Address already in use" error messages *)
   setsockopt listen_fd SO_REUSEADDR true;
   bind listen_fd (ADDR_INET (inet_addr_any, port));
   listen listen_fd 8
 
+(* process newly coming connection request *)
 let new_conn () =
   print_endline "new connection!";
   (* let (node_fd, node_addr) = retry_until_no_eintr (fun () -> accept listen_fd) in *)
@@ -114,11 +125,12 @@ let check_for_new_connections () =
   let (ready_fds, _, _) = retry_until_no_eintr (fun () -> select fds [] [] 0.0) in
   List.iter (fun _ -> new_conn ()) ready_fds
 
-let get_all_read_fds () =
-  Hashtbl.fold (fun fd _ acc -> fd :: acc) read_fds []
+(** serialization and deserialization **)
 
 let serialize_packet pkt = Marshal.to_string pkt []
 let deserialize_packet s = Marshal.from_string s 0
+
+(** packet-level sending and receiving **)
 
 (* the following functions are adapted based on Toychain's version *)
 
@@ -133,6 +145,7 @@ let recv_pkt fd =
   (src, pkt)
 
 (* a (more debugging-friendly?) version from DiSeL *)
+(* attempt to obtain one delivered packet from those ready-to-be-read sockets *)
 let get_pkt =
   let max_errors = 3 in
   let errors = ref 0 in
