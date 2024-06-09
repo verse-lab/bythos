@@ -69,8 +69,10 @@ let string_of_message m =
 
 let update_and_send st' pkts st_ref =
   st_ref := st';
-  Printf.printf "sending:"; print_newline ();
-  List.iter (fun (dst, msg) -> Printf.printf "  %s to %s" (string_of_message msg) (string_of_address dst); print_newline ()) pkts;
+  if pkts <> [] then begin
+    Printf.printf "sending:"; print_newline ();
+    List.iter (fun (dst, msg) -> Printf.printf "  %s to %s" (string_of_message msg) (string_of_address dst); print_newline ()) pkts
+  end else ();
   Shim.Net.send_all pkts;
   Some (st', pkts)
 
@@ -93,14 +95,31 @@ let procInt_wrapper =
     else None
   end in aux
 
+(* to make things more interesting, do some simple checking:
+    ideally, 10s is enough for a round of broadcast *)
+
+let check sender msg (st : RBP.coq_State) =
+  let open RBP.RealRBMessageImpl in
+  match msg with
+  | InitialMsg (new_r, _) when new_r > 1 -> begin
+    let r = new_r - 1 in
+    match st.output (sender, r) with
+    | [] -> Printf.printf "no acknowledgement for %s at round %s yet. why?" (string_of_address sender) (string_of_round r)
+    | [v] -> Printf.printf "acknowledgement for %s at round %s is %s" (string_of_address sender) (string_of_round r) (string_of_value v)
+    | _ :: _ :: _ -> Printf.printf "more than one acknowledgement for %s at round %s. why?" (string_of_address sender) (string_of_round r)
+  end; print_newline ()
+  | _ -> ()
+
 let procMsg_wrapper sender msg st_ref =
   Printf.printf "receiving %s from %s" (string_of_message msg) (string_of_address sender); print_newline ();
+  check sender msg !st_ref;
   let (st', pkts) = procMsg_simpler !st_ref sender msg in
   update_and_send st' pkts st_ref
 
 (* the function f is basically procMsg_wrapper_wrapper *)
 let run a = function
   | 0 ->
+    (* non-faulty *)
     Random.init !me_port;
     let st = ref (RBP.coq_Init a) in
     let loop f = begin
