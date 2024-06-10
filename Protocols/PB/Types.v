@@ -3,6 +3,7 @@ From Coq Require ssrbool.
 Import (coercions) ssrbool.
 From Bythos.Structures Require Export Types.
 
+(* FIXME: Sn is not used here; consider removing it *)
 Module Type PBProof (Sn : Signable).
 
 Parameter Proof : Set.
@@ -17,6 +18,7 @@ Parameter value_bft : Address -> Round -> Value * Proof.
 
 End ValueBFT.
 
+(* FIXME: TSS is not used here; consider removing it *)
 Module Type PBDataTypes (A : NetAddr) (R : Round) (Sn : Signable) (V : Value) (Pf : PBProof Sn) (TSS : ThresholdSignatureScheme A Sn).
 
 Import A R V Pf TSS.

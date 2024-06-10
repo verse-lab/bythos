@@ -27,6 +27,7 @@ Class signable (A : Type) :=
 
 End Signable.
 
+(* FIXME: change V into Sn to keep naming consistency *)
 Module Type PKIPrim (Export A : NetAddr) (V : Signable).
 
 (* would expect that in this setting, an address is more or less a public key *)
@@ -88,6 +89,32 @@ Section Extended.
 End Extended.
 
 End PKI.
+
+(* FIXME: eliminate such repetition by moving PPrim out *)
+Module PKIImpl (Export A : NetAddr) (V : Signable) (P : PKIPrim A V) : PKI A V with Module PPrim := P.
+
+Module Export PPrim <: PKIPrim A V := P.
+
+Section Extended. 
+
+  Context {A : Type} `{Sn : V.signable A} (v : A).
+
+  Definition verify (sig : Signature) (addr : Address) := verify (V.make v) sig addr.
+
+  Definition sign (k : PrivateKey) := sign (V.make v) k.
+
+  Corollary key_correct n s :
+    s = (sign (key_map n)) <-> verify s n.
+  Proof. apply key_correct. Qed.
+
+  Corollary correct_sign_verify_ok n :
+    verify (sign (key_map n)) n.
+  Proof. now rewrite <- key_correct. Qed.
+
+End Extended.
+
+End PKIImpl.
+
 (*
 Module PKIImpl (Export A : NetAddr) (V : Signable) <: PKI A V.
 
@@ -201,6 +228,42 @@ Section Extended.
 End Extended.
 
 End ThresholdSignatureScheme.
+
+(* FIXME: eliminate such repetition by moving TSSPrim out *)
+Module ThresholdSignatureSchemeImpl (Export A : NetAddr) (V : Signable) (Export TSS : ThresholdSignatureSchemePrim A V)
+  : ThresholdSignatureScheme A V with Module TSSPrim := TSS.
+
+Module Export TSSPrim <: ThresholdSignatureSchemePrim A V := TSS.
+
+Section Extended. 
+
+  Context {A : Type} `{Sn : V.signable A} (v : A).
+
+  Definition light_verify (lsig : LightSignature) (addr : Address) := light_verify (V.make v) lsig addr.
+
+  Definition light_sign (k : LightPrivateKey) := light_sign (V.make v) k.
+
+  Definition combined_verify (cs : CombinedSignature) := combined_verify (V.make v) cs.
+
+  Corollary lightkey_correct n ls :
+    ls = (light_sign (lightkey_map n)) <-> light_verify ls n.
+  Proof. apply lightkey_correct. Qed.
+
+  Corollary combine_correct cs :
+    (exists ns : list Address, 
+      NoDup ns /\ length ns = N - thres /\
+      cs = lightsig_combine (map (fun n => light_sign (lightkey_map n)) ns)) 
+    <-> combined_verify cs.
+  Proof. apply combine_correct. Qed.
+
+  Corollary correct_sign_verify_ok_light n :
+    light_verify (light_sign (lightkey_map n)) n.
+  Proof. now rewrite <- lightkey_correct. Qed.
+
+End Extended.
+
+End ThresholdSignatureSchemeImpl.
+
 (*
 Module ThresholdSignatureSchemeImpl (Export A : NetAddr) (V : Signable) <: ThresholdSignatureScheme A V.
 
@@ -212,7 +275,7 @@ End ThresholdSignatureSchemeImpl.
 Module Type TSSThres. Parameter thres : nat. End TSSThres.
 
 Module SimpleTSSPrim (Export A : NetAddr) (V : Signable) (Export PPrim : PKIPrim A V) (TSST : TSSThres)
-  <: ThresholdSignatureSchemePrim A V.
+  <: ThresholdSignatureSchemePrim A V with Definition thres := TSST.thres.
 
 (* use PKI to emulate TSS; in this case, the threshold can be arbitrary *)
 
@@ -234,7 +297,8 @@ Definition light_verify v lsig n :=
   if Address_eqdec n (fst lsig) then verify v (snd lsig) n else false.
 Definition light_sign v (pk : LightPrivateKey) := (fst pk, sign v (snd pk)).
 
-Definition lightsig_combine : list LightSignature -> CombinedSignature := id.
+(* simply putting id here may introduce Obj.magic *)
+Definition lightsig_combine (l : list LightSignature) : CombinedSignature := l.
 Definition combined_verify (v : V.t) (cs : CombinedSignature) :=
   (Nat.eq_dec (length cs) (N - thres)) && (NoDup_eqdec Address_eqdec (map fst cs))
     && (forallb (fun '(n, sig) => verify v sig n) cs).
@@ -273,40 +337,6 @@ Fact correct_sign_verify_ok_light v n :
 Proof. now rewrite <- lightkey_correct. Qed.
 
 End SimpleTSSPrim. 
-
-Module SimpleTSS (Export A : NetAddr) (V : Signable) (Export PPrim : PKIPrim A V) (TSST : TSSThres) <: ThresholdSignatureScheme A V.
-
-Module Export TSSPrim := SimpleTSSPrim A V PPrim TSST.
-
-(* FIXME: eliminate such repetition by moving TSSPrim out *)
-Section Extended. 
-
-  Context {A : Type} `{Sn : V.signable A} (v : A).
-
-  Definition light_verify (lsig : LightSignature) (addr : Address) := light_verify (V.make v) lsig addr.
-
-  Definition light_sign (k : LightPrivateKey) := light_sign (V.make v) k.
-
-  Definition combined_verify (cs : CombinedSignature) := combined_verify (V.make v) cs.
-
-  Corollary lightkey_correct n ls :
-    ls = (light_sign (lightkey_map n)) <-> light_verify ls n.
-  Proof. apply lightkey_correct. Qed.
-
-  Corollary combine_correct cs :
-    (exists ns : list Address, 
-      NoDup ns /\ length ns = N - thres /\
-      cs = lightsig_combine (map (fun n => light_sign (lightkey_map n)) ns)) 
-    <-> combined_verify cs.
-  Proof. apply combine_correct. Qed.
-
-  Corollary correct_sign_verify_ok_light n :
-    light_verify (light_sign (lightkey_map n)) n.
-  Proof. now rewrite <- lightkey_correct. Qed.
-
-End Extended.
-
-End SimpleTSS.
 
 Module Type MessageType.
 
