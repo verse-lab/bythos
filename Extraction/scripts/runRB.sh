@@ -5,6 +5,14 @@ if [ $# -gt 1 ]; then
     exit 1
 fi
 
+executable="main.exe"
+
+if ! [ -x ./$executable ]
+then
+    echo "Error: $executable not found! Run 'dune build' first. "
+    exit 1
+fi
+
 scenario=$1
 
 if [ $# -eq 0 ] || [ $scenario == "0" ]; then

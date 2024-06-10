@@ -1,4 +1,3 @@
-open Printf
 open Configuration.Config
 
 let show_help = ref false
@@ -49,7 +48,7 @@ let parse_args () =
   (* if not (List.mem ("127.0.0.1", !me_port) !cluster) then (add_to_cluster "127.0.0.1" !me_port) else () *)
 
 let debug_print () =
-  printf "Me IP: %s\n" !me_ip;
-  printf "Me port: %d\n" !me_port;
-  printf "Cluster:\n";
-  List.iter (fun addr -> printf "  %s\n" (string_of_address addr)) !cluster
+  Printf.printf "Me IP: %s\n" !me_ip;
+  Printf.printf "Me port: %d\n" !me_port;
+  Printf.printf "Cluster:\n";
+  List.iter (fun addr -> Printf.printf "  %s\n" (string_of_address addr)) !cluster
