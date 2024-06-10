@@ -46,6 +46,8 @@ Extraction Inline
 From Bythos.Protocols.RB Require Protocol.
 From Bythos.Protocols.PB Require Protocol.
 
+Cd "Extraction/extracted".
+
 (* it seems that we can only do the extraction inside the functor below, 
     if we do not try using other definitions of NetAddr, since A is the first argument of VBFT. 
     if A is the last argument, then we can simply make the type of RB.Types.ValueBFT
@@ -53,12 +55,12 @@ From Bythos.Protocols.PB Require Protocol.
 Module Playground (L : JustAList).
 
 Module A := AddrAsFiniteType3 L.
+Module BTh := ClassicByzThresholdImpl A.
 
 Module RealRBProtocolImpl (R : Round) (V : Value) (VBFT : RB.Types.ValueBFT A R V). 
 
 Import RB.Protocol.
 
-Module BTh := ClassicByzThresholdImpl A.
 Module RBM := RBMessageImpl A R V.
 Module RBPk := SimplePacketImpl A RBM.
 
@@ -66,17 +68,20 @@ Include (RBProtocolImpl A R V VBFT BTh RBM RBPk).
 
 End RealRBProtocolImpl.
 
-Module RealPBProtocolImpl (R : Round) (Sn : Signable) (V : Value) (Pf : PB.Types.PBProof Sn)
-  (VBFT : PB.Types.ValueBFT A R Sn V Pf) (PBDT0 : PB.Types.PBDataTypes A R Sn V Pf)
-  (PPrim : PKIPrim A Sn).
+Extraction "RB.ml" RealRBProtocolImpl.
 
-Import PB.Protocol.
+(* due to the bad design of PBDT, need another wrapper ... *)
+Module Playground2 (Sn : Signable) (PPrim : PKIPrim A Sn).
 
-Module BTh := ClassicByzThresholdImpl A.
 Module TSST <: TSSThres with Definition thres := BTh.t0. Definition thres := BTh.t0. End TSST.
 Module TSS0 := SimpleTSSPrim A Sn PPrim TSST.
 Module TSS := ThresholdSignatureSchemeImpl A Sn TSS0.
-Module PBDT := PBDT0 TSS.
+
+Module RealPBProtocolImpl (R : Round) (V : Value) (Pf : PB.Types.PBProof Sn)
+  (VBFT : PB.Types.ValueBFT A R Sn V Pf) (PBDT : PB.Types.PBDataTypes A R Sn V Pf TSS).
+
+Import PB.Protocol.
+
 Module PBM := PBMessageImpl A R Sn V Pf TSS.
 Module PBPk := SimplePacketImpl A PBM.
 
@@ -84,9 +89,10 @@ Include (PBProtocolImpl A R Sn V Pf VBFT BTh TSS0 TSS PBDT PBM PBPk).
 
 End RealPBProtocolImpl.
 
-Cd "Extraction/extracted".
-Extraction "RB.ml" RealRBProtocolImpl.
 Extraction "PB.ml" RealPBProtocolImpl. (* some proofs will be extracted as well, resulting in "__"; ignore them for now *)
-Cd "../..".
+
+End Playground2.
 
 End Playground.
+
+Cd "../..".
