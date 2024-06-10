@@ -36,6 +36,10 @@ Parameter PrivateKey : Set.
 Parameter Signature : Set.
 Parameter Signature_eqdec : forall (s1 s2 : Signature), {s1 = s2} + {s1 <> s2}.
 
+(* actually using a key_map would expose all nodes' private keys to the current node, 
+    but letting each node maintain its own key would require enriching the local state, 
+    so here we only manually guarantee that key_map will only be applied to the current node's ID *)
+(* similar issue for lightkey_map *)
 Parameter key_map : Address -> PrivateKey.
 Parameter verify : V.t -> Signature -> Address -> bool.
 Parameter sign : V.t -> PrivateKey -> Signature.
