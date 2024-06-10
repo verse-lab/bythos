@@ -1,5 +1,6 @@
 (library
   (name Protocols)
   ; in some .mli files, functor parameters will not appear in any signature, thus need to suppress warning no.67
-  (flags (:standard -w -27-67)))
+  ; -32 [unused-value-declaration] for a similar reason
+  (flags (:standard -w -27-67-32)))
  

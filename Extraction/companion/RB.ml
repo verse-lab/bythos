@@ -41,7 +41,7 @@ module RBP = PL.RealRBProtocolImpl(R)(V)(VBFT)
 
 (* TODO unfortunately, the boilerplate code below seems hard to eliminate ... *)
 let packet_simplify p =
-  let open RBP.RealSimplePacketImpl in
+  let open RBP.RBPk in
   (p.dst, p.msg)
 
 let procInt_simpler st itr = 
@@ -60,7 +60,7 @@ let string_of_round (r : R.coq_Round) = string_of_int r
 let string_of_value (v : V.coq_Value) = string_of_int v
 
 let string_of_message m =
-  let open RBP.RealRBMessageImpl in
+  let open RBP.RBM in
   match m with
   | InitialMsg (r, v) -> String.concat "" ["Init ("; string_of_round r; ", "; string_of_round v; ")"]
   | EchoMsg (orig, r, v) -> String.concat "" ["Echo ("; string_of_address orig; ", "; string_of_round r; ", "; string_of_round v; ")"]
@@ -98,7 +98,7 @@ let procInt_wrapper =
     ideally, 10s is enough for a round of broadcast *)
 
 let check sender msg (st : RBP.coq_State) =
-  let open RBP.RealRBMessageImpl in
+  let open RBP.RBM in
   match msg with
   | InitialMsg (new_r, _) when new_r > 1 -> begin
     let r = new_r - 1 in
