@@ -1,6 +1,5 @@
 open Protocols.RB
 open Common
-open Util
 open Configuration.Config
 
 (* instantiating the concrete datatype modules *)

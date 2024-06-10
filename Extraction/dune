@@ -1,5 +1,4 @@
 (executable
   (name main)
   (libraries Protocols Companions Shim Configuration)
-  (promote (until-clean))
-  (flags -w -33))
+  (promote (until-clean)))

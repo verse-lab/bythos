@@ -1,4 +1,3 @@
 (library
-  (name Configuration)
-  (flags -w -39))
+  (name Configuration))
  

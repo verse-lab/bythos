@@ -1,6 +1,5 @@
 open Shim
 open Shim.Net
-open Companions.Common
 open Configuration.Config
 
 (* the wrapper of wrapper; adapted from Toychain/DiSeL *)

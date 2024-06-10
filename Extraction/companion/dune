@@ -1,5 +1,5 @@
 (library
   (name Companions)
   (libraries Protocols Configuration Unix Shim)
-  (flags -w -39))
+  (flags (:standard -w -27)))
  

@@ -1,5 +1,4 @@
 (library
   (name Shim)
-  (libraries Configuration Unix)
-  (flags -w -39))
+  (libraries Configuration Unix))
  
