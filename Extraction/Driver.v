@@ -43,10 +43,20 @@ Extraction Inline
   List.length List.app List.map List.forallb
   Datatypes.fst Datatypes.snd.
 
+Extraction Blacklist String List. (* avoid messing up module names *)
+Extraction Blacklist RB PB ABC RBABC. (* allowing individual extraction *)
+
 From Bythos.Protocols.RB Require Protocol.
 From Bythos.Protocols.PB Require Protocol.
+From Bythos.Protocols.ABC Require Protocol.
 
-Cd "Extraction/extracted".
+From Bythos.Composition Require Import Protocol.
+From Bythos.Protocols.RBABC Require Protocol.
+
+(* avoid too much warnings on opaque things and "__" things *)
+Set Warnings "-extraction-opaque-accessed".
+Set Warnings "-extraction-reserved-identifier".
+Set Extraction Output Directory "Extraction/extracted".
 
 (* it seems that we can only do the extraction inside the functor below, 
     if we do not try using other definitions of NetAddr, since A is the first argument of VBFT. 
@@ -93,6 +103,44 @@ Extraction "PB.ml" RealPBProtocolImpl. (* some proofs will be extracted as well,
 
 End Playground2.
 
-End Playground.
+Module RealACProtocolImpl (Sn : Signable) (V : SignableValue Sn) (PPrim : PKIPrim A Sn) (ACBTh : ByzThreshold A).
 
-Cd "../..".
+Import ABC.Protocol.
+
+Module TSST <: TSSThres with Definition thres := ACBTh.t0. Definition thres := ACBTh.t0. End TSST.
+Module TSS0 := SimpleTSSPrim A Sn PPrim TSST.
+Module TSS := ThresholdSignatureSchemeImpl A Sn TSS0.
+Module P := PKIImpl A Sn PPrim.
+Module ACDT := ABC.Types.ACDataTypesImpl A Sn V P TSS.
+Module CC := ABC.Types.CertCheckersImpl A Sn V P TSS ACDT.
+Module ACM := ACMessageImpl A Sn V P TSS ACDT.
+Module ACPk := SimplePacketImpl A ACM.
+
+Include (ABC.Protocol.ACProtocolImpl A Sn V ACBTh P TSS0 TSS ACDT CC ACM ACPk).
+
+End RealACProtocolImpl.
+
+Extraction "ABC.ml" RealACProtocolImpl.
+
+Module RealRBABCProtocolImpl (R : Round) (ARP : RBABC.Types.AddrRoundPair A R) 
+  (Sn : Signable) (V : SignableValue Sn) (VBFT : RB.Types.ValueBFT A R V) (PPrim : PKIPrim A Sn).
+
+Module RBP := RealRBProtocolImpl R V VBFT.
+Module ACP := RealACProtocolImpl Sn V PPrim BTh.
+Module CM := Composition.Types.CompMessageImpl RBP.RBM ACP.ACM.
+Module CPk := Composition.Types.CompSimplePacketImpl A RBP.RBM ACP.ACM CM RBP.RBPk ACP.ACPk.
+
+Import RBABC.Protocol.
+
+Module SCPT := RBACTrigger A R ARP Sn V VBFT BTh RBP.RBM ACP.P ACP.TSS0 ACP.TSS ACP.ACDT ACP.CC ACP.ACM
+  CM RBP.RBPk ACP.ACPk RBP ACP.
+
+Include (SeqCompProtocol A RBP.RBM ACP.ACM BTh CM RBP.RBPk ACP.ACPk CPk RBP ACP SCPT).
+
+End RealRBABCProtocolImpl.
+
+Extraction "RBABC.ml" RealRBABCProtocolImpl.
+
+Separate Extraction RealRBABCProtocolImpl. (* test *)
+
+End Playground.
