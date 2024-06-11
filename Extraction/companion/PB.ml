@@ -186,9 +186,9 @@ let run a = function
       done
     end in loop
   | _ ->
-    (* dead node *)
+    (* dead node, but at least needs to check new connections; this is inevitable *)
     let loop _ = begin
-      while true do () done
+      while true do Shim.Net.check_for_new_connections () done
     end in loop
 
 end (* Lazymod end *)
