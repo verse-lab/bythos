@@ -42,12 +42,13 @@ let update_and_send st' pkts st_ref =
 
 (* randomly pick a time to send a random value *)
 let procInt_wrapper =
-  let q = Random.int 20 in
-  let v = Random.int 998244352 in
+  (* seems that if not protected, the let will be optimized at compilation time *)
+  let q = lazy (Random.int 20) in
+  let v = 749837295 in
   let sent = ref false in
   let aux st_ref = begin
     let tm = int_of_float (Unix.time ()) in
-    if (not !sent) && (tm mod 20 = q)
+    if (not !sent) && (tm mod 20 = Lazy.force q)
     then begin
       sent := true;
       let (st', pkts) = procInt_simpler !st_ref v in
