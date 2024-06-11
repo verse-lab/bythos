@@ -3,6 +3,7 @@ let me_ip = ref ""
 let me_port = ref (-1)
 let behavior_mode = ref 0
 let use_PKI = ref false
+let extrainfo = ref ""
 
 (* (IP, port) *)
 type address = (string * int)
