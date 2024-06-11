@@ -1,7 +1,3 @@
-(* FIXME: each extracted protocol will have its own copy of shared definitions
-    like JustAList. how can we eliminate such overlapping things?
-  for now, use some tricks to avoid too much repetitive code *)
-
 open Configuration.Config
 open Shim
 
