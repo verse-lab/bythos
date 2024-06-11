@@ -99,9 +99,9 @@ let new_conn () =
   let (node_fd, _) = retry_until_no_eintr (fun () -> accept listen_fd) in
   let chunk = receive_chunk node_fd in
   let (addr, okey) : (address * Crypto.public_key option) = Marshal.from_bytes chunk 0 in
-  (match okey with | Some k -> Hashtbl.add Crypto.pub_key_map addr k | None -> ());
   Hashtbl.add read_fds node_fd addr;
   Printf.printf "done processing new connection from node %s" (string_of_address addr);
+  (match okey with | Some k -> (Hashtbl.add Crypto.pub_key_map addr k; Printf.printf "; received its public key") | None -> ());
   print_newline ()
 
 let check_for_new_connections () =
