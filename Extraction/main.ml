@@ -26,7 +26,7 @@ let procMsg_wrapper_wrapper f =
 
 let main_loop () =
   (* first class module! *)
-  let module RealP = Companions.RB.Lazymod (struct end) in
+  let module RealP = Companions.PB.Lazymod (struct end) in
   let pr = RealP.run (!me_ip, !me_port) !behavior_mode in
   pr procMsg_wrapper_wrapper
 
