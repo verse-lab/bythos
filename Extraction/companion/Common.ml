@@ -42,6 +42,7 @@ module IntValue =
   type coq_Value = int
   let coq_Value_eqdec (v1 : coq_Value) (v2 : coq_Value) = (v1 = v2)
   let coq_Value_inhabitant = 0
+  let coq_VSn = string_of_int
 
   end
 
