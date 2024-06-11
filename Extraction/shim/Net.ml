@@ -74,12 +74,6 @@ let build_connection_to ((ip, port) : address) =
   Hashtbl.add write_fds (ip, port) write_fd;
   write_fd
 
-let get_write_fd (addr : address) =
-  try Hashtbl.find write_fds addr
-  with Not_found ->
-    (* at this point, the current node has not made a connection to the node at addr yet *)
-    build_connection_to addr
-
 (* the listening socket of the current node *)
 let listen_fd : file_descr = socket PF_INET SOCK_STREAM 0
 
@@ -102,12 +96,28 @@ let new_conn () =
   Hashtbl.add read_fds node_fd addr;
   Printf.printf "done processing new connection from node %s" (string_of_address addr);
   (match okey with | Some k -> (Hashtbl.add Crypto.pub_key_map addr k; Printf.printf "; received its public key") | None -> ());
-  print_newline ()
+  print_newline ();
+  (* if need key exchange, then reply immediately *)
+  if !use_PKI && (not (Hashtbl.mem write_fds addr)) then ignore (build_connection_to addr) else ()
 
 let check_for_new_connections () =
   let fds = [listen_fd] in
   let (ready_fds, _, _) = retry_until_no_eintr (fun () -> select fds [] [] 0.0) in
   List.iter (fun _ -> new_conn ()) ready_fds
+
+let wait_for_the_response (addr : address) =
+  while not (Hashtbl.mem Crypto.pub_key_map addr) do
+    check_for_new_connections ()
+  done
+
+let get_write_fd (addr : address) =
+  try Hashtbl.find write_fds addr
+  with Not_found ->
+    (* at this point, the current node has not made a connection to the node at addr yet *)
+    let res = build_connection_to addr in
+    (* if need key exchange, then must wait for the response *)
+    if !use_PKI then wait_for_the_response addr else ();
+    res
 
 (** serialization and deserialization **)
 
