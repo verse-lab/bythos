@@ -77,10 +77,14 @@ module StringSn =
   end
 
 let get_pub_key (a : address) =
-  if not (Hashtbl.mem Crypto.pub_key_map a) then ignore (Net.get_write_fd a) else ();
   match Hashtbl.find_opt Crypto.pub_key_map a with
   | Some k -> k
-  | None -> failwith ("Fail to fetch the public key of node " ^ string_of_address a ^ ". Is the setting correct?")
+  | None -> begin
+    ignore (Net.get_write_fd a);
+    match Hashtbl.find_opt Crypto.pub_key_map a with
+    | Some k -> k
+    | None -> failwith ("Fail to fetch the public key of node " ^ string_of_address a ^ ". Is the setting correct?")
+  end
 
 (* a PKIPrim module *)
 
@@ -106,3 +110,11 @@ module PPrim =
   let sign = Crypto.sign_string
 
   end
+
+let random_function_with_mem () =
+  let tb : (int, int) Hashtbl.t = Hashtbl.create 10 in
+  let aux a = begin
+    match Hashtbl.find_opt tb a with
+    | Some v -> v
+    | None -> (let v = Random.int 998244352 in Hashtbl.add tb a v; v)
+  end in aux

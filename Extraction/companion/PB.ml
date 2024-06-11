@@ -30,6 +30,9 @@ module Pf =
 
   end
 
+let string_of_round_value ((r, itr), v) : string =
+  String.concat " " (List.map string_of_int [r; itr; v])
+
 module VBFT =
   struct
 
@@ -39,16 +42,17 @@ module VBFT =
   (* will be used in different places *)
   let cur_round = ref 0
   let cur_iter = ref 0
-
   let max_iter = 4
 
+  let fst_value_bft = random_function_with_mem ()
+
+  (* this function should be deterministic wrt. r *)
   let value_bft (a : address) =
-    let lst_v = ref 0 in
     let aux ((r, itr) : int * int) =
-      if r > !cur_round then (lst_v := Random.int 998244352) else ();
+      let v = fst_value_bft r in
       if itr = 1
-      then (!lst_v, Pf.LightSig (PL2.TSS.light_sign string_of_int !lst_v (PL2.TSS0.lightkey_map a)))
-      else (!lst_v, Pf.DeliveryCert !lst_delivery_cert)
+      then (v, Pf.LightSig (PL2.TSS.light_sign string_of_round_value ((r, itr), v) (PL2.TSS0.lightkey_map a)))
+      else (v, Pf.DeliveryCert !lst_delivery_cert)
     in aux
 
   end
@@ -56,8 +60,7 @@ module VBFT =
 module PBDT =
   struct
 
-  let coq_VPfSn ((r, itr), v) : string =
-    String.concat " " (List.map string_of_int [r; itr; v])
+  let coq_VPfSn = string_of_round_value
 
   (* this is awkward! ex_validate does not accept the sender as an argument *)
   (* anyway, as a hack, we can use a ref to record the sender *)
@@ -68,7 +71,7 @@ module PBDT =
     | Pf.DeliveryCert (Some cs) -> (itr > 1) && (itr <= VBFT.max_iter) && (PL2.TSS.combined_verify coq_VPfSn ((r, itr - 1), v) cs)
     | _ -> false
 
-   end
+  end
 
 module PBP = PL2.RealPBProtocolImpl(IntPairRound)(IntValue)(Pf)(VBFT)(PBDT)
 
@@ -95,7 +98,7 @@ let string_of_proof = function
 let string_of_message m =
   let open PBP.PBM in
   match m with
-  | InitMsg (rd, v, pf) -> String.concat "" ["Init ("; string_of_round rd; ", "; string_of_value v; ")"]
+  | InitMsg (rd, v, pf) -> String.concat "" ["Init ("; string_of_round rd; ", "; string_of_value v; ", "; string_of_proof pf; ")"]
   | EchoMsg (rd, lsig) -> String.concat "" ["Echo ("; string_of_round rd; ", [some light sig])"]
 
 (* copied from RB.ml *)
@@ -112,25 +115,35 @@ let procInt_inner st_ref =
   let (st', pkts) = procInt_simpler !st_ref (!VBFT.cur_round, !VBFT.cur_iter) in
   update_and_send st' pkts st_ref
 
-(* ideally, 30s is enough for a full round of broadcast *)
+(* ideally, 60s is enough for a full round of broadcast? *)
 
 let check () =
+  Printf.printf "check before spontaneous procInt ... ";
   match !VBFT.lst_delivery_cert with
   | Some dc -> begin
-    if !VBFT.cur_iter < VBFT.max_iter
+    if !VBFT.cur_iter <> VBFT.max_iter
     then Printf.printf "this should not happen. something is wrong!"
-    else ()
+    else begin
+      let r = !VBFT.cur_round in
+      let rd = (r, !VBFT.cur_iter) in
+      let v = VBFT.fst_value_bft r in
+      Printf.printf "found existing delivery certificate ... ";
+      if not (PL2.TSS.combined_verify PBDT.coq_VPfSn (rd, v) dc)
+      then Printf.printf "the delivery certificate for round %d is broken. why?" r
+      else ()
+    end
   end
+  | None when !VBFT.cur_round = 0 -> ()
   | _ -> Printf.printf "broadcast is not finished yet; stopped at iteration %d. why?" !VBFT.cur_iter
 
 let procInt_wrapper =
   let lst_time = ref (-1) in
   let aux st_ref = begin
     let tm = int_of_float (Unix.time ()) in
-    if (tm mod 30 = !me_port mod 30) && (tm <> !lst_time)
+    if (tm mod 60 = !me_port mod 60) && (tm <> !lst_time)
     then begin
       lst_time := tm;
-      check ();
+      check (); print_newline ();
       incr VBFT.cur_round; VBFT.cur_iter := 1; VBFT.lst_delivery_cert := None;
       procInt_inner st_ref
     end
@@ -156,7 +169,7 @@ let procMsg_wrapper st_ref sender msg =
   ignore (update_and_send st' pkts st_ref);
   (* check whether it is the time for the next iteration *)
   if check_if_next_iter msg old_st !st_ref
-  then (incr VBFT.cur_iter; VBFT.lst_delivery_cert := None; ignore (procInt_inner st_ref))
+  then (incr VBFT.cur_iter; ignore (procInt_inner st_ref); VBFT.lst_delivery_cert := None)  (* clean lst_delivery_cert only after procInt *)
   else ();
   None (* dummy; just to typecheck *)
 
