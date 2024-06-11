@@ -24,6 +24,7 @@ Module Type PBDataTypes (A : NetAddr) (R : Round) (Sn : Signable) (V : Value) (P
 Import A R V Pf TSS.
 
 (* Declare Instance LSSn : Sn.signable LightSignature. *)
+(* FIXME: this variable name is misleading; should be RVSn *)
 Declare Instance VPfSn : Sn.signable (Round * Value). (* TODO temporary; also can be done with a typeclass for product composition *)
 
 (* it seems that in any cases, there will not be LightSigantures in the Proof? so ignore for now *)
