@@ -22,6 +22,9 @@ let speclist = [
   ("-cluster", 
     Arg.Rest_all parse_cluster, 
     " Specify all the peer nodes in the system as IP port pairs");
+  ("-use_PKI", 
+    Arg.Set use_PKI, 
+    " When set, the node will initially generate a pair of public and private keys for later use and exchange");
   ("-mode", 
     Arg.Set_int behavior_mode,
     " Specify the behavior mode of the node (0=non Byzantine)");
@@ -33,7 +36,7 @@ let speclist = [
     "") (* want to hide this *)
 ]
 
-let usage_msg = ("Usage: " ^ Sys.argv.(0) ^ " [-mode <mode_id>] -me <IP> <port> -cluster [<IP> <port> ...]")
+let usage_msg = ("Usage: " ^ Sys.argv.(0) ^ " [-use_PKI] [-mode <mode_id>] -me <IP> <port> -cluster [<IP> <port> ...]")
 
 let print_help () =
   print_string (Arg.usage_string (Arg.align speclist) usage_msg);

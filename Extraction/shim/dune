@@ -1,4 +1,4 @@
 (library
   (name Shim)
-  (libraries Configuration Unix))
+  (libraries Configuration unix mirage-crypto-pk mirage-crypto mirage-crypto-rng.unix))
  

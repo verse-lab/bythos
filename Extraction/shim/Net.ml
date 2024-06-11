@@ -49,12 +49,11 @@ let receive_chunk (fd : file_descr) : bytes =
 
 (** managing connections **)
 
-let num_nodes = 32
 (* NOTE: use IP port pair to index nodes, instead of using an encoded integer *)
 (* fd |--> addr: from fd, the current node can receive packets from another node at addr *)
-let read_fds : (Unix.file_descr, address) Hashtbl.t = Hashtbl.create num_nodes
+let read_fds : (Unix.file_descr, address) Hashtbl.t = Hashtbl.create 32
 (* addr |--> fd: through fd, the current node can send packets to another node at addr *)
-let write_fds : (address, Unix.file_descr) Hashtbl.t = Hashtbl.create num_nodes
+let write_fds : (address, Unix.file_descr) Hashtbl.t = Hashtbl.create 32
 
 let get_all_read_fds () =
   Hashtbl.fold (fun fd _ acc -> fd :: acc) read_fds []
@@ -68,7 +67,8 @@ let build_connection_to ((ip, port) : address) =
   let node_addr = ADDR_INET (Array.get entry.h_addr_list 0, port) in
   (* NOTE: send the IP port pair here, since it is not straightforward
       to obtain the client IP from the `node_addr` returned by `accept()` *)
-  let chunk = Marshal.to_bytes (!me_ip, !me_port) [] in
+  let self_pub_key = (if !use_PKI then (let pub = Crypto.self_pub_key () in Some pub) else None) in
+  let chunk = Marshal.to_bytes ((!me_ip, !me_port), self_pub_key) [] in
   retry_until_no_eintr (fun () -> connect write_fd node_addr);
   send_chunk write_fd chunk;
   Hashtbl.add write_fds (ip, port) write_fd;
@@ -81,8 +81,6 @@ let get_write_fd (addr : address) =
     build_connection_to addr
 
 (* the listening socket of the current node *)
-(* TODO temporarily use this. 
-    would it be better if we make it a lazy value? or make it allocated dynamically? *)
 let listen_fd : file_descr = socket PF_INET SOCK_STREAM 0
 
 (* set up the listening socket *)
@@ -100,7 +98,8 @@ let new_conn () =
   print_endline "new connection!";
   let (node_fd, _) = retry_until_no_eintr (fun () -> accept listen_fd) in
   let chunk = receive_chunk node_fd in
-  let addr : address = Marshal.from_bytes chunk 0 in
+  let (addr, okey) : (address * Crypto.public_key option) = Marshal.from_bytes chunk 0 in
+  (match okey with | Some k -> Hashtbl.add Crypto.pub_key_map addr k | None -> ());
   Hashtbl.add read_fds node_fd addr;
   Printf.printf "done processing new connection from node %s" (string_of_address addr);
   print_newline ()
@@ -140,10 +139,9 @@ let get_pkt =
       try
         Some (recv_pkt fd)
       with e -> begin
-        (* TODO emm ... but how can it raise an exception? *)
         Printf.printf "Got exception: %s\n" (Printexc.to_string e);
         Printexc.print_backtrace Stdlib.stdout;
-        errors := !errors + 1;
+        incr errors;
         if !errors < max_errors
         then aux fds
         else begin

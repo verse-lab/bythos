@@ -3,12 +3,13 @@
   for now, use some tricks to avoid too much repetitive code *)
 
 open Configuration.Config
+open Shim
 
 (* a commonly used JustAList definition *)
 (* due to the overlapping issue above, the module type annotation will be put
   for each individual protocol *)
 
-module PeersPre =
+module Peers =
   struct
   
   type t = address
@@ -22,13 +23,29 @@ module PeersPre =
 (* usage example: *)
 (* module Peers:JustAList with type t = int * int = PeersPre *)
 
-(* FIXME: the coq_ prefixes are kind of troublesome ... how to deal with them? *)
-
-module RoundPre =
+module IntRound =
   struct
   
   type coq_Round = int
   let coq_Round_eqdec (r1 : coq_Round) (r2 : coq_Round) = (r1 = r2)
+
+  end
+
+module IntPairRound =
+  struct
+  
+  type coq_Round = int * int
+  let coq_Round_eqdec ((r1, itr1) : coq_Round) ((r2, itr2) : coq_Round) =
+    (r1 = r2) && (itr1 = itr2)
+
+  end
+
+module IntValue =
+  struct
+  
+  type coq_Value = int
+  let coq_Value_eqdec (v1 : coq_Value) (v2 : coq_Value) = (v1 = v2)
+  let coq_Value_inhabitant = 0
 
   end
 
@@ -43,3 +60,49 @@ type ('st, 'msg, 'itr, 'node) minimal_protocol = {
   procMsg : 'st -> 'node -> 'msg -> 'st * ('node * 'msg) list
 }
 *)
+
+(* a Signable module; actually t can be more low-level (like Cstruct.t), but anyway *)
+
+module StringSn =
+  struct
+
+  type t = string
+
+  let eqdec = String.equal
+
+  type 'a signable = 'a -> t
+
+  let make (q : 'a1 signable) : 'a1 -> t = q
+
+  end
+
+let get_pub_key (a : address) =
+  if not (Hashtbl.mem Crypto.pub_key_map a) then ignore (Net.get_write_fd a) else ();
+  match Hashtbl.find_opt Crypto.pub_key_map a with
+  | Some k -> k
+  | None -> failwith ("Fail to fetch the public key of node " ^ string_of_address a ^ ". Is the setting correct?")
+
+(* a PKIPrim module *)
+
+module PPrim =
+  struct
+
+  type coq_PrivateKey = Crypto.private_key
+
+  type coq_Signature = Crypto.signature
+
+  let coq_Signature_eqdec = Crypto.signature_equal
+
+  (* should be ok as long as the node only uses its own private key *)
+  let key_map (_ : address) = Crypto.self_priv_key ()
+
+  let verify (s : string) (rs : Crypto.signature) (a : address) : bool =
+    let pub = get_pub_key a in
+    let msg = Cstruct.of_string s in
+    let hmsg = Mirage_crypto.Hash.digest `SHA256 msg in
+    let res = Mirage_crypto_pk.Dsa.verify ~key:pub rs hmsg in
+    res
+
+  let sign = Crypto.sign_string
+
+  end

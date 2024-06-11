@@ -8,38 +8,20 @@ open Configuration.Config
 (* somehow delay the instantiations of everything below, since cluster will only be ready at runtime *)
 module Lazymod (A : sig end) = struct
 
-module Peers:JustAList with type t = address = PeersPre
-
 module PL = Playground(Peers)
 
-module A:NetAddr with type coq_Address = Peers.t = PL.A
-  (* AddrAsFiniteType3(Peers) *)
-
-module R:Round with type coq_Round = int = RoundPre
-
-module V:Value with type coq_Value = int =
-  struct
-  
-  type coq_Value = int
-  let coq_Value_eqdec (v1 : coq_Value) (v2 : coq_Value) = (v1 = v2)
-  let coq_Value_inhabitant = 0
-
-  end
-
-module VBFT:(sig
-    val value_bft : A.coq_Address -> R.coq_Round -> V.coq_Value
-  end) =
+module VBFT =
   struct
 
   (* well, just go random ... *)
-  let value_bft (a : A.coq_Address) (r : R.coq_Round) =
+  let value_bft _ _ =
     Random.int 998244352
 
   end
 
-module RBP = PL.RealRBProtocolImpl(R)(V)(VBFT)
+module RBP = PL.RealRBProtocolImpl(IntRound)(IntValue)(VBFT)
 
-(* TODO unfortunately, the boilerplate code below seems hard to eliminate ... *)
+(* unfortunately, the boilerplate code below seems hard to eliminate ... *)
 let packet_simplify p =
   let open RBP.RBPk in
   (p.dst, p.msg)
@@ -52,19 +34,19 @@ let procMsg_simpler st src msg =
   let (st', pkts) = RBP.procMsgWithCheck st src msg in
   (st', List.map packet_simplify pkts)
 
-(* TODO can we automate the string_of derivations for these types?
+(* can we automate the string_of derivations for these types?
     neither ppx_import nor ppx_deriving works, since the types are inside a functor *)
 
-let string_of_round (r : R.coq_Round) = string_of_int r
+let string_of_round r = string_of_int r
 
-let string_of_value (v : V.coq_Value) = string_of_int v
+let string_of_value v = string_of_int v
 
 let string_of_message m =
   let open RBP.RBM in
   match m with
-  | InitialMsg (r, v) -> String.concat "" ["Init ("; string_of_round r; ", "; string_of_round v; ")"]
-  | EchoMsg (orig, r, v) -> String.concat "" ["Echo ("; string_of_address orig; ", "; string_of_round r; ", "; string_of_round v; ")"]
-  | VoteMsg (orig, r, v) -> String.concat "" ["Vote ("; string_of_address orig; ", "; string_of_round r; ", "; string_of_round v; ")"]
+  | InitialMsg (r, v) -> String.concat "" ["Init ("; string_of_round r; ", "; string_of_value v; ")"]
+  | EchoMsg (orig, r, v) -> String.concat "" ["Echo ("; string_of_address orig; ", "; string_of_round r; ", "; string_of_value v; ")"]
+  | VoteMsg (orig, r, v) -> String.concat "" ["Vote ("; string_of_address orig; ", "; string_of_round r; ", "; string_of_value v; ")"]
 
 let update_and_send st' pkts st_ref =
   st_ref := st';
@@ -87,7 +69,7 @@ let procInt_wrapper =
     if (tm mod 10 = !me_port mod 10) && (tm <> !lst_time)
     then begin
       lst_time := tm;
-      cur_round := !cur_round + 1;
+      incr cur_round;
       let (st', pkts) = procInt_simpler !st_ref !cur_round in
       update_and_send st' pkts st_ref
     end

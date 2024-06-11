@@ -4,8 +4,9 @@ Users can extract and run protocols.
 
 ## Requirements
 
-- Coq 8.19.0 
-- dune 3.6 (for compiling extracted protocol implementations)
+Apart from Coq:
+- `dune` >= 3.6 (for compiling extracted protocol implementations)
+- `mirage-crypto`, `mirage-crypto-rng`, `mirage-crypto-pk` (all of them should get installed by installing `mirage-crypto`)
 
 ## Organization
 
@@ -33,3 +34,8 @@ To make a protocol executable, a user need to:
 ## Running the Protocol
 
 See `scripts/runRB.sh` for an example. Use `pkill "main.exe"` to terminate all nodes. 
+
+## Acknowledgement
+
+- All definitions in `shim/Net.ml` and some definitions in `main.ml` are taken from [Toychain](https://github.com/verse-lab/toychain) and/or [DiSeL](https://github.com/DistributedComponents/disel/). 
+- The adoption of `mirage-crypto` is inspired by [Velisarios](https://github.com/vrahli/Velisarios/), which uses `nocrypto`, the predecessor of `mirage-crypto`. The usage of `mirage-crypto` in code is inspired by [a testing file of `Mirage_crypto_pk.Dsa`](https://github.com/mirage/mirage-crypto/blob/main/tests/test_dsa.ml). 
