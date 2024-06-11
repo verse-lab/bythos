@@ -115,7 +115,7 @@ let procInt_inner st_ref =
   let (st', pkts) = procInt_simpler !st_ref (!VBFT.cur_round, !VBFT.cur_iter) in
   update_and_send st' pkts st_ref
 
-(* ideally, 60s is enough for a full round of broadcast? *)
+(* ideally, 30s is enough for a full round of broadcast? *)
 
 let check () =
   Printf.printf "check before spontaneous procInt ... ";
@@ -140,7 +140,7 @@ let procInt_wrapper =
   let lst_time = ref (-1) in
   let aux st_ref = begin
     let tm = int_of_float (Unix.time ()) in
-    if (tm mod 60 = !me_port mod 60) && (tm <> !lst_time)
+    if (tm mod 30 = !me_port mod 30) && (tm <> !lst_time)
     then begin
       lst_time := tm;
       check (); print_newline ();
