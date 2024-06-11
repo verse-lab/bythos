@@ -3,7 +3,7 @@ open Shim.Net
 open Configuration.Config
 
 (* the wrapper of wrapper; adapted from Toychain/DiSeL *)
-let procMsg_wrapper_wrapper f pr =
+let procMsg_wrapper_wrapper f =
   let _ = check_for_new_connections () in
   (* check whether some packet has been delivered to some socket *)
   let fds = get_all_read_fds () in
@@ -20,7 +20,7 @@ let procMsg_wrapper_wrapper f pr =
         print_newline ();
         None
       end else begin 
-        f src msg pr 
+        f src msg
       end
   end
 

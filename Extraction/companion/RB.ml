@@ -91,7 +91,7 @@ let check sender msg (st : RBP.coq_State) =
   end; print_newline ()
   | _ -> ()
 
-let procMsg_wrapper sender msg st_ref =
+let procMsg_wrapper st_ref sender msg =
   Printf.printf "receiving %s from %s" (string_of_message msg) (string_of_address sender); print_newline ();
   check sender msg !st_ref;
   let (st', pkts) = procMsg_simpler !st_ref sender msg in
@@ -106,12 +106,12 @@ let run a = function
     let loop f = begin
       while true do
         ignore (procInt_wrapper st);
-        ignore (f procMsg_wrapper st)
+        ignore (f (procMsg_wrapper st))
       done
     end in loop
   | _ ->
     (* dead node *)
-    let loop f = begin
+    let loop _ = begin
       while true do () done
     end in loop
 
