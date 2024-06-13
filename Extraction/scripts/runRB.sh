@@ -37,3 +37,6 @@ else
     echo "Error: invalid argument. "
     exit 1
 fi
+
+sleep 60
+pkill "main.exe"

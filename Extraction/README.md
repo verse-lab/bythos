@@ -29,11 +29,16 @@ To make a protocol executable, a user need to:
    **Note:** Each protocol implementation is supposed to be extracted into a single `.ml` file. There can be many overlapping definitions across different protocols (e.g., the same module type `Round` may appear in different protocols), but this should not be very troublesome if the protocols are only executed in a small scale (rather than in production). 
 
 2. Write a *companion file* in OCaml to instantiate the implementation with concrete module arguments and control how the node executes. See `companion/RB.ml` for an example. 
-3. Build the project (here, by using `dune build`) to obtain an executable node program. The `promote` mode is set to be on, so the executable will be automatically copied to this directory after building, and can be deleted using `dune clean`. 
+3. Modify the `main_loop` function in `main.ml` to put into use the companion file written in the last step. 
+4. Build the project (here, by using `dune build`) to obtain an executable node program `main.exe`. The `promote` mode is set to be on, so the executable will be automatically copied to this directory after building, and can be deleted using `dune clean`. 
 
 ## Running the Protocol
 
-See `scripts/runRB.sh` for an example. Use `pkill "main.exe"` to terminate all nodes. 
+Users can run multiple instances of `main.exe` on a single machine to test the protocol execution. This can be achieved by writing a bash script. See `scripts/runRB.sh` for an example. 
+
+The sample scripts use `pkill "main.exe"` to terminate all nodes after a certain time period. 
+
+**Note:** Before executing a script for a specific protocol, the user needs to ensure that the compiled `main.exe` indeed runs that protocol; check the third step of the workflow above. 
 
 ## Acknowledgement
 
