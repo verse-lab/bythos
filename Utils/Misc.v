@@ -26,4 +26,4 @@ Create HintDb booldec.
 Fact is_left_unfold [A B : Prop] (b : {A} + {B}) : ssrbool.is_left b = if b then true else false.
 Proof eq_refl.
 
-Global Hint Rewrite -> is_left_unfold sumbool_is_left sumbool_is_right andb_true_iff andb_false_iff orb_true_iff orb_false_iff negb_true_iff @eqdec_refl filter_In : booldec.
+Global Hint Rewrite -> is_left_unfold sumbool_is_left sumbool_is_right andb_true_iff andb_false_iff orb_true_iff orb_false_iff negb_true_iff negb_false_iff @eqdec_refl filter_In : booldec.
