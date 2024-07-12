@@ -21,9 +21,25 @@ Fact sumbool_is_right [A : Prop] (dec : {A} + {~ A}) :
   (if dec then true else false) = false <-> ~ A.
 Proof. destruct dec; intuition discriminate. Qed.
 
-Create HintDb booldec.
+(* minimal things about total maps *)
+Definition map_update [A B : Type] (A_eqdec : forall a1 a2 : A, {a1 = a2} + {a1 <> a2}) 
+  (a : A) (b : B) (mp : A -> B) : A -> B :=
+  fun a' => if A_eqdec a a' then b else mp a'.
+
+Fact map_update_refl {A B : Type} (A_eqdec : forall a1 a2 : A, {a1 = a2} + {a1 <> a2})
+  (a : A) (b : B) (mp : A -> B) :
+  map_update A_eqdec a b mp a = b.
+Proof. unfold map_update. now destruct (A_eqdec _ _). Qed.
+
+Fact map_update_intact {A B : Type} (A_eqdec : forall a1 a2 : A, {a1 = a2} + {a1 <> a2})
+  (a a' : A) (mp : A -> B) :
+  map_update A_eqdec a' (mp a') mp a = mp a.
+Proof. unfold map_update. destruct (A_eqdec _ _); congruence. Qed.
 
 Fact is_left_unfold [A B : Prop] (b : {A} + {B}) : ssrbool.is_left b = if b then true else false.
 Proof eq_refl.
 
-Global Hint Rewrite -> is_left_unfold sumbool_is_left sumbool_is_right andb_true_iff andb_false_iff orb_true_iff orb_false_iff negb_true_iff negb_false_iff @eqdec_refl filter_In : booldec.
+Create HintDb booldec.
+Global Hint Rewrite -> is_left_unfold sumbool_is_left sumbool_is_right @eqdec_refl
+  andb_true_iff andb_false_iff orb_true_iff orb_false_iff negb_true_iff negb_false_iff
+  filter_In : booldec.

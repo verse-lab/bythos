@@ -1,27 +1,5 @@
 From Coq Require Import Bool List Permutation RelationClasses.
 
-(* FIXME: change the file name into the more general "Utils" later! *)
-
-(* FIXME: this function actually exists in the standard library *)
-Definition NoDup_eqdec [A : Type] (A_eqdec : forall (a1 a2 : A), {a1 = a2} + {a1 <> a2}) : 
-  forall l : list A, {NoDup l} + {~ NoDup l}.
-Proof.
-  intros l.
-  induction l as [ | x l IH ].
-  - left. 
-    constructor.
-  - destruct IH as [ IH | IH ].
-    + destruct (In_dec A_eqdec x l) as [ Hin | Hnotin ].
-      * right.
-        intros Hcontra.
-        now inversion Hcontra.
-      * left.
-        now constructor.
-    + right.
-      intros Hcontra.
-      now inversion Hcontra.
-Qed.
-
 Lemma partition_filter [A : Type] (f : A -> bool) l :
   partition f l = (filter f l, filter (fun a => negb (f a)) l).
 Proof.
@@ -73,16 +51,6 @@ Proof.
   - now apply IH.
 Qed.
 
-Lemma filter_compose [A B : Type] (f : A -> B) (g : B -> bool) (l : list A) :
-  filter g (map f l) = map f (filter (fun x => g (f x)) l).
-Proof.
-  induction l as [ | x l IH ].
-  - reflexivity.
-  - simpl.
-    rewrite -> ! IH.
-    now destruct (g (f x)).
-Qed.
-
 Lemma length_eq_Forall2_True [A B : Type] (l1 : list A) (l2 : list B) (H : length l1 = length l2) :
   Forall2 (fun _ _ => True) l1 l2.
 Proof.
@@ -110,22 +78,6 @@ Proof.
     now apply Permutation_middle.
 Qed.
 
-Lemma list_ind_3 : forall (A : Type) (P : list A -> Prop),
-  P nil ->
-  (forall n, (forall l, length l = n -> P l) -> forall l, length l = S n -> P l) ->
-  forall l : list A, P l.
-Proof.
-  intros. 
-  remember (length l) as n eqn:E. 
-  revert l E.
-  induction n as [ | n IH ]; intros.
-  - destruct l; simpl in E; congruence.
-  - destruct l; try (simpl in E; congruence).
-    eapply H0.
-    2: now rewrite E.
-    auto.
-Qed.
-
 Fact in_remove_iff [A : Type] (eq_dec : forall x y : A, {x = y} + {x <> y})
   (l : list A) (x y : A) : In x (remove eq_dec y l) <-> In x l /\ x <> y.
 Proof.
@@ -138,22 +90,6 @@ Qed.
 
 Fact in_cons_iff [A : Type] (l : list A) (x y : A) : In x (y :: l) <-> y = x \/ In x l.
 Proof. reflexivity. Qed.
-
-(* minimal things about total maps *)
-Definition map_update [A B : Type] (A_eqdec : forall a1 a2 : A, {a1 = a2} + {a1 <> a2}) 
-  (a : A) (b : B) (mp : A -> B) : A -> B :=
-  fun a' => if A_eqdec a a' then b else mp a'.
-
-(* TODO naming issue? *)
-Fact map_update_refl {A B : Type} (A_eqdec : forall a1 a2 : A, {a1 = a2} + {a1 <> a2})
-  (a : A) (b : B) (mp : A -> B) :
-  map_update A_eqdec a b mp a = b.
-Proof. unfold map_update. now destruct (A_eqdec _ _). Qed.
-
-Fact map_update_intact {A B : Type} (A_eqdec : forall a1 a2 : A, {a1 = a2} + {a1 <> a2})
-  (a a' : A) (mp : A -> B) :
-  map_update A_eqdec a' (mp a') mp a = mp a.
-Proof. unfold map_update. destruct (A_eqdec _ _); congruence. Qed.
 
 Definition set_add_simple [A : Type] (A_eqdec : forall a1 a2 : A, {a1 = a2} + {a1 <> a2}) 
   (a : A) (l : list A) : list A :=
@@ -175,10 +111,7 @@ Definition Ineq [A : Type] (l1 l2 : list A) : Prop := forall x, In x l1 <-> In x
 
 #[export] Instance Equivalence_Ineq {A : Type} : Equivalence (@Ineq A).
 Proof. constructor; hnf; unfold Ineq in *; firstorder. Qed.
-(*
-Fact list_ifnil_destruct [A : Type] (l : list A) : {l = nil} + {l <> nil}.
-Proof. destruct l; [ now left | now right ]. Qed.
-*)
+
 Fact length_gt_0_notnil [A : Type] [l : list A] (H : 0 < length l) :
   l <> nil /\ exists a, In a l.
 Proof. destruct l; [ inversion H | ]. simpl. split; try discriminate; eauto. Qed.
