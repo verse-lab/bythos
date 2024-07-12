@@ -64,7 +64,7 @@ Set Extraction Output Directory "Extraction/extracted".
     to be "RB.Types.ValueBFT R V". *)
 Module Playground (L : JustAList).
 
-Module A := AddrAsFiniteType3 L.
+Module A := AddrAsFiniteList L.
 Module BTh := ClassicByzThresholdImpl A.
 
 Module RealRBProtocolImpl (R : Round) (V : Value) (VBFT : RB.Types.ValueBFT A R V). 

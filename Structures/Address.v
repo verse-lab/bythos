@@ -8,9 +8,9 @@ Parameter Address : Set.
 Parameter Address_eqdec : forall (a1 a2 : Address), {a1 = a2} + {a1 <> a2}.
 Parameter Address_inhabitant : Address.
 
-(* restricting Address to be a finite type should be enough *)
+(* NOTE: restricting Address to be a finite type is convenient when fixing the set of participants *)
 (* the Finite typeclass defined in stdpp could be used, but since the development mostly
-    uses the definitions in the Coq standard library (e.g., List.NoDup), so did not do that *)
+    uses the definitions in the Coq standard library (e.g., List.NoDup), so we did not do that *)
 Parameter valid_nodes : list Address.
 Axiom valid_nodes_NoDup : NoDup valid_nodes.
 Axiom Address_is_finite : forall a : Address, In a valid_nodes.
@@ -41,9 +41,7 @@ Definition N := length valid_nodes.
 
 End AddrAsFiniteType.
 
-(* another definition, in the subtype-like form *)
-
-Module AddrAsFiniteType2 <: NetAddr.
+Module AddrAsFiniteNumber <: NetAddr.
 
 Export Fintype.
 
@@ -67,26 +65,27 @@ Proof. intros ?. apply base.elem_of_list_In, finite.elem_of_enum. Qed.
 
 Definition N := length valid_nodes.
 
-End AddrAsFiniteType2.
+End AddrAsFiniteNumber.
 
 (* the module above seems not to be the best for extraction work ... 
     it involves some constructions in stdpp (e.g., Finite), which may result in the occurrences of 
     weird things like Obj.magic *)
 
 (* JustAList: serving as a uniform interface to instantiate a NetAddr module with just a list *)
-(* here, remove the NoDup constraint since we cannot check it after extraction *)
+(* here, remove the NoDup constraint over elements since we cannot check it after extraction *)
 Module Type JustAList.
 
 Parameter t : Set.
 Parameter t_eqdec : forall a b : t, {a = b} + {a <> b}.
 
 (* elements may not be determined until some point, so model it into a function *)
+(* useful after extraction *)
 Parameter elements : unit -> list t.
 Parameter elements_not_empty : elements tt <> nil.
 
 End JustAList.
 
-Module AddrAsFiniteType3 (A : JustAList) <: NetAddr.
+Module AddrAsFiniteList (A : JustAList) <: NetAddr.
 
 Export Fintype.
 
@@ -111,4 +110,4 @@ Qed.
 
 Definition N := length valid_nodes.
 
-End AddrAsFiniteType3.
+End AddrAsFiniteList.

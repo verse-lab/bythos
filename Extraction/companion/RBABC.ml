@@ -167,7 +167,7 @@ let procInt_wrapper_byz_double_vote =
       let open RBACP in
       let fresh_st = coq_Init (!me_ip, !me_port) in
       let votemsg = RBP.RBM.VoteMsg (fst ARP.arp, snd ARP.arp, Lazy.force v) in
-      let msgcnt_with_one = Protocols.ListFacts.map_update RBP.RBM.coq_Message_eqdec votemsg [(!me_ip, !me_port)] (fun _ -> []) in
+      let msgcnt_with_one = Protocols.Misc.map_update RBP.RBM.coq_Message_eqdec votemsg [(!me_ip, !me_port)] (fun _ -> []) in
       st_ref := { fresh_st with st1 = { fresh_st.st1 with RBP.msgcnt = msgcnt_with_one } };
       (* just vote, without any preceding process *)
       (* does not matter if the Byzantine node is not the leader *)
