@@ -1,9 +1,16 @@
 From Coq Require Import Lia List PeanoNat.
 From Bythos.Utils Require Export Misc.
 
-(* self-made finite type *)
+(**
+  Self-made finite types. Essentially Sigma types, where predicates are
+  in the shape of "isTrue P" and only a finite number of elements satisfy P. 
 
-(* using "b = true" should also work, but here we want to avoid considering equalities of identity proofs *)
+  Note that there are many alternatives to build the finite types defined here:
+  for example, using SProp, or using "P = true" as predicates, since
+  identity proofs over boolean values enjoy proof irrelevance
+  (see proof_irrel.v in stdpp for a proof). 
+*)
+
 Definition isTrue (b : bool) : Prop := if b then True else False.
 Fact isTrue_true_iff b : isTrue b <-> b = true.
 Proof. destruct b; unfold isTrue; intuition. Qed.
@@ -12,8 +19,6 @@ Proof. destruct b; simpl in *; try contradiction. now destruct H1, H2. Qed.
 Fact isTrue_andb b1 b2 : isTrue (b1 && b2) <-> isTrue b1 /\ isTrue b2.
 Proof. destruct b1, b2; intuition; try exact I. Qed. 
 
-(* this is essentially a special case of { x | P x }, where P has proof irrelevance
-    and only a finite number of elements satisfy P (so this becomes a finite type) *)
 (* a very close formalization can be found in mathcomp (the ordinal type), 
     which depends on too many other definitions though *)
 Inductive fin_nat (n : nat) : Set := FT (m : nat) (H : isTrue (Nat.ltb m n)).
@@ -31,28 +36,12 @@ Definition fin_nat_rank [n : nat] (a : fin_nat n) : nat :=
 Fact fin_nat_cmp n (m1 m2 : fin_nat n) : m1 = m2 <-> fin_nat_rank m1 = fin_nat_rank m2.
 Proof. 
   split; intros; try congruence.
-  (* seems not very convenient to reason about fin_nat_eqdec *)
-  (*
-  destruct (fin_nat_eqdec m1 m2) eqn:E; try congruence. unfold fin_nat_eqdec in E. 
-  destruct m1 as [ m1 ? ], m2 as [ m2 ? ]. simpl in H. 
-  destruct (Nat.eq_dec m1 m2); simpl in E; try discriminate. 
-  *)
-  (* using the same logic as fin_nat_eqdec *)
   destruct m1 as [ m1 ? ], m2 as [ m2 ? ]. simpl in H. injection H as ->. f_equal. apply isTrue_same_eq.
 Qed.
 
 Fact le_left_minus_1 n m : S n <= m -> n <= m. Proof. lia. Qed.
 Fact le_left_minus_1' n m : isTrue (Nat.leb (S n) m) -> isTrue (Nat.leb n m). 
 Proof. rewrite !isTrue_true_iff, !Nat.leb_le. lia. Qed.
-(* the following requires some tweak to ensure proof irrelevance *)
-(*
-Fixpoint fin_nat_enum_aux (n m : nat) (H : m <= n) : list (fin_nat n).
-  destruct m as [ | m' ].
-  - exact nil.
-  - exact (FT n m' (proj2 (isTrue_true_iff _) (proj2 (Nat.ltb_lt _ _) H)) ::
-      fin_nat_enum_aux n m' (le_left_minus_1 _ _ H)).
-Defined.
-*)
 Fixpoint fin_nat_enum_aux (n m : nat) (H : isTrue (Nat.leb m n)) {struct m} : list (fin_nat n).
   destruct m as [ | m' ].
   - exact nil.
@@ -91,7 +80,6 @@ Proof. apply fin_nat_enum_aux_NoDup. Qed.
 
 End FinNat.
 
-(* again, a special case of { x | P x } *)
 (* after extraction, the inductive type parameters will be cleared ... *)
 Inductive fin_mem {A : Type} (eqdec : forall a1 a2 : A, {a1 = a2} + {a1 <> a2}) (dom : list A) : Type :=
   FM (a : A) (H : isTrue (ssrbool.is_left (in_dec eqdec a dom))).
@@ -117,32 +105,7 @@ Section FinMem.
     destruct a as [ a H0 ], a' as [ a' H0' ]. simpl in H. 
     left. revert H0'. rewrite H. (* ! *) intros ?. f_equal. apply isTrue_same_eq.
   Qed.
-  (*
-  Definition fin_mem_lift_single (a : A.t) : list fin_mem :=
-    (if in_dec eqdec a A.elements as s0
-        return ((isTrue (ssrbool.is_left s0) -> fin_mem) -> list fin_mem)
-      then fun f0 : True -> fin_mem => f0 I :: nil
-      else fun _ : False -> fin_mem => nil) (FM a).
-    (* pose proof (FM a) as f.
-    destruct (in_dec eqdec a A.elements).
-    - exact (f I :: nil).
-    - exact nil.
-  Defined. *)
-  Fixpoint fin_mem_lift (l : list A.t) : list fin_mem :=
-    match l with
-    | nil => nil
-    | a :: l' => fin_mem_lift_single a ++ fin_mem_lift l'
-    end.
-  Fact fin_mem_lift_peel l (H : incl l A.elements) : map fin_mem_body (fin_mem_lift l) = l.
-  Proof.
-    induction l as [ | a l IH ]; try reflexivity.
-    simpl. pose proof (H _ (or_introl eq_refl)) as H0. specialize (IH (fun a H' => H a (or_intror H'))).
-    rewrite map_app, IH. change (a :: l) with ((a :: nil) ++ l). f_equal. clear H IH.
-    unfold fin_mem_lift_single.
-    (* emm *)
-  Abort.
-  *)
-  (* things are slightly more complicated without carrying a proof *)
+  (* fin_mem_lift is more difficult to define without carrying a proof *)
   Fixpoint fin_mem_lift (l : list A) (H : isTrue (forallb (fun a => ssrbool.is_left (in_dec eqdec a dom)) l)) {struct l} : list fin_mem.
     destruct l as [ | a l' ].
     - exact nil.
