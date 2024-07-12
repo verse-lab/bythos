@@ -1679,12 +1679,12 @@ Proof with basic_solver.
       * now rewrite_w_expand w in_ H.
   - simpl in Epm.
     destruct c as (v, nsigs).
-    destruct (if NoDup_eqdec AddrSigPair_eqdec nsigs
+    destruct (if ListDec.NoDup_dec AddrSigPair_eqdec nsigs
       then (if Nat.leb (N - t0) (length nsigs)
             then is_left (verify_certificate v nsigs)
             else false)
       else false) eqn:Edecide.
-    + destruct (NoDup_eqdec AddrSigPair_eqdec nsigs) as [ Hnodup | ],
+    + destruct (ListDec.NoDup_dec AddrSigPair_eqdec nsigs) as [ Hnodup | ],
         (Nat.leb (N - t0) (length nsigs)) eqn:Hlnsigs, 
         (verify_certificate v nsigs) eqn:Everic...
       injection_pair Epm.
@@ -1730,7 +1730,7 @@ Proof with basic_solver.
       * eapply inv_preserve_00 with (psent:=(sentMsgs w))...
         now rewrite_w_expand w in_ H.
     + assert ((localState w dst, nil) = (st', ms)) as Epm'
-        by (destruct (NoDup_eqdec AddrSigPair_eqdec nsigs),
+        by (destruct (ListDec.NoDup_dec AddrSigPair_eqdec nsigs),
           (Nat.leb (N - t0) (length nsigs)), (verify_certificate v nsigs); eqsolve).
       (* essentially no change *)
       injection_pair Epm'.
@@ -2177,7 +2177,7 @@ Proof with basic_solver.
       * simpl in Hin...
   - destruct (combined_verify v cs).
     all: now injection_pair Epm.
-  - destruct (NoDup_eqdec AddrSigPair_eqdec nsigs),
+  - destruct (ListDec.NoDup_dec AddrSigPair_eqdec nsigs),
       (Nat.leb (N - t0) (length nsigs)), (verify_certificate v nsigs).
     all: now injection_pair Epm.
 Qed.
@@ -2408,7 +2408,7 @@ Proof with basic_solver.
     simpl in Epm.
     destruct c as (v, nsigs).
     assert (ms = nil /\ id st' = dst) as (-> & Hid_intact)
-      by (destruct (NoDup_eqdec AddrSigPair_eqdec nsigs),
+      by (destruct (ListDec.NoDup_dec AddrSigPair_eqdec nsigs),
         (Nat.leb (N - t0) (length nsigs)), (verify_certificate v nsigs); injection_pair Epm; eqsolve).
     rewrite sendout0.
     split.
@@ -2428,7 +2428,7 @@ Proof with basic_solver.
       subst p0.
       unfold upd.
       rewrite eqdec_refl.
-      destruct (NoDup_eqdec AddrSigPair_eqdec nsigs) as [ Hnodup | ],
+      destruct (ListDec.NoDup_dec AddrSigPair_eqdec nsigs) as [ Hnodup | ],
         (Nat.leb (N - t0) (length nsigs)) eqn:Hlnsigs, 
         (verify_certificate v nsigs) eqn:Everic...
       all: injection Epm as <-.
@@ -2446,7 +2446,7 @@ Proof with basic_solver.
       rewrite -> Edst in Hin.
       destruct msg0 as [ | (?, ?) | (v0, nsigs0) ]...
       simpl in Hin |- *.
-      all: destruct (NoDup_eqdec AddrSigPair_eqdec nsigs) as [ Hnodup | ],
+      all: destruct (ListDec.NoDup_dec AddrSigPair_eqdec nsigs) as [ Hnodup | ],
         (Nat.leb (N - t0) (length nsigs)) eqn:Hlnsigs, 
         (verify_certificate v nsigs) eqn:Everic.
       all: injection Epm as <-...
@@ -3071,7 +3071,7 @@ Proof.
       destruct (combined_verify v0 cs).
       all: now injection_pair Epm.
     + simpl in Epm.
-      destruct (NoDup_eqdec AddrSigPair_eqdec nsigs), (Nat.leb (N - t0) (length nsigs)), 
+      destruct (ListDec.NoDup_dec AddrSigPair_eqdec nsigs), (Nat.leb (N - t0) (length nsigs)), 
         (verify_certificate v0 nsigs).
       all: now injection_pair Epm.
   - destruct t.
@@ -3148,7 +3148,7 @@ Proof.
       destruct (combined_verify v0 cs).
       all: now injection_pair Epm.
     + simpl in Epm.
-      destruct (NoDup_eqdec AddrSigPair_eqdec nsigs), (Nat.leb (N - t0) (length nsigs)), 
+      destruct (ListDec.NoDup_dec AddrSigPair_eqdec nsigs), (Nat.leb (N - t0) (length nsigs)), 
         (verify_certificate v0 nsigs).
       all: now injection_pair Epm.
   - destruct t.

@@ -174,7 +174,7 @@ Definition procMsg (st : State) (src : Address) (msg : Message) : State * list P
     (* check whether this is a valid full certificate or not *)
     (* in the paper this condition is ">= N-t0 distinct senders", 
         which is stronger than this *)
-    if NoDup_eqdec AddrSigPair_eqdec nsigs
+    if ListDec.NoDup_dec AddrSigPair_eqdec nsigs
     then 
       (if Nat.leb (N - t0) (length nsigs) 
       then

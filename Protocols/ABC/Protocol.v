@@ -183,7 +183,7 @@ Definition procMsg (st : State) (src : Address) (msg : Message) : option (State 
     (* check whether this is a valid full certificate or not *)
     (* in the paper this condition is ">= N-t0 distinct senders", 
         which is stronger than this *)
-    if (NoDup_eqdec AddrSigPair_eqdec nsigs) && ((N - t0) <=? (length nsigs)) && (verify_certificate v nsigs)
+    if (ListDec.NoDup_dec AddrSigPair_eqdec nsigs) && ((N - t0) <=? (length nsigs)) && (verify_certificate v nsigs)
     then
       let: st' := st <| received_certs := c :: rcerts |> in
       Some (st', nil)

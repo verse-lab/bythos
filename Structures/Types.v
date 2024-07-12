@@ -1,5 +1,5 @@
 From Coq Require Import List RelationClasses Bool PeanoNat.
-From Coq Require ssrbool.
+From Coq Require ListDec ssrbool.
 Import (coercions) ssrbool.
 From Bythos.Structures Require Export Address.
 From Bythos.Utils Require Export ListFacts.
@@ -304,7 +304,7 @@ Definition light_sign v (pk : LightPrivateKey) := (fst pk, sign v (snd pk)).
 (* simply putting id here may introduce Obj.magic *)
 Definition lightsig_combine (l : list LightSignature) : CombinedSignature := l.
 Definition combined_verify (v : V.t) (cs : CombinedSignature) :=
-  (Nat.eq_dec (length cs) (N - thres)) && (NoDup_eqdec Address_eqdec (map fst cs))
+  (Nat.eq_dec (length cs) (N - thres)) && (ListDec.NoDup_dec Address_eqdec (map fst cs))
     && (forallb (fun '(n, sig) => verify v sig n) cs).
 
 Lemma lightkey_correct : forall v n ls, 
