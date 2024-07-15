@@ -4,24 +4,24 @@ Import (coercions) ssrbool.
 Import ssreflect.SsrSyntax.
 From Bythos.Protocols.PB.Iterated Require Export PB2.
 
-Module PB3 (Ad : NetAddr) (R : Round) (Sn : Signable) (V : Value) (Pf : PBProof Sn) (VBFT : ValueBFT Ad R Sn V Pf) 
+Module PB3 (Ad : NetAddr) (R : Round) (Sn : Signable) (V : Value) (Pf : PBProof) (VBFT : ValueBFT Ad R V Pf) 
   (BTh : ClassicByzThreshold Ad)
   (BSettA : RestrictedByzSetting Ad BTh)
   (BSettB : RestrictedByzSetting Ad BTh)
   (BSettC : RestrictedByzSetting Ad BTh)
-  (TSS0 : ThresholdSignatureSchemePrim Ad Sn with Definition thres := BTh.t0) (* ! *)
-  (TSS : ThresholdSignatureScheme Ad Sn with Module TSSPrim := TSS0)
-  (PfB : PBProofB Ad Sn BTh TSS0 TSS) 
-  (VBFTB : ValueBFT Ad R Sn V PfB)
-  (VBFTC : ValueBFT Ad R Sn V PfB)
-  (PBDT : PBDataTypes Ad R Sn V Pf TSS)
-  (PBDTB : PBDataTypes Ad R Sn V PfB TSS with Definition VPfSn := PBDT.VPfSn).
+  (TSSPrim : ThresholdSignatureSchemePrim Ad Sn with Definition thres := Ad.N - BTh.t0)
+  (PfB : PBProofB Ad Sn BTh TSSPrim)
+  (VBFTB : ValueBFT Ad R V PfB)
+  (VBFTC : ValueBFT Ad R V PfB)
+  (PBDT : PBDataTypes Ad R Sn V Pf)
+  (PBDTB : PBDataTypes Ad R Sn V PfB with Definition RVSn := PBDT.RVSn).
 
-Import Ad R V Pf VBFT BTh BSettA BSettB TSS PBDT.
+Import Ad R V Pf VBFT BTh BSettA BSettB PBDT.
 Import ssrbool. (* anyway *)
 
-Module Export PB2Impl := PB2 Ad R Sn V Pf VBFT BTh BSettA BSettB TSS0 TSS PfB VBFTB PBDT PBDTB.
-Module C := PBLiveness2 Ad R Sn V PfB VBFTC BTh BSettC TSS0 TSS PBDTB.
+Module Export PB2Impl := PB2 Ad R Sn V Pf VBFT BTh BSettA BSettB TSSPrim PfB VBFTB PBDT PBDTB.
+Module C := PBLiveness2 Ad R Sn V PfB VBFTC BTh BSettC TSSPrim PBDTB.
+Import A.PBP.TSS. (* importing which does not really matter *)
 
 Section ABC.
 

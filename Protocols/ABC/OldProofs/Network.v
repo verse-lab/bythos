@@ -19,7 +19,7 @@ Import A V VBFT BTh BSett P TSS ACDT CC M P0 ACP Ns.
 
 (* yes, how about extracting this to be ...? *)
 Definition sig_seen_in_history (src : Address) (v : Value) (s : Signature) (pkts : PacketSoup) :=
-  exists dst consumed ls, In (mkP src dst (SubmitMsg v ls s) consumed) pkts.
+  exists dst received ls, In (mkP src dst (SubmitMsg v ls s) received) pkts.
 
 Definition cert_correct (psent : PacketSoup) (c : Certificate) :=
   let: (v, nsigs) := c in
@@ -34,7 +34,7 @@ Definition cert_correct (psent : PacketSoup) (c : Certificate) :=
   (since full certificates are assembled from the sent messages), 
   so ignore it for now *)
 Definition lightsig_seen_in_history (src : Address) (v : Value) (ls : LightSignature) (pkts : PacketSoup) :=
-  exists dst consumed s, In (mkP src dst (SubmitMsg v ls s) consumed) pkts.
+  exists dst received s, In (mkP src dst (SubmitMsg v ls s) received) pkts.
 
 (* safety assumption about light certificates: 
   if the number of Byzantine nodes is not sufficiently large, 

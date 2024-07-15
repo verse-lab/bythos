@@ -10,13 +10,14 @@ From stdpp Require Import tactics. (* anyway *)
 
 Module ACLiveness (A : NetAddr) (Sn : Signable) (V : SignableValue Sn) (* (VBFT : ValueBFT A Sn V) *)
   (BTh : ByzThreshold A) (BSett : ByzSetting A)
-  (P : PKI A Sn) (TSS0 : ThresholdSignatureSchemePrim A Sn with Definition thres := BTh.t0) (* ! *)
-  (TSS : ThresholdSignatureScheme A Sn with Module TSSPrim := TSS0).
+  (PPrim : PKIPrim A Sn)
+  (TSSPrim : ThresholdSignatureSchemePrim A Sn with Definition thres := A.N - BTh.t0).
 
-Import A V (* VBFT *) BTh BSett P TSS.
+Import A V (* VBFT *) BTh BSett.
 Import ssrbool. (* anyway *)
 
-Module Export ACS := ACSafety A Sn V (* VBFT *) BTh BSett P TSS0 TSS.
+Module Export ACS := ACSafety A Sn V (* VBFT *) BTh BSett PPrim TSSPrim.
+Import ACN.ACDT.P ACN.ACDT.TSS.
 Include Liveness A M BTh BSett P0 PSOp ACP Ns ACAdv ACN.
 
 Module Terminating_Convergence.
@@ -83,7 +84,7 @@ Section Proof_of_Terminating_Convergence.
   Definition round_1_end w' :=
     Eval unfold mutual_receiving in mutual_receiving valid_submitmsg w'.
 
-  Fact round_1_end_suffcond w' (Hincl : incl (map receive_pkt pkts) (sentMsgs w')) :
+  Fact round_1_end_suffcond w' (Hincl : incl (map markRcv pkts) (sentMsgs w')) :
     round_1_end w'.
   Proof.
     (* FIXME: can this be automated? *)
@@ -91,7 +92,7 @@ Section Proof_of_Terminating_Convergence.
     pick SubmitMsg as_ HH by_ (destruct_and? Hround1).
     hnf. intros n1 Hnonbyz_n1%is_nonbyz_synonym n2 Hnonbyz_n2.
     saturate_assumptions!. destruct HH as (_ & _ & HH). saturate_assumptions!. 
-    destruct HH as (? & HH). now apply (in_map receive_pkt), Hincl in HH.
+    destruct HH as (? & HH). now apply (in_map markRcv), Hincl in HH.
   Qed.
 
   Lemma all_honest_nodes_confirmed_suffcond w0 l0 (Htrace0 : system_trace w l0) (Ew0 : w0 = final_world w l0) 
@@ -240,7 +241,7 @@ Section Proof_of_Accountability.
       (w @ n2).(submitted_value) = Some v2 /\
       incl (mutual_lightcerts v1 v2 true true true true) (sentMsgs w').
 
-  Fact round_1_end_suffcond w' (Hincl : incl (map receive_pkt pkts) (sentMsgs w')) :
+  Fact round_1_end_suffcond w' (Hincl : incl (map markRcv pkts) (sentMsgs w')) :
     round_1_end w'.
   Proof. hnf in Hround1 |- *. destruct Hround1 as (? & ? & (? & ? & ? & ? & ? & ? & -> & -> & ->)). eauto. Qed.
 
@@ -352,7 +353,7 @@ Section Proof_of_Accountability.
     | _, _ => False
     end.
 
-  Fact round_2_end_suffcond w' (Hincl : incl (map receive_pkt pkts) (sentMsgs w')) :
+  Fact round_2_end_suffcond w' (Hincl : incl (map markRcv pkts) (sentMsgs w')) :
     round_2_end w'.
   Proof.
     hnf in Hround2 |- *. prepare Hstart.
@@ -361,7 +362,7 @@ Section Proof_of_Accountability.
     1: specialize (HH n1 ltac:(simpl; tauto)).
     2: specialize (HH n2 ltac:(simpl; tauto)).
     all: destruct_and? HH; saturate_assumptions!.
-    all: destruct_exists; match goal with H : In _ pkts |- _ => apply (in_map receive_pkt) in H; simpl in H; destruct_eqdec in_ H0 as_ ?; congruence end.
+    all: destruct_exists; match goal with H : In _ pkts |- _ => apply (in_map markRcv) in H; simpl in H; destruct_eqdec in_ H0 as_ ?; congruence end.
   Qed.
 
   Lemma accountability_suffcond w0 l0 (Htrace0 : system_trace w l0) (Ew0 : w0 = final_world w l0) 

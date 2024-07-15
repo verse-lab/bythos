@@ -179,8 +179,8 @@ Definition _inv_confirmmsg_correct stmap psent_history src c : Prop :=
       snd c = zip_from_sigs (stmap src)
 .
 
-Definition _inv_submitmsg_receive (stmap : StateMap) src dst v lsig sig (consumed : bool) : Prop := 
-  consumed -> is_byz dst = false ->
+Definition _inv_submitmsg_receive (stmap : StateMap) src dst v lsig sig (received : bool) : Prop := 
+  received -> is_byz dst = false ->
   match (stmap dst).(submitted_value) with
   | None => In (src, SubmitMsg v lsig sig) (stmap dst).(msg_buffer)
   | Some ov => 
@@ -194,13 +194,13 @@ Definition _inv_submitmsg_receive (stmap : StateMap) src dst v lsig sig (consume
 .
 
 (* by rule, a valid light/full certificate cannot be rejected by an honest node for no reason *)
-Definition _inv_lightconfirmmsg_receive (stmap : StateMap) dst v cs (consumed : bool) : Prop := 
-  consumed -> is_byz dst = false ->
+Definition _inv_lightconfirmmsg_receive (stmap : StateMap) dst v cs (received : bool) : Prop := 
+  received -> is_byz dst = false ->
   combined_verify v cs -> In (v, cs) (received_lightcerts (stmap dst))
 .
 
-Definition _inv_confirmmsg_receive (stmap : StateMap) dst v nsigs (consumed : bool) : Prop := 
-  consumed -> is_byz dst = false ->
+Definition _inv_confirmmsg_receive (stmap : StateMap) dst v nsigs (received : bool) : Prop := 
+  received -> is_byz dst = false ->
   certificate_valid v nsigs -> NoDup nsigs -> (N - t0 <= (length nsigs)) ->
     In (v, nsigs) (received_certs (stmap dst))
 .
@@ -238,14 +238,14 @@ Global Arguments _inv_confirmmsg_correct _ _ _ _/.
 Global Arguments _inv_msg_correct _ _ _/.
 
 Record _psent_invariant (stmap : StateMap) (psent psent_history : PacketSoup) : Prop := mkPsentInv {
-  inv_submitmsg_correct: forall src dst v lsig sig consumed, 
-    In (mkP src dst (SubmitMsg v lsig sig) consumed) psent ->
+  inv_submitmsg_correct: forall src dst v lsig sig received, 
+    In (mkP src dst (SubmitMsg v lsig sig) received) psent ->
     _inv_submitmsg_correct stmap src v lsig sig;
-  inv_lightconfirmmsg_correct: forall src dst lc consumed, 
-    In (mkP src dst (LightConfirmMsg lc) consumed) psent ->
+  inv_lightconfirmmsg_correct: forall src dst lc received, 
+    In (mkP src dst (LightConfirmMsg lc) received) psent ->
     _inv_lightconfirmmsg_correct stmap psent_history src lc;
-  inv_confirmmsg_correct: forall src dst c consumed, 
-    In (mkP src dst (ConfirmMsg c) consumed) psent ->
+  inv_confirmmsg_correct: forall src dst c received, 
+    In (mkP src dst (ConfirmMsg c) received) psent ->
     _inv_confirmmsg_correct stmap psent_history src c
 }.
 
@@ -289,7 +289,7 @@ Section Main_Proof.
 (* TODO some of these tactic notations are redundant; consider simplification *)
 
 Tactic Notation "simpl_pkt" :=
-  simpl dst in *; simpl src in *; simpl msg in *; simpl consumed in *.
+  simpl dst in *; simpl src in *; simpl msg in *; simpl received in *.
 
 Tactic Notation "simpl_state" :=
   simpl id in *; simpl conf in *; simpl submitted_value in *; simpl from_set in *;
@@ -2126,7 +2126,7 @@ Proof.
 Qed.
 
 Lemma inv_2_by_extend_freshpkt stmap psent psent'
-  (Hsubset : forall p, In p psent' -> In p psent \/ consumed p = false)
+  (Hsubset : forall p, In p psent' -> In p psent \/ received p = false)
   (Hinv2 : invariant_2 (mkW stmap psent)) : invariant_2 (mkW stmap psent').
 Proof.
   constructor.
@@ -2144,7 +2144,7 @@ Qed.
 (* pure facts; should not require any invariant *)
 
 Fact procMsg_sent_packets_are_fresh st src msg :
-  forall p (Hin : In p (snd (procMsg st src msg))), consumed p = false.
+  forall p (Hin : In p (snd (procMsg st src msg))), received p = false.
 Proof with basic_solver.
   intros.
   destruct (procMsg st src msg) as (st', ms) eqn:Epm.
@@ -2183,7 +2183,7 @@ Proof with basic_solver.
 Qed.
 
 Fact procMsgWithCheck_sent_packets_are_fresh st src msg :
-  forall p (Hin : In p (snd (procMsgWithCheck st src msg))), consumed p = false.
+  forall p (Hin : In p (snd (procMsgWithCheck st src msg))), received p = false.
 Proof with basic_solver.
   intros.
   pose proof (procMsg_sent_packets_are_fresh st src msg p) as Htmp.
@@ -2198,7 +2198,7 @@ Qed.
 
 (* TODO is this necessary or useful? *)
 Fact procInt_sent_packets_are_fresh st tr :
-  forall p (Hin : In p (snd (procInt st tr))), consumed p = false.
+  forall p (Hin : In p (snd (procInt st tr))), received p = false.
 Proof with basic_solver.
   intros.
   destruct (procInt st tr) as (st', ms) eqn:Epm.
@@ -3224,7 +3224,7 @@ Section Proof_of_Terminating_Convergence.
       (* TODO elaborate v ls s? this should be possible due to submit_msgs_all_sent *)
       exists v ls s, In (mkP n1 n2 (SubmitMsg v ls s) true) (sentMsgs w').
 
-  Fact honest_submit_all_received_suffcond w' (H2 : incl (map receive_pkt (projT1 submit_msgs_all_sent)) (sentMsgs w')) :
+  Fact honest_submit_all_received_suffcond w' (H2 : incl (map markRcv (projT1 submit_msgs_all_sent)) (sentMsgs w')) :
     honest_submit_all_received w'.
   Proof.
     destruct submit_msgs_all_sent as (pkts & HH).
@@ -3233,7 +3233,7 @@ Section Proof_of_Terminating_Convergence.
     hnf in H2 |- *.
     intros n0 n H_n0_nonbyz H_n_nonbyz.
     specialize (HH _ _ H_n0_nonbyz H_n_nonbyz).
-    destruct HH as (b & HH%(in_map receive_pkt)).
+    destruct HH as (b & HH%(in_map markRcv)).
     simpl in HH.
     apply H2 in HH.
     eauto.
@@ -3570,7 +3570,7 @@ Section Proof_of_Accountability.
       (localState w' n1).(submitted_value) = Some (value_bft n1) /\
       (localState w' n2).(submitted_value) = Some (value_bft n2).
 
-  Fact fullcerts_all_received_suffcond w' (H2 : incl (map receive_pkt (projT1 fullcerts_all_sent)) (sentMsgs w'))
+  Fact fullcerts_all_received_suffcond w' (H2 : incl (map markRcv (projT1 fullcerts_all_sent)) (sentMsgs w'))
     (Hinv : invariant w') : fullcerts_all_received w'.
   Proof using coll_w0. clear l0 Htrace0 Ew0 Hfundamental H_w_reachable Hw0 w.
     destruct fullcerts_all_sent as (pkts & HH).
@@ -3578,7 +3578,7 @@ Section Proof_of_Accountability.
     destruct HH as (Hincl & Hgood & Haa).
     intros n H_n_nonbyz.
     specialize (Haa _ H_n_nonbyz).
-    destruct Haa as (? & ? & ? & ? & Hin1%(in_map receive_pkt) & Hin2%(in_map receive_pkt)).
+    destruct Haa as (? & ? & ? & ? & Hin1%(in_map markRcv) & Hin2%(in_map markRcv)).
     apply H2 in Hin1, Hin2.
     simpl in Hin1, Hin2.
     destruct Hinv as (Hcoh0, Hnodeinv0, Hpsentinv0).

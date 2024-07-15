@@ -58,6 +58,9 @@ Set Warnings "-extraction-opaque-accessed".
 Set Warnings "-extraction-reserved-identifier".
 Set Extraction Output Directory "Extraction/extracted".
 
+(* NOTE: some proofs inside the cryptographic primitive-related modules will be extracted as well, 
+    resulting in "__"; ignore them for now *)
+
 (* it seems that we can only do the extraction inside the functor below, 
     if we do not try using other definitions of NetAddr, since A is the first argument of VBFT. 
     if A is the last argument, then we can simply make the type of RB.Types.ValueBFT
@@ -80,26 +83,28 @@ End RealRBProtocolImpl.
 
 Extraction "RB.ml" RealRBProtocolImpl.
 
-(* due to the bad design of PBDT, need another wrapper ... *)
+(* we provide another wrapper over PB to instantiate TSSPrim before defining RealPBProtocolImpl,
+    since in the companion file, the instantiation of PBProof may depend on light/combined signatures *)
+(* FIXME: the instantiation of VBFT may depend on the full TSS, which will be instantiated only in PBProtocolImpl!
+    for now, just use TSSPrim in the companion file *)
 Module Playground2 (Sn : Signable) (PPrim : PKIPrim A Sn).
 
-Module TSST <: TSSThres with Definition thres := BTh.t0. Definition thres := BTh.t0. End TSST.
-Module TSS0 := SimpleTSSPrim A Sn PPrim TSST.
-Module TSS := ThresholdSignatureSchemeImpl A Sn TSS0.
+Module TSST <: TSSThres with Definition thres := A.N - BTh.t0. Definition thres := A.N - BTh.t0. End TSST.
+Module TSSPrim := SimpleTSSPrim A Sn PPrim TSST.
 
-Module RealPBProtocolImpl (R : Round) (V : Value) (Pf : PB.Types.PBProof Sn)
-  (VBFT : PB.Types.ValueBFT A R Sn V Pf) (PBDT : PB.Types.PBDataTypes A R Sn V Pf TSS).
+Module RealPBProtocolImpl (R : Round) (V : Value) (Pf : PB.Types.PBProof)
+  (VBFT : PB.Types.ValueBFT A R V Pf) (PBDT : PB.Types.PBDataTypes A R Sn V Pf).
 
 Import PB.Protocol.
 
-Module PBM := PBMessageImpl A R Sn V Pf TSS.
+Module PBM := PBMessageImpl A R Sn V Pf TSSPrim.
 Module PBPk := SimplePacketImpl A PBM.
 
-Include (PBProtocolImpl A R Sn V Pf VBFT BTh TSS0 TSS PBDT PBM PBPk).
+Include (PBProtocolImpl A R Sn V Pf VBFT BTh TSSPrim PBDT PBM PBPk).
 
 End RealPBProtocolImpl.
 
-Extraction "PB.ml" RealPBProtocolImpl. (* some proofs will be extracted as well, resulting in "__"; ignore them for now *)
+Extraction "PB.ml" RealPBProtocolImpl.
 
 End Playground2.
 
@@ -107,16 +112,13 @@ Module RealACProtocolImpl (Sn : Signable) (V : SignableValue Sn) (PPrim : PKIPri
 
 Import ABC.Protocol.
 
-Module TSST <: TSSThres with Definition thres := ACBTh.t0. Definition thres := ACBTh.t0. End TSST.
-Module TSS0 := SimpleTSSPrim A Sn PPrim TSST.
-Module TSS := ThresholdSignatureSchemeImpl A Sn TSS0.
-Module P := PKIImpl A Sn PPrim.
-Module ACDT := ABC.Types.ACDataTypesImpl A Sn V P TSS.
-Module CC := ABC.Types.CertCheckersImpl A Sn V P TSS ACDT.
-Module ACM := ACMessageImpl A Sn V P TSS ACDT.
+Module TSST <: TSSThres with Definition thres := A.N - ACBTh.t0. Definition thres := A.N - ACBTh.t0. End TSST.
+Module TSSPrim := SimpleTSSPrim A Sn PPrim TSST.
+Module ACDT := ABC.Types.SimpleACDataTypesImpl A Sn V PPrim TSSPrim.
+Module ACM := ACMessageImpl A Sn V PPrim TSSPrim ACDT.
 Module ACPk := SimplePacketImpl A ACM.
 
-Include (ABC.Protocol.ACProtocolImpl A Sn V ACBTh P TSS0 TSS ACDT CC ACM ACPk).
+Include (ABC.Protocol.ACProtocolImpl A Sn V ACBTh PPrim TSSPrim ACDT ACM ACPk).
 
 End RealACProtocolImpl.
 
@@ -132,7 +134,7 @@ Module CPk := Composition.Types.CompSimplePacketImpl A RBP.RBM ACP.ACM CM RBP.RB
 
 Import RBABC.Protocol.
 
-Module SCPT := RBACTrigger A R ARP Sn V VBFT BTh RBP.RBM ACP.P ACP.TSS0 ACP.TSS ACP.ACDT ACP.CC ACP.ACM
+Module SCPT := RBACTrigger A R ARP Sn V VBFT BTh RBP.RBM PPrim ACP.TSSPrim ACP.ACDT ACP.ACM
   CM RBP.RBPk ACP.ACPk RBP ACP.
 
 Include (SeqCompProtocol A RBP.RBM ACP.ACM BTh CM RBP.RBPk ACP.ACPk CPk RBP ACP SCPT).

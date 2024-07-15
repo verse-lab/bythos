@@ -9,9 +9,24 @@ Parameter value_bft : Address -> Value.
 
 End ValueBFT.
 *)
-Module Type ACDataTypes (A : NetAddr) (Sn : Signable) (V : SignableValue Sn) (P : PKI A Sn) (TSS : ThresholdSignatureScheme A Sn).
 
-Import A V P TSS.
+Module Type ACDataTypes.
+
+Parameter Certificate : Type.
+Parameter LightCertificate : Type.
+
+Axiom Certificate_eqdec : forall (c1 c2 : Certificate), {c1 = c2} + {c1 <> c2}.
+Axiom LightCertificate_eqdec : forall (c1 c2 : LightCertificate), {c1 = c2} + {c1 <> c2}.
+
+End ACDataTypes.
+
+Module Type SimpleACDataTypes (A : NetAddr) (Sn : Signable) (V : SignableValue Sn) (PPrim : PKIPrim A Sn) (TSSPrim : ThresholdSignatureSchemePrim A Sn)
+  <: ACDataTypes.
+
+Module Import P := PKI A Sn PPrim.
+Module Import TSS := ThresholdSignatureScheme A Sn TSSPrim.
+
+Import A V.
 
 Definition AddrSigPair_eqdec : forall (nsig1 nsig2 : Address * Signature), {nsig1 = nsig2} + {nsig1 <> nsig2}
   := prod_eq_dec Address_eqdec Signature_eqdec.
@@ -30,19 +45,9 @@ Definition Certificate_eqdec : forall (c1 c2 : Certificate), {c1 = c2} + {c1 <> 
 Definition LightCertificate_eqdec : forall (c1 c2 : LightCertificate), {c1 = c2} + {c1 <> c2}
   := prod_eq_dec Value_eqdec CombinedSignature_eqdec.
 
-End ACDataTypes.
-
-Module ACDataTypesImpl (A : NetAddr) (Sn : Signable) (V : SignableValue Sn) (P : PKI A Sn) (TSS : ThresholdSignatureScheme A Sn)
-  <: ACDataTypes A Sn V P TSS.
-
-Include ACDataTypes A Sn V P TSS.
-
-End ACDataTypesImpl.
-
-Module Type CertCheckers (A : NetAddr) (Sn : Signable) (V : SignableValue Sn) (P : PKI A Sn) (TSS : ThresholdSignatureScheme A Sn)
-  (ACDT : ACDataTypes A Sn V P TSS).
-
-Import A V P TSS ACDT.
+(* put this module type inside this concrete instantiation of ACDataTypes, since the following
+    two axioms depend on the concrete definitions of Certificate/LightCertificate *)
+Module Type CertCheckers.
 
 Parameter lightcert_conflict_check : list LightCertificate -> bool.
 Parameter genproof : list Certificate -> list Address.
@@ -66,10 +71,8 @@ Axiom genproof_correct :
 
 End CertCheckers.
 
-Module CertCheckersImpl (A : NetAddr) (Sn : Signable) (V : SignableValue Sn) (P : PKI A Sn) (TSS : ThresholdSignatureScheme A Sn)
-  (ACDT : ACDataTypes A Sn V P TSS) <: CertCheckers A Sn V P TSS ACDT.
-
-Import A V P TSS ACDT.
+(* a naive instantiation of CertCheckers *)
+Module Export CertCheckersImpl : CertCheckers.
 
 Fixpoint lcc_simple_aux (v : Value) (certs : list LightCertificate) : bool :=
   match certs with 
@@ -231,10 +234,19 @@ Qed.
 
 End CertCheckersImpl.
 
-Module Type ACMessage (A : NetAddr) (Sn : Signable) (V : SignableValue Sn) (P : PKI A Sn) (TSS : ThresholdSignatureScheme A Sn)
-  (ACDT : ACDataTypes A Sn V P TSS) <: MessageType.
+End SimpleACDataTypes.
 
-Import A V P TSS ACDT.
+Module SimpleACDataTypesImpl (A : NetAddr) (Sn : Signable) (V : SignableValue Sn) (PPrim : PKIPrim A Sn) (TSSPrim : ThresholdSignatureSchemePrim A Sn)
+  <: SimpleACDataTypes A Sn V PPrim TSSPrim <: ACDataTypes.
+
+Include SimpleACDataTypes A Sn V PPrim TSSPrim.
+
+End SimpleACDataTypesImpl.
+
+Module Type ACMessage (A : NetAddr) (Sn : Signable) (V : SignableValue Sn) (PPrim : PKIPrim A Sn) (TSSPrim : ThresholdSignatureSchemePrim A Sn)
+  (ACDT : ACDataTypes) <: MessageType.
+
+Import A V PPrim TSSPrim ACDT.
 
 Inductive Message_ := 
   | SubmitMsg (v : Value) (ls : LightSignature) (s : Signature)
@@ -252,9 +264,9 @@ Qed.
 
 End ACMessage.
 
-Module ACMessageImpl (A : NetAddr) (Sn : Signable) (V : SignableValue Sn) (P : PKI A Sn) (TSS : ThresholdSignatureScheme A Sn)
-  (ACDT : ACDataTypes A Sn V P TSS) <: MessageType <: ACMessage A Sn V P TSS ACDT.
+Module ACMessageImpl (A : NetAddr) (Sn : Signable) (V : SignableValue Sn) (PPrim : PKIPrim A Sn) (TSSPrim : ThresholdSignatureSchemePrim A Sn)
+  (ACDT : ACDataTypes) <: MessageType <: ACMessage A Sn V PPrim TSSPrim ACDT.
 
-Include ACMessage A Sn V P TSS ACDT.
+Include ACMessage A Sn V PPrim TSSPrim ACDT.
 
 End ACMessageImpl.

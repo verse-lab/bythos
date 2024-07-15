@@ -132,7 +132,7 @@ Inductive psent_mnt_type_base (psent : PacketSoup) : Type :=
 Record psent_mnt_type : Type := mkPMT {
   pkts : list Packet;
   ps : packets_shape;
-  _ : Forall (fun p => p.(consumed) = false) pkts;
+  _ : Forall (fun p => p.(received) = false) pkts;
   _ : packets_shape_consistent ps pkts;
 }.
 
@@ -221,7 +221,7 @@ Global Arguments PSKnonbyz [_] _ _.
 Definition state_effect (stmap : StateMap) [psent] (psk : psent_sender_kind psent) : Prop :=
   match psk with
   | PSKnonbyz b l => state_effect_base stmap b /\ state_effect_send stmap l
-  | PSKbyz _ p => is_byz p.(src) /\ p.(consumed) = false /\ byz_constraints p.(msg) (mkW stmap psent) (* FIXME: is byz_constraints only about psent? *)
+  | PSKbyz _ p => is_byz p.(src) /\ p.(received) = false /\ byz_constraints p.(msg) (mkW stmap psent) (* FIXME: is byz_constraints only about psent? *)
   end.
 
 Ltac pkts_match pkts := idtac "pkts_match is user defined.".

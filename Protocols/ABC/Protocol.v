@@ -8,13 +8,12 @@ From RecordUpdate Require Import RecordUpdate.
 
 Module Type ACProtocol (A : NetAddr) (Sn : Signable) (V : SignableValue Sn) (* (VBFT : ValueBFT A Sn V) *)
   (BTh : ByzThreshold A)
-  (P : PKI A Sn) (TSS0 : ThresholdSignatureSchemePrim A Sn with Definition thres := BTh.t0) (* ! *)
-  (TSS : ThresholdSignatureScheme A Sn with Module TSSPrim := TSS0)
-  (ACDT : ACDataTypes A Sn V P TSS) 
-  (CC : CertCheckers A Sn V P TSS ACDT) (M : ACMessage A Sn V P TSS ACDT)
+  (PPrim : PKIPrim A Sn)
+  (TSSPrim : ThresholdSignatureSchemePrim A Sn with Definition thres := A.N - BTh.t0)
+  (ACDT : SimpleACDataTypes A Sn V PPrim TSSPrim) (M : ACMessage A Sn V PPrim TSSPrim ACDT)
   (P0 : SimplePacket A M) <: Protocol A M P0 BTh.
 
-Import A V (* VBFT *) BTh P TSS ACDT CC M P0.
+Import A V (* VBFT *) BTh ACDT ACDT.P ACDT.TSS M P0.
 
 Inductive InternalTransition_ :=
   | SubmitIntTrans (v : Value).
@@ -228,12 +227,11 @@ End ACProtocol.
 
 Module ACProtocolImpl (A : NetAddr) (Sn : Signable) (V : SignableValue Sn) (* (VBFT : ValueBFT A Sn V) *)
   (BTh : ByzThreshold A)
-  (P : PKI A Sn) (TSS0 : ThresholdSignatureSchemePrim A Sn with Definition thres := BTh.t0) (* ! *)
-  (TSS : ThresholdSignatureScheme A Sn with Module TSSPrim := TSS0)
-  (ACDT : ACDataTypes A Sn V P TSS) 
-  (CC : CertCheckers A Sn V P TSS ACDT) (M : ACMessage A Sn V P TSS ACDT)
-  (P0 : SimplePacket A M) <: Protocol A M P0 BTh <: ACProtocol A Sn V (* VBFT *) BTh P TSS0 TSS ACDT CC M P0.
+  (PPrim : PKIPrim A Sn)
+  (TSSPrim : ThresholdSignatureSchemePrim A Sn with Definition thres := A.N - BTh.t0)
+  (ACDT : SimpleACDataTypes A Sn V PPrim TSSPrim) (M : ACMessage A Sn V PPrim TSSPrim ACDT)
+  (P0 : SimplePacket A M) <: Protocol A M P0 BTh <: ACProtocol A Sn V (* VBFT *) BTh PPrim TSSPrim ACDT M P0.
 
-Include ACProtocol A Sn V (* VBFT *) BTh P TSS0 TSS ACDT CC M P0.
+Include ACProtocol A Sn V (* VBFT *) BTh PPrim TSSPrim ACDT M P0.
 
 End ACProtocolImpl.

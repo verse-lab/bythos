@@ -102,7 +102,7 @@ let check_genproof =
   let aux st = begin
     if not (!found_proof) then begin
       let open ACP in
-      let pf = CC.genproof st.received_certs in
+      let pf = ACDT.CertCheckersImpl.genproof st.received_certs in
       if pf <> []
       then (found_proof := true; Printf.printf "found culprits: %s" (String.concat "; " (List.map string_of_address pf)); print_newline ())
       else ()

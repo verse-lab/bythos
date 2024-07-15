@@ -81,7 +81,7 @@ Qed.
 Section Fairness.
 
 Definition good_deliver_action_p p w w' :=
-  if consumed p 
+  if received p 
   then True 
   else In p (sentMsgs w) → system_step (Deliver p) w w'.
 
@@ -97,7 +97,7 @@ Fact fairness_is_always_enabled [p] (Hg : good_packet p) :
 Proof.
   unseal.
   hnf.
-  destruct (consumed p); eauto.
+  destruct (received p); eauto.
   destruct Hg as (? & ?).
   eexists.
   intros HH.
@@ -111,7 +111,7 @@ Qed.
 
 (*
 Fact consumed_is_changed_by_delivery_pre :
-  ∀ p, good_packet p → consumed p = false → ∀ w w', In p (sentMsgs w) →
+  ∀ p, good_packet p → received p = false → ∀ w w', In p (sentMsgs w) →
     w' = next_world (Deliver p) w → system_step (Deliver p) w w'.
 Proof.
   intros. hnf in * |-. subst w'. eapply DeliverStep; try solve [ reflexivity | assumption | tauto ].
@@ -119,12 +119,12 @@ Proof.
 Qed.
 *)
 Definition reliable_condition (e : exec World) :=
-  ∀ p, good_packet p → consumed p = false → ∀ n, In p (sentMsgs (e n)) →
+  ∀ p, good_packet p → received p = false → ∀ n, In p (sentMsgs (e n)) →
     ∃ k, system_step (Deliver p) (e (k + n)) (e (S (k + n))).
 
 (*
 Definition reliable_condition_ (e : exec World) :=
-  ∀ p, good_packet p → consumed p = false → ∀ n, In p (sentMsgs (e n)) →
+  ∀ p, good_packet p → received p = false → ∀ n, In p (sentMsgs (e n)) →
     ∃ k, e (S (k + n)) = next_world (Deliver p) (e (k + n)).
 *)
 (* a lemma which will be used below, stating that the existence of
@@ -132,7 +132,7 @@ Definition reliable_condition_ (e : exec World) :=
   hope this would work for different network models ... *)
 
 Fact consumed_is_changed_by_delivery [e : exec World] (Hrc : e ⊨ □ ⟨ next ⟩) 
-  [p n] (E : consumed p = false) (Hin : In p (e n).(sentMsgs)) 
+  [p n] (E : received p = false) (Hin : In p (e n).(sentMsgs)) 
   k (Hnotin : ¬ In p (e (k + n)).(sentMsgs)) :
   ∃ k' : nat, k' < k ∧ system_step (Deliver p) (e (k' + n)) (e (S (k' + n))).
 Proof.
@@ -226,7 +226,7 @@ Proof.
     destruct Hnotin' as (? & ? & ?).
     eauto.
   - intros p Hg k _.
-    destruct (consumed p) eqn:E.
+    destruct (received p) eqn:E.
     1: now exists 0.
     specialize (H _ Hg E).
     (* here, we cannot directly construct the existence, 
@@ -249,9 +249,9 @@ Qed.
 
 Lemma eventual_delivery_single [p] (Hgood : good_packet p) :
   □ ⟨ next ⟩ ∧ fairness ⊢
-  ⌜λ w, In p (sentMsgs w)⌝ ~~> ⌜λ w, In (receive_pkt p) (sentMsgs w)⌝.
+  ⌜λ w, In p (sentMsgs w)⌝ ~~> ⌜λ w, In (markRcv p) (sentMsgs w)⌝.
 Proof.
-  destruct p as [ ? ? ? [] ]; simpl receive_pkt.
+  destruct p as [ ? ? ? [] ]; simpl markRcv.
   1: simpl; apply impl_drop_hyp, leads_to_refl.
   (* exploit the equivalence above to achieve simpler proof! *)
   autounfold with tla.
@@ -303,7 +303,7 @@ Qed.
 Corollary eventual_delivery [pkts] (Hgood : Forall good_packet pkts) :
   □ ⟨ next ⟩ ∧ fairness ⊢
   ⌜λ w, incl pkts (sentMsgs w)⌝ ~~> 
-  ⌜λ w, ∀ p, In p pkts → In (receive_pkt p) (sentMsgs w)⌝. (* need some detour if not to write in this way *)
+  ⌜λ w, ∀ p, In p pkts → In (markRcv p) (sentMsgs w)⌝. (* need some detour if not to write in this way *)
 Proof.
   apply leads_to_combine_batch' with (valid:=good_packet); try assumption.
   - intros; now apply eventual_delivery_single.
@@ -317,7 +317,7 @@ Lemma leads_to_by_eventual_delivery (P Q : World → Prop)
     (* message-driven *)
     P w → ∃ pkts, Forall good_packet pkts ∧ incl pkts (sentMsgs w) ∧
       (∀ w0 l0 (Htrace : system_trace w l0) (Ew0 : w0 = final_world w l0),
-        incl (map receive_pkt pkts) (sentMsgs w0) → Q w0)) :
+        incl (map markRcv pkts) (sentMsgs w0) → Q w0)) :
   ⌜ init ⌝ ∧ □ ⟨ next ⟩ ∧ fairness ⊢ ⌜ P ⌝ ~~> ⌜ Q ⌝.
 Proof.
   tla_pose reachable_in_tla.

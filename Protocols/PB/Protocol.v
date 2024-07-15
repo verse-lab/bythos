@@ -6,21 +6,20 @@ From Bythos.Protocols.PB Require Export Types.
 
 From RecordUpdate Require Import RecordUpdate.
 
-Module Type PBProtocol (A : NetAddr) (R : Round) (Sn : Signable) (V : Value) (Pf : PBProof Sn) (VBFT : ValueBFT A R Sn V Pf) 
+Module Type PBProtocol (A : NetAddr) (R : Round) (Sn : Signable) (V : Value) (Pf : PBProof) (VBFT : ValueBFT A R V Pf) 
   (BTh : ClassicByzThreshold A)
-  (TSS0 : ThresholdSignatureSchemePrim A Sn with Definition thres := BTh.t0) (* ! *)
-  (TSS : ThresholdSignatureScheme A Sn with Module TSSPrim := TSS0)
-  (PBDT : PBDataTypes A R Sn V Pf TSS) (M : PBMessage A R Sn V Pf TSS)
+  (TSSPrim : ThresholdSignatureSchemePrim A Sn with Definition thres := A.N - BTh.t0) (* ! *)
+  (PBDT : PBDataTypes A R Sn V Pf) (M : PBMessage A R Sn V Pf TSSPrim)
   (P0 : SimplePacket A M) <: Protocol A M P0 BTh.
 
-Import A R V Pf VBFT BTh TSS PBDT M P0.
+Module Export TSS := ThresholdSignatureScheme A Sn TSSPrim.
+Import A R V Pf VBFT BTh PBDT M P0.
 
 Inductive InternalTransition_ :=
   | SendAction (r : Round).
 
 Definition InternalTransition := InternalTransition_.
 
-(* TODO repeating from RB *)
 Definition AddrRdPair_eqdec : forall (ar1 ar2 : Address * Round), {ar1 = ar2} + {ar1 <> ar2}
   := prod_eq_dec Address_eqdec Round_eqdec.
 
@@ -122,13 +121,12 @@ Definition procMsgWithCheck (st : State) (src : Address) (msg : Message) : State
 
 End PBProtocol.
 
-Module PBProtocolImpl (A : NetAddr) (R : Round) (Sn : Signable) (V : Value) (Pf : PBProof Sn) (VBFT : ValueBFT A R Sn V Pf) 
+Module PBProtocolImpl (A : NetAddr) (R : Round) (Sn : Signable) (V : Value) (Pf : PBProof) (VBFT : ValueBFT A R V Pf) 
   (BTh : ClassicByzThreshold A)
-  (TSS0 : ThresholdSignatureSchemePrim A Sn with Definition thres := BTh.t0) (* ! *)
-  (TSS : ThresholdSignatureScheme A Sn with Module TSSPrim := TSS0)
-  (PBDT : PBDataTypes A R Sn V Pf TSS) (M : PBMessage A R Sn V Pf TSS)
-  (P0 : SimplePacket A M) <: Protocol A M P0 BTh <: PBProtocol A R Sn V Pf VBFT BTh TSS0 TSS PBDT M P0.
+  (TSSPrim : ThresholdSignatureSchemePrim A Sn with Definition thres := A.N - BTh.t0) (* ! *)
+  (PBDT : PBDataTypes A R Sn V Pf) (M : PBMessage A R Sn V Pf TSSPrim)
+  (P0 : SimplePacket A M) <: Protocol A M P0 BTh <: PBProtocol A R Sn V Pf VBFT BTh TSSPrim PBDT M P0.
 
-Include PBProtocol A R Sn V Pf VBFT BTh TSS0 TSS PBDT M P0.
+Include PBProtocol A R Sn V Pf VBFT BTh TSSPrim PBDT M P0.
 
 End PBProtocolImpl.

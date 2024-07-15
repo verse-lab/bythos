@@ -7,19 +7,18 @@ From Bythos.Protocols.ABC Require Export Protocol.
 
 Module ACAdversary (A : NetAddr) (Sn : Signable) (V : SignableValue Sn) (* (VBFT : ValueBFT A Sn V) *)
   (BTh : ByzThreshold A) (BSett : ByzSetting A)
-  (P : PKI A Sn) (TSS0 : ThresholdSignatureSchemePrim A Sn with Definition thres := BTh.t0) (* ! *)
-  (TSS : ThresholdSignatureScheme A Sn with Module TSSPrim := TSS0)
-  (ACDT : ACDataTypes A Sn V P TSS) 
-  (CC : CertCheckers A Sn V P TSS ACDT) (M : ACMessage A Sn V P TSS ACDT)
+  (PPrim : PKIPrim A Sn)
+  (TSSPrim : ThresholdSignatureSchemePrim A Sn with Definition thres := A.N - BTh.t0)
+  (ACDT : SimpleACDataTypes A Sn V PPrim TSSPrim) (M : ACMessage A Sn V PPrim TSSPrim ACDT)
   (P0 : SimplePacket A M) 
-  (ACP : ACProtocol A Sn V (* VBFT *) BTh P TSS0 TSS ACDT CC M P0) 
+  (ACP : ACProtocol A Sn V (* VBFT *) BTh PPrim TSSPrim ACDT M P0) 
   (Ns : NetState A M P0 BTh ACP) <: Adversary A M BTh BSett P0 ACP Ns.
 
-Import A V (* VBFT *) BTh BSett P TSS ACDT CC M P0 ACP Ns.
+Import A V (* VBFT *) BTh BSett ACDT ACDT.P ACDT.TSS M P0 ACP Ns.
 
 (* yes, how about extracting this to be ...? *)
 Definition sig_seen_in_history (src : Address) (v : Value) (s : Signature) (pkts : PacketSoup) :=
-  exists dst consumed ls, In (mkP src dst (SubmitMsg v ls s) consumed) pkts.
+  exists dst received ls, In (mkP src dst (SubmitMsg v ls s) received) pkts.
 
 Definition cert_correct (psent : PacketSoup) (c : Certificate) :=
   let: (v, nsigs) := c in
@@ -34,7 +33,7 @@ Definition cert_correct (psent : PacketSoup) (c : Certificate) :=
   (since full certificates are assembled from the sent messages), 
   so ignore it for now *)
 Definition lightsig_seen_in_history (src : Address) (v : Value) (ls : LightSignature) (pkts : PacketSoup) :=
-  exists dst consumed s, In (mkP src dst (SubmitMsg v ls s) consumed) pkts.
+  exists dst received s, In (mkP src dst (SubmitMsg v ls s) received) pkts.
 
 (* safety assumption about light certificates: 
   if the number of Byzantine nodes is not sufficiently large, 
@@ -76,20 +75,19 @@ End ACAdversary.
 
 Module Type ACNetworkType (A : NetAddr) (Sn : Signable) (V : SignableValue Sn) (* (VBFT : ValueBFT A Sn V) *)
   (BTh : ByzThreshold A) (BSett : ByzSetting A)
-  (P : PKI A Sn) (TSS0 : ThresholdSignatureSchemePrim A Sn with Definition thres := BTh.t0) (* ! *)
-  (TSS : ThresholdSignatureScheme A Sn with Module TSSPrim := TSS0).
+  (PPrim : PKIPrim A Sn)
+  (TSSPrim : ThresholdSignatureSchemePrim A Sn with Definition thres := A.N - BTh.t0).
 
-Import A V (* VBFT *) BTh BSett P TSS.
+Import A V (* VBFT *) BTh BSett.
 
-Module Export ACDT <: ACDataTypes A Sn V P TSS := ACDataTypesImpl A Sn V P TSS.
-Module Export CC : (* hide implementation *) CertCheckers A Sn V P TSS ACDT := CertCheckersImpl A Sn V P TSS ACDT.
-Module Export M <: MessageType := ACMessageImpl A Sn V P TSS ACDT.
+Module Export ACDT <: SimpleACDataTypes A Sn V PPrim TSSPrim := SimpleACDataTypesImpl A Sn V PPrim TSSPrim.
+Module Export M <: MessageType := ACMessageImpl A Sn V PPrim TSSPrim ACDT.
 Module Export P0 <: SimplePacket A M := SimplePacketImpl A M.
 Module Export PSOp : (* hide implementation *) PacketSoupOperations P0 := PacketSoupOperationsImpl P0.
-Module Export ACP <: Protocol A M P0 BTh <: ACProtocol A Sn V (* VBFT *) BTh P TSS0 TSS ACDT CC M P0 :=
-  ACProtocolImpl A Sn V (* VBFT *) BTh P TSS0 TSS ACDT CC M P0.
+Module Export ACP <: Protocol A M P0 BTh <: ACProtocol A Sn V (* VBFT *) BTh PPrim TSSPrim ACDT M P0 :=
+  ACProtocolImpl A Sn V (* VBFT *) BTh PPrim TSSPrim ACDT M P0.
 Module Export Ns <: NetState A M P0 BTh ACP := NetStateImpl A M P0 BTh ACP.
-Module Export ACAdv <: Adversary A M BTh BSett P0 ACP Ns := ACAdversary A Sn V (* VBFT *) BTh BSett P TSS0 TSS ACDT CC M P0 ACP Ns.
+Module Export ACAdv <: Adversary A M BTh BSett P0 ACP Ns := ACAdversary A Sn V (* VBFT *) BTh BSett PPrim TSSPrim ACDT M P0 ACP Ns.
 
 Include NetworkImpl A M BTh BSett P0 PSOp ACP Ns ACAdv.
 
@@ -97,9 +95,9 @@ End ACNetworkType.
 
 Module ACNetwork (A : NetAddr) (Sn : Signable) (V : SignableValue Sn) (* (VBFT : ValueBFT A Sn V) *)
   (BTh : ByzThreshold A) (BSett : ByzSetting A)
-  (P : PKI A Sn) (TSS0 : ThresholdSignatureSchemePrim A Sn with Definition thres := BTh.t0) (* ! *)
-  (TSS : ThresholdSignatureScheme A Sn with Module TSSPrim := TSS0) <: ACNetworkType A Sn V (* VBFT *) BTh BSett P TSS0 TSS.
+  (PPrim : PKIPrim A Sn)
+  (TSSPrim : ThresholdSignatureSchemePrim A Sn with Definition thres := A.N - BTh.t0) <: ACNetworkType A Sn V (* VBFT *) BTh BSett PPrim TSSPrim.
 
-Include ACNetworkType A Sn V (* VBFT *) BTh BSett P TSS0 TSS.
+Include ACNetworkType A Sn V (* VBFT *) BTh BSett PPrim TSSPrim.
 
 End ACNetwork.

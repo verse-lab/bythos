@@ -71,13 +71,3 @@ Parameter procMsgWithCheck : State -> Address (* sender *) -> Message -> State *
 Parameter procInt : State -> InternalTransition -> State * list Packet.
 
 End Protocol.
-
-(*
-Module Type Protocol' (Export A : NetAddr) (Export M : MessageType) (Export P : SimplePacket A M)(* <: Protocol A M P *).
-
-(* if do not use this instantiation, then Protocol' is essentially Protocol? *)
-(* Module Export P <: PacketType := SimplePacketImpl A M. *)
-Include (Protocol A M P).
-
-End Protocol'.
-*)

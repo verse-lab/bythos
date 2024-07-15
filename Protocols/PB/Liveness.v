@@ -7,16 +7,16 @@ From Bythos.Protocols.PB Require Export Safety.
 From RecordUpdate Require Import RecordUpdate.
 From stdpp Require Import tactics. (* anyway *)
 
-Module PBLiveness (A : NetAddr) (R : Round) (Sn : Signable) (V : Value) (Pf : PBProof Sn) (VBFT : ValueBFT A R Sn V Pf) 
+Module PBLiveness (A : NetAddr) (R : Round) (Sn : Signable) (V : Value) (Pf : PBProof) (VBFT : ValueBFT A R V Pf) 
   (BTh : ClassicByzThreshold A) (BSett : RestrictedByzSetting A BTh)
-  (TSS0 : ThresholdSignatureSchemePrim A Sn with Definition thres := BTh.t0) (* ! *)
-  (TSS : ThresholdSignatureScheme A Sn with Module TSSPrim := TSS0)
-  (PBDT : PBDataTypes A R Sn V Pf TSS).
+  (TSSPrim : ThresholdSignatureSchemePrim A Sn with Definition thres := A.N - BTh.t0)
+  (PBDT : PBDataTypes A R Sn V Pf).
 
-Import A R V Pf VBFT BTh BSett TSS PBDT.
+Import A R V Pf VBFT BTh BSett PBDT.
 Import ssrbool. (* anyway *)
 
-Module Export PBS := PBSafety A R Sn V Pf VBFT BTh BSett TSS0 TSS PBDT.
+Module Export PBS := PBSafety A R Sn V Pf VBFT BTh BSett TSSPrim PBDT.
+Import PBP.TSS.
 
 Set Implicit Arguments. (* anyway *)
 
@@ -63,12 +63,12 @@ Section Proof_of_Termination.
   Definition round_1_end w' := Eval unfold initmsg_in in
     forall n, is_byz n = false -> initmsg_in n true (sentMsgs w').
 
-  Fact round_1_end_suffcond w' (Hincl : incl (map receive_pkt pkts) (sentMsgs w')) :
+  Fact round_1_end_suffcond w' (Hincl : incl (map markRcv pkts) (sentMsgs w')) :
     round_1_end w'.
   Proof.
     destruct Hround1 as (_ & _ & H2). 
     hnf. intros n Hnonbyz_n. specialize (H2 _ Hnonbyz_n).
-    destruct H2 as (? & H2). now apply (in_map receive_pkt), Hincl in H2.
+    destruct H2 as (? & H2). now apply (in_map markRcv), Hincl in H2.
   Qed.
 
   Lemma round_2_start_suffcond w0 l0 (Htrace0 : system_trace w l0) (Ew0 : w0 = final_world w l0) 
@@ -120,12 +120,12 @@ Section Proof_of_Termination.
   Definition round_2_end w' := Eval unfold echomsg_in in
     forall n, is_byz n = false -> echomsg_in n true (sentMsgs w').
 
-  Fact round_2_end_suffcond w' (Hincl : incl (map receive_pkt pkts) (sentMsgs w')) :
+  Fact round_2_end_suffcond w' (Hincl : incl (map markRcv pkts) (sentMsgs w')) :
     round_2_end w'.
   Proof.
     destruct Hround2 as (_ & _ & H2). 
     hnf. intros n Hnonbyz_n. specialize (H2 _ Hnonbyz_n).
-    destruct H2 as (? & H2). now apply (in_map receive_pkt), Hincl in H2.
+    destruct H2 as (? & H2). now apply (in_map markRcv), Hincl in H2.
   Qed.
 
   Lemma src_outputs_suffcond w0 l0 (Htrace0 : system_trace w l0) (Ew0 : w0 = final_world w l0) 

@@ -8,13 +8,14 @@ From Bythos.Properties Require Export Liveness_tla.
 
 Module ACLiveness2 (A : NetAddr) (Sn : Signable) (V : SignableValue Sn) (* (VBFT : ValueBFT A Sn V) *)
   (BTh : ByzThreshold A) (BSett : ByzSetting A)
-  (P : PKI A Sn) (TSS0 : ThresholdSignatureSchemePrim A Sn with Definition thres := BTh.t0) (* ! *)
-  (TSS : ThresholdSignatureScheme A Sn with Module TSSPrim := TSS0).
+  (PPrim : PKIPrim A Sn)
+  (TSSPrim : ThresholdSignatureSchemePrim A Sn with Definition thres := A.N - BTh.t0).
 
-Import A V (* VBFT *) BTh BSett P TSS.
+Import A V (* VBFT *) BTh BSett.
 Import ssrbool. (* anyway *)
 
-Module Export ACLive := ACLiveness A Sn V (* VBFT *) BTh BSett P TSS0 TSS.
+Module Export ACLive := ACLiveness A Sn V (* VBFT *) BTh BSett PPrim TSSPrim.
+Import ACN.ACDT.P ACN.ACDT.TSS.
 Include LivenessTLA A M BTh BSett P0 PSOp ACP Ns ACAdv ACN.
 
 Section A.

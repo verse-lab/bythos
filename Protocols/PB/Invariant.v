@@ -8,16 +8,16 @@ From Bythos.Properties Require Import Invariant.
 From RecordUpdate Require Import RecordUpdate.
 From stdpp Require Import tactics. (* anyway *)
 
-Module PBInvariant (A : NetAddr) (R : Round) (Sn : Signable) (V : Value) (Pf : PBProof Sn) (VBFT : ValueBFT A R Sn V Pf) 
+Module PBInvariant (A : NetAddr) (R : Round) (Sn : Signable) (V : Value) (Pf : PBProof) (VBFT : ValueBFT A R V Pf) 
   (BTh : ClassicByzThreshold A) (BSett : RestrictedByzSetting A BTh)
-  (TSS0 : ThresholdSignatureSchemePrim A Sn with Definition thres := BTh.t0) (* ! *)
-  (TSS : ThresholdSignatureScheme A Sn with Module TSSPrim := TSS0)
-  (PBDT : PBDataTypes A R Sn V Pf TSS).
+  (TSSPrim : ThresholdSignatureSchemePrim A Sn with Definition thres := A.N - BTh.t0)
+  (PBDT : PBDataTypes A R Sn V Pf).
 
-Import A R V Pf VBFT BTh BSett TSS PBDT.
+Import A R V Pf VBFT BTh BSett PBDT.
 Import ssrbool. (* anyway *)
 
-Module Export PBN := PBNetwork A R Sn V Pf VBFT BTh BSett TSS0 TSS PBDT.
+Module Export PBN := PBNetwork A R Sn V Pf VBFT BTh BSett TSSPrim PBDT.
+Import PBP.TSS.
 
 Set Implicit Arguments. (* anyway *)
 
@@ -611,7 +611,7 @@ Proof with (repeat (progress (hnf in *; intros))); simplify_eq; (repeat (progres
         1: intros [ src dst msg used ] Hin%(In_consume_conv_full Hin'). 
         1: destruct Hin as (used' & Hin); specialize (H _ Hin).
         --eapply (h2l_invariants_id_pre Hstep_) in H. simpl in H. exact H.
-        --(* check which packet is consumed this time *)
+        --(* check which packet is received this time *)
           destruct p' as [ src' dst' msg' used' ].
           hnf in H |- *. intros p Hin%In_consume. simpl in Hin.
           destruct Hin as [ <- | (Hin & _) ].

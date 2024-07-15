@@ -6,16 +6,15 @@ From Bythos.Protocols.PB Require Export Liveness.
 
 From Bythos.Properties Require Export Liveness_tla.
 
-Module PBLiveness2 (A : NetAddr) (R : Round) (Sn : Signable) (V : Value) (Pf : PBProof Sn) (VBFT : ValueBFT A R Sn V Pf) 
+Module PBLiveness2 (A : NetAddr) (R : Round) (Sn : Signable) (V : Value) (Pf : PBProof) (VBFT : ValueBFT A R V Pf) 
   (BTh : ClassicByzThreshold A) (BSett : RestrictedByzSetting A BTh)
-  (TSS0 : ThresholdSignatureSchemePrim A Sn with Definition thres := BTh.t0) (* ! *)
-  (TSS : ThresholdSignatureScheme A Sn with Module TSSPrim := TSS0)
-  (PBDT : PBDataTypes A R Sn V Pf TSS).
+  (TSSPrim : ThresholdSignatureSchemePrim A Sn with Definition thres := A.N - BTh.t0)
+  (PBDT : PBDataTypes A R Sn V Pf).
 
-Import A R V Pf VBFT BTh BSett TSS PBDT.
+Import A R V Pf VBFT BTh BSett PBDT.
 Import ssrbool. (* anyway *)
 
-Module Export PBLive := PBLiveness A R Sn V Pf VBFT BTh BSett TSS0 TSS PBDT.
+Module Export PBLive := PBLiveness A R Sn V Pf VBFT BTh BSett TSSPrim PBDT.
 Include LivenessTLA A M BTh BSett P0 PSOp PBP Ns PBAdv PBN.
 Include PBN. Include PBInv. Include PBS. (* avoid too long qualified names *)
 

@@ -7,16 +7,16 @@ From Bythos.Protocols.PB Require Export Invariant.
 From RecordUpdate Require Import RecordUpdate.
 From stdpp Require Import tactics. (* anyway *)
 
-Module PBSafety (A : NetAddr) (R : Round) (Sn : Signable) (V : Value) (Pf : PBProof Sn) (VBFT : ValueBFT A R Sn V Pf) 
+Module PBSafety (A : NetAddr) (R : Round) (Sn : Signable) (V : Value) (Pf : PBProof) (VBFT : ValueBFT A R V Pf) 
   (BTh : ClassicByzThreshold A) (BSett : RestrictedByzSetting A BTh)
-  (TSS0 : ThresholdSignatureSchemePrim A Sn with Definition thres := BTh.t0) (* ! *)
-  (TSS : ThresholdSignatureScheme A Sn with Module TSSPrim := TSS0)
-  (PBDT : PBDataTypes A R Sn V Pf TSS).
+  (TSSPrim : ThresholdSignatureSchemePrim A Sn with Definition thres := A.N - BTh.t0)
+  (PBDT : PBDataTypes A R Sn V Pf).
 
-Import A R V Pf VBFT BTh BSett TSS PBDT.
+Import A R V Pf VBFT BTh BSett PBDT.
 Import ssrbool. (* anyway *)
 
-Module Export PBInv := PBInvariant A R Sn V Pf VBFT BTh BSett TSS0 TSS PBDT.
+Module Export PBInv := PBInvariant A R Sn V Pf VBFT BTh BSett TSSPrim PBDT.
+Import PBP.TSS.
 
 Set Implicit Arguments. (* anyway *)
 

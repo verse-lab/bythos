@@ -9,20 +9,20 @@ From Bythos.Protocols.RB Require Import Liveness_tla.
 
 Module RBACLiveness2 (A : NetAddr) (R : Round) (ARP : AddrRoundPair A R) (Sn : Signable) (V : SignableValue Sn) (VBFT : ValueBFT A R V) 
   (BTh : ClassicByzThreshold A) (BSett : RestrictedByzSetting A BTh)
-  (P : PKI A Sn) (TSS0 : ThresholdSignatureSchemePrim A Sn with Definition thres := BTh.t0) (* ! *)
-  (TSS : ThresholdSignatureScheme A Sn with Module TSSPrim := TSS0).
+  (PPrim : PKIPrim A Sn)
+  (TSSPrim : ThresholdSignatureSchemePrim A Sn with Definition thres := A.N - BTh.t0).
 
-Import A R ARP V VBFT BTh BSett P TSS0 TSS.
+Import A R ARP V VBFT BTh BSett.
 Import ssrbool. (* anyway *)
 
 (* TODO seems like there are some diamond issue, but skip for now *)
 Module RBLiveTLA := RBLiveness2 A R V VBFT BTh BSett.
-Module ACLiveTLA := ACLiveness2 A Sn V BTh BSett P TSS0 TSS.
+Module ACLiveTLA := ACLiveness2 A Sn V BTh BSett PPrim TSSPrim.
 
 Import RBLiveTLA.RBLive.RBS.RBInv ACLiveTLA.ACLive.ACS.ACInv.
 
 Module Export CM := CompMessageImpl RBN.M ACN.M.
-Module Export SCPT := RBACTrigger A R ARP Sn V VBFT BTh RBN.M P TSS0 TSS ACN.ACDT ACN.CC ACN.M
+Module Export SCPT := RBACTrigger A R ARP Sn V VBFT BTh RBN.M PPrim TSSPrim ACN.ACDT ACN.M
   CM RBN.P ACN.P0 RBN.RBP ACN.ACP.
 
 Include CompLiveness2 A RBN.M ACN.M BTh RBN.P ACN.P0 RBN.RBP ACN.ACP SCPT RBN.Ns ACN.Ns

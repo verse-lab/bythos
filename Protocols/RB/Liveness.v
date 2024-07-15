@@ -106,12 +106,12 @@ Section Proof_of_Global_Liveness.
       forall n2, is_byz n2 = false ->
         In (mkP n1 n2 (VoteMsg src r v) true) (sentMsgs w').
 
-  Fact round_1_end_suffcond w' (Hincl : incl (map receive_pkt pkts) (sentMsgs w')) :
+  Fact round_1_end_suffcond w' (Hincl : incl (map markRcv pkts) (sentMsgs w')) :
     round_1_end w'.
   Proof.
     hnf in Hround1. pick VoteMsg as_ HH by_ (destruct_and? Hround1).
     hnf. intros n1 Hin1 n2 Hnonbyz_n2. specialize (HH _ Hin1).
-    destruct HH as (_ & _ & HH). specialize (HH _ Hnonbyz_n2). destruct HH as (? & HH). now apply (in_map receive_pkt), Hincl in HH.
+    destruct HH as (_ & _ & HH). specialize (HH _ Hnonbyz_n2). destruct HH as (? & HH). now apply (in_map markRcv), Hincl in HH.
   Qed.
 
   (* at the same time as round 1 ends *)
@@ -171,13 +171,13 @@ Section Proof_of_Global_Liveness.
   Definition round_2_end w' :=
     Eval unfold mutual_receiving in mutual_receiving (fun _ => VoteMsg src r v) w'.
 
-  Fact round_2_end_suffcond w' (Hincl : incl (map receive_pkt pkts) (sentMsgs w')) :
+  Fact round_2_end_suffcond w' (Hincl : incl (map markRcv pkts) (sentMsgs w')) :
     round_2_end w'.
   Proof.
     hnf in Hround2. pick VoteMsg as_ HH by_ (destruct_and? Hround2).
     hnf. intros n1 Hin1 n2 Hnonbyz_n2. 
     specialize (HH n1 ltac:(unfold nonbyz_senders; rewrite filter_In, negb_true_iff; auto using Address_is_finite)).
-    destruct HH as (_ & _ & HH). specialize (HH _ Hnonbyz_n2). destruct HH as (? & HH). now apply (in_map receive_pkt), Hincl in HH.
+    destruct HH as (_ & _ & HH). specialize (HH _ Hnonbyz_n2). destruct HH as (? & HH). now apply (in_map markRcv), Hincl in HH.
   Qed.
 
   Lemma all_receives_suffcond w0 l0 (Htrace0 : system_trace w l0) (Ew0 : w0 = final_world w l0) 
@@ -240,12 +240,12 @@ Section Proof_of_Validity.
   Definition round_1_end w' :=
     forall n, is_byz n = false -> In (mkP src n (InitialMsg r (value_bft src r)) true) (sentMsgs w').
 
-  Fact round_1_end_suffcond w' (Hincl : incl (map receive_pkt pkts) (sentMsgs w')) :
+  Fact round_1_end_suffcond w' (Hincl : incl (map markRcv pkts) (sentMsgs w')) :
     round_1_end w'.
   Proof.
     destruct Hround1 as (_ & _ & H2). 
     hnf. intros n Hnonbyz_n. specialize (H2 _ Hnonbyz_n).
-    destruct H2 as (? & H2). now apply (in_map receive_pkt), Hincl in H2.
+    destruct H2 as (? & H2). now apply (in_map markRcv), Hincl in H2.
   Qed.
 
   (* at the same time as round 1 ends *)
@@ -308,13 +308,13 @@ Section Proof_of_Validity.
     Eval unfold mutual_receiving in mutual_receiving (fun _ => EchoMsg src r (value_bft src r)) w'.
 
   (* FIXME: this is repeating *)
-  Fact round_2_end_suffcond w' (Hincl : incl (map receive_pkt pkts) (sentMsgs w')) :
+  Fact round_2_end_suffcond w' (Hincl : incl (map markRcv pkts) (sentMsgs w')) :
     round_2_end w'.
   Proof.
     hnf in Hround2. pick EchoMsg as_ HH by_ (destruct_and? Hround2).
     hnf. intros n1 Hin1 n2 Hnonbyz_n2. 
     specialize (HH n1 ltac:(unfold nonbyz_senders; rewrite filter_In, negb_true_iff; auto using Address_is_finite)).
-    destruct HH as (_ & _ & HH). specialize (HH _ Hnonbyz_n2). destruct HH as (? & HH). now apply (in_map receive_pkt), Hincl in HH.
+    destruct HH as (_ & _ & HH). specialize (HH _ Hnonbyz_n2). destruct HH as (? & HH). now apply (in_map markRcv), Hincl in HH.
   Qed.
 
   (* at the same time as round 2 ends *)

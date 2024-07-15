@@ -31,20 +31,20 @@ Include SimplePacket A CM.
 (* auxiliary operations *)
 
 Definition pkt_inl (p : Pk1.Packet) : Packet :=
-  mkP (Pk1.src p) (Pk1.dst p) (inl (Pk1.msg p)) (Pk1.consumed p).
+  mkP (Pk1.src p) (Pk1.dst p) (inl (Pk1.msg p)) (Pk1.received p).
 
 Definition pkt_inr (p : Pk2.Packet) : Packet :=
-  mkP (Pk2.src p) (Pk2.dst p) (inr (Pk2.msg p)) (Pk2.consumed p).
+  mkP (Pk2.src p) (Pk2.dst p) (inr (Pk2.msg p)) (Pk2.received p).
 
 Definition pkt_proj1 (p : Packet) : option Pk1.Packet :=
   match p.(msg) with
-  | inl msg' => Some (Pk1.mkP p.(src) p.(dst) msg' p.(consumed))
+  | inl msg' => Some (Pk1.mkP p.(src) p.(dst) msg' p.(received))
   | _ => None
   end.
 
 Definition pkt_proj2 (p : Packet) : option Pk2.Packet :=
   match p.(msg) with
-  | inr msg' => Some (Pk2.mkP p.(src) p.(dst) msg' p.(consumed))
+  | inr msg' => Some (Pk2.mkP p.(src) p.(dst) msg' p.(received))
   | _ => None
   end.
 

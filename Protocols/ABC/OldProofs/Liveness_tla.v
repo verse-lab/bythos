@@ -45,7 +45,7 @@ Proof.
     intros.
     pose proof (mutual_lightcerts_sent _ _ _ Hw H) as (b1 & b2 & b3 & b4 & Hsuffcond).
     exists (mutual_lightcerts w n1 n2 b1 b2 b3 b4).
-    change (map receive_pkt _) with (mutual_lightcerts w n1 n2 true true true true).
+    change (map markRcv _) with (mutual_lightcerts w n1 n2 true true true true).
     split_and ?; try assumption.
     1: unfold confirmed_different_values, confirmed in H.
     1: unfold mutual_lightcerts; repeat (constructor; try tauto).

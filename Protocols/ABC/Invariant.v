@@ -10,13 +10,14 @@ From stdpp Require Import tactics. (* anyway *)
 
 Module ACInvariant (A : NetAddr) (Sn : Signable) (V : SignableValue Sn) (* (VBFT : ValueBFT A Sn V) *)
   (BTh : ByzThreshold A) (BSett : ByzSetting A)
-  (P : PKI A Sn) (TSS0 : ThresholdSignatureSchemePrim A Sn with Definition thres := BTh.t0) (* ! *)
-  (TSS : ThresholdSignatureScheme A Sn with Module TSSPrim := TSS0).
+  (PPrim : PKIPrim A Sn)
+  (TSSPrim : ThresholdSignatureSchemePrim A Sn with Definition thres := A.N - BTh.t0).
 
-Import A V (* VBFT *) BTh BSett P TSS.
+Import A V (* VBFT *) BTh BSett.
 Import ssrbool. (* anyway *)
 
-Module Export ACN := ACNetwork A Sn V (* VBFT *) BTh BSett P TSS0 TSS.
+Module Export ACN := ACNetwork A Sn V (* VBFT *) BTh BSett PPrim TSSPrim.
+Import ACN.ACDT.P ACN.ACDT.TSS.
 
 Definition id_coh w : Prop := forall n, (w @ n).(id) = n.
 
@@ -180,7 +181,7 @@ Definition inv_confirmmsg_correct_byz p psent_history : Prop := Eval unfold sent
 Definition inv_submitmsg_receive_ p st : Prop :=
   match p.(msg) with
   | SubmitMsg v lsig sig =>
-    if p.(consumed)
+    if p.(received)
     then
       let: src := p.(src) in
       let: dst := p.(dst) in
@@ -1010,7 +1011,7 @@ Qed.
 (* required below? *)
 
 Fact procMsgWithCheck_fresh st src m :
-  Forall (fun p => p.(consumed) = false) (snd (procMsgWithCheck st src m)).
+  Forall (fun p => p.(received) = false) (snd (procMsgWithCheck st src m)).
 Proof with (simpl; rewrite ?Forall_app; auto using broadcast_all_fresh).
   unfold procMsgWithCheck, routine_check.
   destruct st as [ n conf ov from lsigs sigs rlcerts rcerts buffer ], m as [ v lsig sig | (v, cs) | (v, nsigs) ]; simpl.
@@ -1047,7 +1048,7 @@ Proof.
   assert (st'.(id) = n /\ (* required by psent_mnt_sound_pre_pre *)
     st'.(submitted_value) = Some v0 /\ (* required at the end *)
     Forall (fun '(src, msg) => state_effect_recv_ src msg st') buffer /\
-    Forall (fun p => p.(consumed) = false) ps_ /\ (* required to do fresh skip *)
+    Forall (fun p => p.(received) = false) ps_ /\ (* required to do fresh skip *)
     exists l : list psent_mnt_type, 
     psent_mnt (Pid (sentMsgs w)) l (sendout ps_ (sentMsgs w)) /\ state_effect_send (upd n st' (localState w)) l) as Hgoal.
   { clear Est. revert st' ps_ Efr. induction buffer as [ | (src, msg) buffer IH ]; intros; simpl in Efr.
@@ -1132,7 +1133,7 @@ Proof.
   - pose proof (procMsgWithCheck_fresh (w @ dst) src msg) as Hfresh. unfold procMsgWithCheck in Hfresh. rewrite Ef in Hfresh. simpl in Hfresh.
     pose proof (id_coh_always_holds Hw) as Hcoh.
     let pkt := constr:(mkP src dst msg used) in
-      unshelve eapply psent_mnt_sound_pre_pre with (p:=receive_pkt pkt) (psent:=consume pkt (sentMsgs w)) in Ef; try reflexivity; auto.
+      unshelve eapply psent_mnt_sound_pre_pre with (p:=markRcv pkt) (psent:=consume pkt (sentMsgs w)) in Ef; try reflexivity; auto.
     1: rewrite In_consume; simpl; tauto.
     simpl in Ef. unfold state_effect_recv in Ef. destruct Ef as (l & Ha & ((_ & Hre) & Hb)). rewrite upd_refl in Hre.
     split.
@@ -1278,7 +1279,7 @@ Proof with (repeat (progress (hnf in *; intros))); simplify_eq; (repeat (progres
           all: setoid_rewrite Hpsent; saturate_assumptions!...
           all: destruct_exists; repeat match goal with HH : _ |- _ => apply (In_consume_fwd_full Hin') in HH end.
           all: eauto.
-        --(* check which packet is consumed this time *)
+        --(* check which packet is received this time *)
           destruct p' as [ src' dst' msg' used' ].
           hnf in H |- *. intros p Hin%In_consume. simpl in Hin.
           destruct Hin as [ <- | (Hin & _) ].

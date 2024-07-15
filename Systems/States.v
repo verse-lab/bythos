@@ -185,7 +185,7 @@ Module Type PacketConsumption (Export A : NetAddr) (Export M : MessageType) (Exp
 Parameter consume : Packet -> list Packet -> list Packet.
 
 Axiom In_consume : forall p psent p', 
-  In p' (consume p psent) <-> receive_pkt p = p' \/ (In p' psent /\ p <> p' (* p <> p' might be overly restricted? *)).
+  In p' (consume p psent) <-> markRcv p = p' \/ (In p' psent /\ p <> p' (* p <> p' might be overly restricted? *)).
 
 End PacketConsumption.
 
@@ -193,10 +193,10 @@ Module PacketConsumptionImpl (Export A : NetAddr) (Export M : MessageType)
   (Export P : SimplePacket A M) <: PacketConsumption A M P.
 
 Definition consume (p : Packet) (psent : list Packet) :=
-  (receive_pkt p) :: (List.remove Packet_eqdec p psent).
+  (markRcv p) :: (List.remove Packet_eqdec p psent).
 
 Fact In_consume : forall p psent p', 
-  In p' (consume p psent) <-> receive_pkt p = p' \/ (In p' psent /\ p <> p').
+  In p' (consume p psent) <-> markRcv p = p' \/ (In p' psent /\ p <> p').
 Proof. intros. simpl. rewrite in_remove_iff. intuition. Qed.
 
 End PacketConsumptionImpl.
@@ -204,13 +204,13 @@ End PacketConsumptionImpl.
 Module PacketConsumptionImpl' (Export A : NetAddr) (Export M : MessageType) (Export P : SimplePacket A M)
   (Export PC : PacketConsumption A M P).
 
-(* TODO only consider the case where the consumed packet is in psent? *)
+(* TODO only consider the case where the received packet is in psent? *)
 
 Section Main.
 
   Context [psent : list Packet] [p : Packet] (Hin : In p psent).
 
-  Lemma In_consume_idem (Hused : p.(consumed) = true) :
+  Lemma In_consume_idem (Hused : p.(received) = true) :
     forall p', In p' (consume p psent) <-> In p' psent.
   Proof.
     intros. rewrite In_consume. destruct p as [ src dst msg ? ]. simpl in *. subst. 
@@ -219,7 +219,7 @@ Section Main.
 
   (* FIXME: any below can be subsumed by In_consume_iff? *)
   Lemma In_consume_fwd [p'] (Hin' : In p' psent) :
-    In (if Packet_eqdec p' p then receive_pkt p' else p') (consume p psent).
+    In (if Packet_eqdec p' p then markRcv p' else p') (consume p psent).
   Proof.
     destruct (Packet_eqdec p' p) as [ <- | Hneq ]; apply In_consume; intuition.
   Qed.

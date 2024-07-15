@@ -19,13 +19,13 @@ module Pf =
   struct
 
   type coq_Proof =
-    | LightSig of PL2.TSS0.coq_LightSignature
-    | DeliveryCert of PL2.TSS0.coq_CombinedSignature option
+    | LightSig of PL2.TSSPrim.coq_LightSignature
+    | DeliveryCert of PL2.TSSPrim.coq_CombinedSignature option
 
   let coq_Proof_eqdec (pf1 : coq_Proof) (pf2 : coq_Proof) =
     match pf1, pf2 with
-    | LightSig i1, LightSig i2 -> PL2.TSS0.coq_LightSignature_eqdec i1 i2
-    | DeliveryCert (Some l1), DeliveryCert (Some l2) -> PL2.TSS0.coq_CombinedSignature_eqdec l1 l2
+    | LightSig i1, LightSig i2 -> PL2.TSSPrim.coq_LightSignature_eqdec i1 i2
+    | DeliveryCert (Some l1), DeliveryCert (Some l2) -> PL2.TSSPrim.coq_CombinedSignature_eqdec l1 l2
     | _, _ -> false
 
   end
@@ -37,7 +37,7 @@ module VBFT =
   struct
 
   (* need to be outside, since it will be updated by procMsg *)
-  let lst_delivery_cert : (PL2.TSS0.coq_CombinedSignature option) ref = ref None
+  let lst_delivery_cert : (PL2.TSSPrim.coq_CombinedSignature option) ref = ref None
 
   (* will be used in different places *)
   let cur_round = ref 0
@@ -51,7 +51,7 @@ module VBFT =
     let aux ((r, itr) : int * int) =
       let v = fst_value_bft r in
       if itr = 1
-      then (v, Pf.LightSig (PL2.TSS.light_sign string_of_round_value ((r, itr), v) (PL2.TSS0.lightkey_map a)))
+      then (v, Pf.LightSig (PL2.TSSPrim.light_sign (string_of_round_value ((r, itr), v)) (PL2.TSSPrim.lightkey_map a)))
       else (v, Pf.DeliveryCert !lst_delivery_cert)
     in aux
 
@@ -60,15 +60,15 @@ module VBFT =
 module PBDT =
   struct
 
-  let coq_VPfSn = string_of_round_value
+  let coq_RVSn = string_of_round_value
 
   (* this is awkward! ex_validate does not accept the sender as an argument *)
   (* anyway, as a hack, we can use a ref to record the sender *)
   let lst_sender : address ref = ref ("", -1)
 
   let ex_validate ((r, itr) : int * int) (v : int) = function
-    | Pf.LightSig lsig -> (itr = 1) && (PL2.TSS.light_verify coq_VPfSn ((r, itr), v) lsig !lst_sender)
-    | Pf.DeliveryCert (Some cs) -> (itr > 1) && (itr <= VBFT.max_iter) && (PL2.TSS.combined_verify coq_VPfSn ((r, itr - 1), v) cs)
+    | Pf.LightSig lsig -> (itr = 1) && (PL2.TSSPrim.light_verify (coq_RVSn ((r, itr), v)) lsig !lst_sender)
+    | Pf.DeliveryCert (Some cs) -> (itr > 1) && (itr <= VBFT.max_iter) && (PL2.TSSPrim.combined_verify (coq_RVSn ((r, itr - 1), v)) cs)
     | _ -> false
 
   end
@@ -128,7 +128,7 @@ let check () =
       let rd = (r, !VBFT.cur_iter) in
       let v = VBFT.fst_value_bft r in
       Printf.printf "found existing delivery certificate ... ";
-      if not (PL2.TSS.combined_verify PBDT.coq_VPfSn (rd, v) dc)
+      if not (PL2.TSSPrim.combined_verify (PBDT.coq_RVSn (rd, v)) dc)
       then Printf.printf "the delivery certificate for round %d is broken. why?" r
       else ()
     end

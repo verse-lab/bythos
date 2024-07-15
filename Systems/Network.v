@@ -153,7 +153,7 @@ Inductive system_step (q : system_step_descriptor) (w w' : World) : Prop :=
 | DeliverStep (p : Packet) of
       q = Deliver p &
       In p (sentMsgs w) &
-      (* try modelling message duplication by not checking whether p has been consumed or not *)
+      (* try modelling message duplication by not checking whether p has been received or not *)
       (* FIXME: parameterizing here shall result in different models *)
       is_byz (dst p) = false &
       (* cannot reduce inside the inductive definition *)
@@ -294,11 +294,11 @@ Proof.
   all: simpl in *; subst; simpl; eauto.
 Qed.
 
-Corollary consume_norevert [p psent] (Hin : In (receive_pkt p) psent) p' :
-  In (receive_pkt p) (consume p' psent).
+Corollary consume_norevert [p psent] (Hin : In (markRcv p) psent) p' :
+  In (markRcv p) (consume p' psent).
 Proof.
   apply In_consume.
-  destruct (Packet_eqdec (receive_pkt p) p') as [ <- | ]; simpl.
+  destruct (Packet_eqdec (markRcv p) p') as [ <- | ]; simpl.
   - left.
     now apply receive_pkt_idem.
   - intuition.
@@ -316,7 +316,7 @@ Proof.
   all: setoid_rewrite In_sendout.
   - setoid_rewrite In_consume.
     destruct (Packet_eqdec p p0) as [ <- | ].
-    + exists (receive_pkt p); intuition.
+    + exists (markRcv p); intuition.
       hnf; now right.
     + exists p; intuition.
       reflexivity.
@@ -335,7 +335,7 @@ Proof.
 Qed.
 
 Corollary system_step_psent_norevert [p w w' q] : 
-  In (receive_pkt p) (sentMsgs w) -> system_step q w w' -> In (receive_pkt p) (sentMsgs w').
+  In (markRcv p) (sentMsgs w) -> system_step q w w' -> In (markRcv p) (sentMsgs w').
 Proof.
   intros H H0.
   eapply system_step_psent_persistent in H; eauto.
@@ -352,8 +352,8 @@ Proof. rewrite <- receive_pkt_intact with (p:=mkP _ _ _ _) in |- * by auto. appl
 (* HMM more like a trick? *)
 Fact system_step_received_inversion_full [src dst msg w w' q]
   (* TODO well, this is not very good ... *)
-  (Hfresh1 : forall st src m, Forall (fun p => p.(consumed) = false) (snd (procMsgWithCheck st src m)))
-  (Hfresh2 : forall st t, Forall (fun p => p.(consumed) = false) (snd (procInt st t))) : 
+  (Hfresh1 : forall st src m, Forall (fun p => p.(received) = false) (snd (procMsgWithCheck st src m)))
+  (Hfresh2 : forall st t, Forall (fun p => p.(received) = false) (snd (procInt st t))) : 
   In (mkP src dst msg true) (sentMsgs w') -> system_step q w w' -> 
   exists used, In (mkP src dst msg used) (sentMsgs w).
 Proof.
@@ -564,10 +564,10 @@ Proof. intros ? ? ? ? ?. eapply ReachableStep; eauto. Qed.
 Fact reachable_by_trace [w l] (H : system_trace w l) (Hr : reachable w) : reachable (final_world w l).
 Proof. pose proof (reachable_is_invariant) as HH. rewrite <- is_invariant_step_trace in HH. eapply HH; eauto. Qed.
 
-Corollary psent_norevert_is_invariant p : is_invariant_step (fun w => In (receive_pkt p) (sentMsgs w)).
+Corollary psent_norevert_is_invariant p : is_invariant_step (fun w => In (markRcv p) (sentMsgs w)).
 Proof. hnf. intros ???. apply system_step_psent_norevert. Qed.
 
-Corollary psent_norevert_pkts_is_invariant pkts : is_invariant_step (fun w => incl (map receive_pkt pkts) (sentMsgs w)).
+Corollary psent_norevert_pkts_is_invariant pkts : is_invariant_step (fun w => incl (map markRcv pkts) (sentMsgs w)).
 Proof.
   induction pkts as [ | p pkts IH ]; hnf; unfold incl; simpl; intros.
   1: contradiction.
@@ -600,7 +600,7 @@ Proof. intros [ -> | -> ]. all: destruct p; intuition. Qed.
 Fact list_packets_deliverable [pkts w]
   (Hgood : Forall good_packet pkts) (Hincl : incl pkts (sentMsgs w)) :
   exists l, system_trace w l /\
-    incl (map receive_pkt pkts) (sentMsgs (final_world w l)).
+    incl (map markRcv pkts) (sentMsgs (final_world w l)).
 Proof.
   revert w Hincl.
   induction Hgood as [ | p pkts Hg Hgood IH ]; intros.

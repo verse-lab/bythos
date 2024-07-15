@@ -668,7 +668,7 @@ End Backward.
 
 (* this is nonsense ... *)
 Fact procMsgWithCheck_fresh st src m :
-  Forall (fun p => p.(consumed) = false) (snd (procMsgWithCheck st src m)).
+  Forall (fun p => p.(received) = false) (snd (procMsgWithCheck st src m)).
 Proof.
   unfold procMsgWithCheck.
   destruct st as [ n sent echoed voted msgcnt output ], m as [ r v | q r v | q r v ]; simpl.
@@ -678,7 +678,7 @@ Proof.
 Qed.
 
 Fact procInt_fresh st t :
-  Forall (fun p => p.(consumed) = false) (snd (procInt st t)).
+  Forall (fun p => p.(received) = false) (snd (procInt st t)).
 Proof.
   unfold procInt.
   destruct st as [ n sent echoed voted msgcnt output ]; simpl.

@@ -4,33 +4,32 @@ Import (coercions) ssrbool.
 Import ssreflect.SsrSyntax.
 From Bythos.Protocols.PB Require Export Liveness_tla.
 
-Module Type PBProofB (A : NetAddr) (Sn : Signable) (BTh : ClassicByzThreshold A) (TSS0 : ThresholdSignatureSchemePrim A Sn with Definition thres := BTh.t0) (* ! *)
-(TSS : ThresholdSignatureScheme A Sn with Module TSSPrim := TSS0) <: PBProof Sn. (* Proof type of B *)
+Module Type PBProofB (A : NetAddr) (Sn : Signable) (BTh : ClassicByzThreshold A) (TSSPrim : ThresholdSignatureSchemePrim A Sn with Definition thres := A.N - BTh.t0)
+  <: PBProof. (* Proof type of B *)
 
-Import TSS.
+Import TSSPrim.
 
 Definition Proof := CombinedSignature.
 Definition Proof_eqdec := CombinedSignature_eqdec.
 
 End PBProofB.
 
-Module PB2 (Ad : NetAddr) (R : Round) (Sn : Signable) (V : Value) (Pf : PBProof Sn) (VBFT : ValueBFT Ad R Sn V Pf) 
+Module PB2 (Ad : NetAddr) (R : Round) (Sn : Signable) (V : Value) (Pf : PBProof) (VBFT : ValueBFT Ad R V Pf) 
   (BTh : ClassicByzThreshold Ad)
   (BSettA : RestrictedByzSetting Ad BTh)
   (BSettB : RestrictedByzSetting Ad BTh)
-  (TSS0 : ThresholdSignatureSchemePrim Ad Sn with Definition thres := BTh.t0) (* ! *)
-  (TSS : ThresholdSignatureScheme Ad Sn with Module TSSPrim := TSS0)
-  (PfB : PBProofB Ad Sn BTh TSS0 TSS) 
-  (VBFTB : ValueBFT Ad R Sn V PfB)
-  (PBDT : PBDataTypes Ad R Sn V Pf TSS)
-  (PBDTB : PBDataTypes Ad R Sn V PfB TSS with Definition VPfSn := PBDT.VPfSn).
+  (TSSPrim : ThresholdSignatureSchemePrim Ad Sn with Definition thres := Ad.N - BTh.t0)
+  (PfB : PBProofB Ad Sn BTh TSSPrim) 
+  (VBFTB : ValueBFT Ad R V PfB)
+  (PBDT : PBDataTypes Ad R Sn V Pf)
+  (PBDTB : PBDataTypes Ad R Sn V PfB with Definition RVSn := PBDT.RVSn).
 
-Import Ad R V Pf VBFT BTh BSettA BSettB TSS PBDT.
+Import Ad R V Pf VBFT BTh BSettA BSettB PBDT.
 Import ssrbool. (* anyway *)
 
-Module A := PBLiveness2 Ad R Sn V Pf VBFT BTh BSettA TSS0 TSS PBDT.
-Module B := PBLiveness2 Ad R Sn V PfB VBFTB BTh BSettB TSS0 TSS PBDTB.
-
+Module A := PBLiveness2 Ad R Sn V Pf VBFT BTh BSettA TSSPrim PBDT.
+Module B := PBLiveness2 Ad R Sn V PfB VBFTB BTh BSettB TSSPrim PBDTB.
+Import A.PBP.TSS. (* importing which does not really matter *)
 (* If a delivery-certificate exists for v
   then there can only exist a lock-certificate for v
   and there are at least n−2f
