@@ -83,7 +83,7 @@ Section Fairness.
 Definition good_deliver_action_p p w w' :=
   if received p 
   then True 
-  else In p (packetSoup w) → system_step (Deliver p) w w'.
+  else In p (packetSoup w) → system_step (Delivery p) w w'.
 
 Definition fairness : predicate SystemState :=
   (∀ p : Packet, ⌞ good_packet p ⌟ → weak_fairness (good_deliver_action_p p))%L.
@@ -101,7 +101,7 @@ Proof.
   destruct Hg as (? & ?).
   eexists.
   intros HH.
-  eapply DeliverStep with (p:=p); try assumption; try reflexivity.
+  eapply DeliveryStep with (p:=p); try assumption; try reflexivity.
   rewrite (surjective_pairing (procMsg _ _ _)).
   reflexivity.
 Qed.
@@ -112,20 +112,20 @@ Qed.
 (*
 Fact consumed_is_changed_by_delivery_pre :
   ∀ p, good_packet p → received p = false → ∀ w w', In p (packetSoup w) →
-    w' = next_sysstate (Deliver p) w → system_step (Deliver p) w w'.
+    w' = next_sysstate (Delivery p) w → system_step (Delivery p) w w'.
 Proof.
-  intros. hnf in * |-. subst w'. eapply DeliverStep; try solve [ reflexivity | assumption | tauto ].
+  intros. hnf in * |-. subst w'. eapply DeliveryStep; try solve [ reflexivity | assumption | tauto ].
   simpl. rewrite (surjective_pairing (procMsg _ _ _)). reflexivity.
 Qed.
 *)
 Definition reliable_condition (e : exec SystemState) :=
   ∀ p, good_packet p → received p = false → ∀ n, In p (packetSoup (e n)) →
-    ∃ k, system_step (Deliver p) (e (k + n)) (e (S (k + n))).
+    ∃ k, system_step (Delivery p) (e (k + n)) (e (S (k + n))).
 
 (*
 Definition reliable_condition_ (e : exec SystemState) :=
   ∀ p, good_packet p → received p = false → ∀ n, In p (packetSoup (e n)) →
-    ∃ k, e (S (k + n)) = next_sysstate (Deliver p) (e (k + n)).
+    ∃ k, e (S (k + n)) = next_sysstate (Delivery p) (e (k + n)).
 *)
 (* a lemma which will be used below, stating that the existence of
     an undelivered message will only be changed by an delivery action
@@ -134,7 +134,7 @@ Definition reliable_condition_ (e : exec SystemState) :=
 Fact consumed_is_changed_by_delivery [e : exec SystemState] (Hrc : e ⊨ □ ⟨ next ⟩) 
   [p n] (E : received p = false) (Hin : In p (e n).(packetSoup)) 
   k (Hnotin : ¬ In p (e (k + n)).(packetSoup)) :
-  ∃ k' : nat, k' < k ∧ system_step (Deliver p) (e (k' + n)) (e (S (k' + n))).
+  ∃ k' : nat, k' < k ∧ system_step (Delivery p) (e (k' + n)) (e (S (k' + n))).
 Proof.
   induction k as [ | k IH ]; intros; simpl in Hnotin.
   1: contradiction.
@@ -183,14 +183,14 @@ Proof.
 (* what if things go too strong *)
 (*
 Fact fairness_strictly_stronger [e : exec SystemState] (Hrc : e ⊨ □ ⟨ next ⟩) :
-  (e ⊨ (∀ p : Packet, ⌞ good_packet p ⌟ → weak_fairness (system_step (Deliver p)))%L)%L ↔ reliable_condition e.
+  (e ⊨ (∀ p : Packet, ⌞ good_packet p ⌟ → weak_fairness (system_step (Delivery p)))%L)%L ↔ reliable_condition e.
 Proof.
   unfold reliable_condition.
   autounfold with tla in *.
   split; intros H.
   - intros p Hg E n Hin.
     specialize (H _ Hg n).
-    destruct (Classical_Prop.classic (∀ k : nat, tla_enabled (system_step (Deliver p)) (drop k (drop n e)))).
+    destruct (Classical_Prop.classic (∀ k : nat, tla_enabled (system_step (Delivery p)) (drop k (drop n e)))).
     + specialize (H H0).
       destruct H as (k & H).
       rewrite ! drop_drop ! drop_n /= in H.
@@ -199,7 +199,7 @@ Proof.
       destruct H0 as (k & H0).
       rewrite drop_drop drop_n /= in H0.
       assert (¬ In p (e (k + n)).(packetSoup)) as Htmp.
-      { intros Htmp. apply H0. eexists. eapply DeliverStep; try reflexivity; try auto. 1: hnf in *; tauto. 
+      { intros Htmp. apply H0. eexists. eapply DeliveryStep; try reflexivity; try auto. 1: hnf in *; tauto. 
         rewrite (surjective_pairing (procMsg _ _ _)). reflexivity. }
       apply consumed_is_changed_by_delivery in Htmp; auto.
       destruct Htmp as (? & ? & ?).

@@ -279,7 +279,7 @@ Ltac psent_analyze :=
 
 Definition psent_mnt_sound_goal_pre q w w' : Prop :=
   match q with
-  | Byz src dst m =>
+  | Byzantine src dst m =>
     let: p := mkP src dst m false in
     localState w' = localState w /\ 
     packetSoup w' = sendout1 p (packetSoup w) /\

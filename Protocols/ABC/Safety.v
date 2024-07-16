@@ -40,7 +40,7 @@ Definition genproof_soundness w : Prop :=
   forall n nb, isByz n = false -> In nb (genproof (w @ n).(received_certs)) ->
     isByz nb.
 
-(* directly behave as Byz *)
+(* directly behave as Byzantine *)
 Definition behave_byz_is_byz w :=
   forall n v1 v2 sig1 sig2 lsig1 lsig2 dst1 dst2, 
     v1 <> v2 ->
@@ -116,14 +116,14 @@ Proof.
   pick inv_rcerts_correct as_ Hrcerts_trace by_ (pose proof (Hl2h _ Hnonbyz) as []). rewrite Hcoh in Hrcerts_trace.
   apply Hrcerts_trace in Hin1, Hin2.
   destruct Hin1 as (src1 & Hin1), Hin2 as (src2 & Hin2).
-  (* since we assumed that nb is non-Byz, now get to know its submitted value *)
+  (* since we assumed that nb is non-Byzantine, now get to know its submitted value *)
   assert (forall v nsigs src dst used
     (Hin : In (mkP src dst (ConfirmMsg (v, nsigs)) used) (packetSoup w)) (* no matter who sends to whom *)
     (Hin_nsigs : In (nb, sign v (key_map nb)) nsigs),
     (w @ nb).(submitted_value) = Some v) as Htraceback.
   { intros v0 nsigs0 src0 dst0 used0 Hin Hin_nsigs.
     destruct (isByz src0) eqn:Ebyz0.
-    - (* since Byz nodes cannot forge signatures ... *)
+    - (* since Byzantine nodes cannot forge signatures ... *)
       pick inv_confirmmsg_correct_byz as_ H2 by_ (pose proof (Hh2lbyz _ Hin) as []).
       unfold cert_correct, sig_seen_in_history in H2. 
       specialize (H2 Ebyz0 _ _ Hin_nsigs E (correct_sign_verify_ok _ _)).

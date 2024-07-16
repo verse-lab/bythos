@@ -389,7 +389,7 @@ Section Proof_of_Accountability.
     - subst l. apply quorum_intersection; auto; lia.
     - apply and_wlog_l.
       + intros HH. apply Forall_forall. intros x Hin.
-        (* exploit that there exists some non-Byz node *)
+        (* exploit that there exists some non-Byzantine node *)
         specialize (HH _ Hnonbyz_n1). eapply HH, genproof_soundness_always_holds in Hin; auto.
       + intros n Hnonbyz_n. specialize (Hw0 _ Hnonbyz_n). destruct Hw0 as (Hq1 & Hq2). 
         (* need to show that they will be received *)

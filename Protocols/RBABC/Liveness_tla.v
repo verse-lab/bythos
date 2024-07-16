@@ -98,7 +98,7 @@ Proof.
         --(* prepare for the indirectly ... *)
           (* TODO streamline this? *)
           pose proof (reachable_proj2 Hr ACAdv.byz_constraints_SystemState_rel) as (w_ & Hrel_ & Hr_).
-          pose proof Hrel_ as Htmp. apply ACN.next_sysstate_preserves_SystemState_rel with (q:=ACN.Intern n (SubmitIntTrans v)) in Htmp.
+          pose proof Hrel_ as Htmp. apply ACN.next_sysstate_preserves_SystemState_rel with (q:=ACN.Internal n (SubmitIntTrans v)) in Htmp.
           cbn in Htmp. rewrite (proj1 Hrel_) in Htmp. unfold world_proj2, stmap_proj2 in Htmp. simpl in Htmp.
           rewrite -> (surjective_pairing (ACN.ACP.procInt _ _)) in Htmp. 
           (* another way around *)

@@ -149,7 +149,7 @@ Definition inv_submitmsg_correct p stmap : Prop := Eval unfold sent_h2l_nonbyz i
   end.
 
 (* CHECK conjecture: only Byzantine messages require the history argument?
-  only non-Byz messages require the stmap argument? *)
+  only non-Byzantine messages require the stmap argument? *)
 Definition inv_lightconfirmmsg_correct_nonbyz p stmap : Prop := Eval unfold sent_h2l_nonbyz in
   match p with
   | mkP src dst (LightConfirmMsg lc) _ => sent_h2l_nonbyz src dst (LightConfirmMsg lc) stmap
@@ -459,7 +459,7 @@ Record node_state_invariants_pre st st' : Prop := {
   Maybe in the future, we can consider develop some way to state that dependency easily 
   and manage the proof context. 
 *)
-Fact inv_buffer_received_only_pre q (Hq_ : forall n t, q <> Intern n t) 
+Fact inv_buffer_received_only_pre q (Hq_ : forall n t, q <> Internal n t) 
   w w' (Hstep : system_step q w w') : (* FIXME: this should be changed into next_sysstate! system_step is too strong *)
   (* we need all four of them for the induction proof *)
   (forall nn, ((forall n, (w @ n).(id) = n /\ (isByz n = false -> inv_buffer_received (packetSoup w) (w @ n))
@@ -536,7 +536,7 @@ Proof.
     saturate_assumptions! in_ IH. destruct IH as (Hidb & Hsb & Hvv).
     (* use the previous lemma *)
     specialize (Hrcv _ (or_introl eq_refl)). simpl in Hrcv.
-    epose proof (DeliverStep (Deliver (mkP src n msg true)) (mkW (upd n stb (localState w)) (packetSoup w))
+    epose proof (DeliveryStep (Delivery (mkP src n msg true)) (mkW (upd n stb (localState w)) (packetSoup w))
       _ _ eq_refl Hrcv Hnonbyz ?[Goalq]).
     [Goalq]: simpl; rewrite upd_refl, E0; reflexivity.
     eapply inv_buffer_received_only_pre with (nn:=n) in H0; auto. simpl_state. destruct H0 as (H0 & Hq2). unshelve epose proof (H0 _) as H0'.
@@ -550,7 +550,7 @@ Qed.
 Fact inv_buffer_received_only_reformat : always_holds
   (fun w => id_coh w /\ lift_node_inv inv_buffer_received w /\ lift_state_inv buffer_nil_after_submit w).
 Proof.
-  apply grounded_invariant_always_holds. hnf; split.
+  apply inductive_inv_always_holds. hnf; split.
   1: split_and?; hnf; intros; hnf in *; intros; try reflexivity; try contradiction.
   intros ??? (H1 & H2 & H3) Hstep. 
   split_and?; intros n; eapply inv_buffer_received_only with (n:=n) in Hstep; try (intros; split_and?; hypothesis).
@@ -569,7 +569,7 @@ Proof. always_holds_decompose inv_buffer_received_only_reformat. Qed.
 Fact buffer_nil_after_submit_holds : always_holds (lift_state_inv buffer_nil_after_submit).
 Proof. always_holds_decompose inv_buffer_received_only_reformat. Qed.
 
-Fact state_mnt_sound_pre_pre q (Hq_ : forall n t, q <> Intern n t) 
+Fact state_mnt_sound_pre_pre q (Hq_ : forall n t, q <> Internal n t) 
   w w' (Hstep : system_step q w w') :
   forall n, exists l : state_mnt_type_list (w @ n) (w' @ n),
     psent_effect_star n (packetSoup w') l /\ node_state_invariants_pre (w @ n) (w' @ n)
@@ -653,7 +653,7 @@ Proof with (try (now exists (MNTnil _))).
       saturate_assumptions! in_ IH. destruct IH as (l & Ha & HH).
       (* use the previous lemma *)
       specialize (Hrcv _ (or_introl eq_refl)). simpl in Hrcv.
-      epose proof (DeliverStep (Deliver (mkP src n msg true)) (mkW (upd n stb (localState w)) (packetSoup w))
+      epose proof (DeliveryStep (Delivery (mkP src n msg true)) (mkW (upd n stb (localState w)) (packetSoup w))
         _ _ eq_refl Hrcv Hnonbyz ?[Goalq]) as H.
       [Goalq]: simpl; rewrite upd_refl, E0; reflexivity.
       eapply state_mnt_sound_pre_pre with (n:=n) in H; auto. 
@@ -1025,7 +1025,7 @@ Proof with (simpl; rewrite ?Forall_app; auto using broadcast_all_fresh).
   - destruct (andb _ _)...
 Qed.
 
-Fact psent_mnt_sound_pre n t w w' (Hstep : system_step (Intern n t) w w') (Hw : reachable w) :
+Fact psent_mnt_sound_pre n t w w' (Hstep : system_step (Internal n t) w w') (Hw : reachable w) :
   (lift_pkt_inv' inv_submitmsg_receive (packetSoup w) (localState w) ->
     lift_pkt_inv' inv_submitmsg_receive (packetSoup w') (localState w')) /\
   (match t with SubmitIntTrans v => ((w @ n).(submitted_value) = None -> (w' @ n).(submitted_value) = Some v) end) /\
@@ -1060,7 +1060,7 @@ Proof.
       saturate_assumptions! in_ IH. destruct IH as (Hcohb & Hvb & Hre & Hfresh & l & Ha & HH).
       (* use the previous lemma to obtain persistence ... TODO this is cumbersome, any better way? *)
       specialize (Hrcv _ (or_introl eq_refl)). simpl in Hrcv.
-      epose proof (DeliverStep (Deliver (mkP src n msg true)) (mkW (upd n stb (localState w)) (packetSoup w))
+      epose proof (DeliveryStep (Delivery (mkP src n msg true)) (mkW (upd n stb (localState w)) (packetSoup w))
         _ _ eq_refl Hrcv Hnonbyz ?[Goalq]) as H.
       [Goalq]: simpl; rewrite upd_refl, E0; reflexivity.
       eapply state_mnt_sound_pre_pre with (n:=n) in H; auto. simpl in H. destruct H as (ll & _). rewrite !upd_refl in ll.
@@ -1184,14 +1184,14 @@ Record node_psent_h2l_invariants_sent_nonbyz p stmap : Prop := {
 }.
 
 (* this bunch can pass the base case easily, since it does no work for existing packets *)
-(* sending only, since we do not model the local state of Byz node *)
+(* sending only, since we do not model the local state of Byzantine node *)
 Record node_psent_h2l_invariants_byz p history : Prop := {
   _ : inv_lightconfirmmsg_correct_byz p history;
   _ : inv_confirmmsg_correct_byz p history;
 }.
 
 (* this is not easy to prove individually, since we need to prove that 
-    all packets sent out in Deliver or Intern transitions are from non-Byz nodes, 
+    all packets sent out in Delivery or Internal transitions are from non-Byzantine nodes, 
     which needs another proof *)
 (*
 Fact h2l_invariants_byz :
@@ -1315,7 +1315,7 @@ Proof with (repeat (progress (hnf in *; intros))); simplify_eq; (repeat (progres
     rewrite Hpsent, Els. clear Els Hpsent.
     split_and?; intros p; rewrite In_sendout1; intros [ <- | Hin ]; auto.
     all: constructor; hnf; destruct msg as [ | [] | [] ]; simpl; intros; try solve [ auto | congruence | tauto ].
-    (* now only Byz goals left *)
+    (* now only Byzantine goals left *)
     all: clear HHsent HHrcv.
     all: tryif progress saturate_assumptions! then destruct HHbyz else idtac.
     (* here, do some manual work to avoid simplify_eq gives wierd substition results *)

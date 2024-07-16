@@ -41,43 +41,43 @@ Include NetworkImpl A CM BTh BSett CPk CPt CNs CAdv.
 
 Definition ssd_proj1 (q : system_step_descriptor) : N1.system_step_descriptor :=
   match q with
-  | Idle => N1.Idle
-  | Deliver p =>
+  | Stuttering => N1.Stuttering
+  | Delivery p =>
     match pkt_proj1 p with
-    | Some res => N1.Deliver res
-    | _ => N1.Idle
+    | Some res => N1.Delivery res
+    | _ => N1.Stuttering
     end
-  | Intern n r => N1.Intern n r
-  | Byz src dst m =>
+  | Internal n r => N1.Internal n r
+  | Byzantine src dst m =>
     match m with
-    | inl m1 => N1.Byz src dst m1
-    | _ => N1.Idle
+    | inl m1 => N1.Byzantine src dst m1
+    | _ => N1.Stuttering
     end
   end.
 
 (* depending on the previous protocol *)
 Definition ssd_proj2 (q : system_step_descriptor) (w w' : Ns1.SystemState) : N2.system_step_descriptor :=
   match q with
-  | Idle => N2.Idle
-  | Deliver p =>
+  | Stuttering => N2.Stuttering
+  | Delivery p =>
     match pkt_proj2 p with
-    | Some res => N2.Deliver res
+    | Some res => N2.Delivery res
     | _ =>
       let: n := p.(dst) in
       match trigger_procMsg (Ns1.localState w n) (Ns1.localState w' n) with
-      | Some tr2 => N2.Intern n tr2
-      | _ => N2.Idle
+      | Some tr2 => N2.Internal n tr2
+      | _ => N2.Stuttering
       end
     end
-  | Intern n _ =>
+  | Internal n _ =>
     match trigger_procInt (Ns1.localState w n) (Ns1.localState w' n) with
-    | Some tr2 => N2.Intern n tr2
-    | _ => N2.Idle
+    | Some tr2 => N2.Internal n tr2
+    | _ => N2.Stuttering
     end
-  | Byz src dst m =>
+  | Byzantine src dst m =>
     match m with
-    | inr mAC => N2.Byz src dst mAC
-    | _ => N2.Idle
+    | inr mAC => N2.Byzantine src dst mAC
+    | _ => N2.Stuttering
     end
   end.
 
@@ -100,7 +100,7 @@ Proof.
   - destruct msg as [ mRB | mAC ]; simpl.
     + unfold stmap_proj1.
       rewrite -> (surjective_pairing (Pt1.procMsg _ _ _)).
-      split; [ eapply N1.DeliverStep; try reflexivity; simpl; auto | ].
+      split; [ eapply N1.DeliveryStep; try reflexivity; simpl; auto | ].
       * apply option_map_list_In. eexists. split. apply Hpin. reflexivity.
       * rewrite -> (surjective_pairing (Pt1.procMsg _ _ _)). reflexivity.
       * pose proof (procMsgWithCheck_proj1 Ef) as (E1 & E2). rewrite <- E1, <- E2.
@@ -121,7 +121,7 @@ Proof.
           ++right. right. split; eauto. intros <-. apply Hneq. 
             destruct a as [ ? ? [] ? ]; cbn in Hpj |- *; try discriminate.
             congruence.
-    + split; [ eapply N1.IdleStep; try reflexivity; simpl; auto | ].
+    + split; [ eapply N1.StutteringStep; try reflexivity; simpl; auto | ].
       rewrite -> (surjective_pairing (Pt2.procMsg _ _ _)) in Ef.
       revert Ef. intros [= <- <-]. 
       hnf; simpl. split; [ intros ?; unfold stmap_proj1, upd, Ns1.upd; now destruct_eqdec as_ -> | ].
@@ -134,7 +134,7 @@ Proof.
         autorewrite with psent in Hin. destruct Hin as [ (a' & <- & Hin')%in_map_iff | [ <- | (? & ?) ] ]; auto; try discriminate.
   - unfold stmap_proj1. unfold procInt in E.
     rewrite -> (surjective_pairing (Pt1.procInt _ _)).
-    split; [ eapply N1.InternStep; try reflexivity; simpl; auto | ].
+    split; [ eapply N1.InternalStep; try reflexivity; simpl; auto | ].
     1: rewrite -> (surjective_pairing (Pt1.procInt _ _)); reflexivity.
     pose proof (procInt_proj1 E) as (E1 & E2). rewrite <- E1, <- E2.
     hnf; simpl. split; [ intros ?; unfold upd, Ns1.upd; now destruct_eqdec as_ -> | ].
@@ -142,7 +142,7 @@ Proof.
     (* ...? *)
     setoid_rewrite In_sendout. firstorder.
   - destruct m as [ mRB | mAC ]; simpl.
-    + split; [ eapply N1.ByzStep; try reflexivity; simpl; auto | ].
+    + split; [ eapply N1.ByzantineStep; try reflexivity; simpl; auto | ].
       simpl. hnf; simpl. split; auto.
       hnf. intros p. unfold pkts_filter_proj1. autorewrite with psent.
       (* TODO cumbersome ... *)
@@ -152,7 +152,7 @@ Proof.
         --exists a. autorewrite with psent. tauto.
       * intros (a & Hin & Hpj). autorewrite with psent in Hin. destruct Hin as [ <- | Hin ]; eauto.
         cbn in Hpj. injection Hpj as <-. now left.
-    + split; [ eapply N1.IdleStep; try reflexivity; simpl; auto | ].
+    + split; [ eapply N1.StutteringStep; try reflexivity; simpl; auto | ].
       hnf; simpl. split; auto.
       hnf. intros p. unfold pkts_filter_proj1. autorewrite with psent.
       setoid_rewrite In_sendout1. firstorder. subst. discriminate.
@@ -193,7 +193,7 @@ Proof.
       rewrite -> (surjective_pairing (Pt1.procMsg _ _ _)) in Ef |- *.
       rewrite Ef. simpl. rewrite upd_refl, E1. 
       destruct (trigger_procMsg _ _) in Ef |- *.
-      * split; [ eapply N2.InternStep; try reflexivity; simpl; auto | ].
+      * split; [ eapply N2.InternalStep; try reflexivity; simpl; auto | ].
         all: rewrite -> (surjective_pairing (Pt2.procInt _ _)) in Ef.
         all: simpl; unfold stmap_proj2; rewrite -> (surjective_pairing (Pt2.procInt _ _)); try reflexivity.
         revert Ef. intros [= <- <-]. 
@@ -208,7 +208,7 @@ Proof.
           destruct Hin as [ [ Hin | Hin ] | [ <- | (Hin & Hneq) ] ]; eauto.
           all: apply in_map_iff in Hin; destruct Hin as (a' & <- & Hin'); try discriminate.
           apply pkt_proj2_refl_must in Hpj. subst. tauto.
-      * split; [ eapply N2.IdleStep; try reflexivity; simpl; auto | ].
+      * split; [ eapply N2.StutteringStep; try reflexivity; simpl; auto | ].
         revert Ef. intros [= <- <-].
         hnf; simpl. split; [ intros ?; unfold stmap_proj2, upd, Ns2.upd; now destruct_eqdec as_ -> | ].
         hnf. intros p. unfold pkts_filter_proj2. autorewrite with psent.
@@ -219,7 +219,7 @@ Proof.
           destruct Hin as [ (a' & <- & Hin')%in_map_iff | [ <- | (Hin & Hneq) ] ]; eauto.
     + unfold stmap_proj2.
       rewrite -> (surjective_pairing (Pt2.procMsg _ _ _)).
-      split; [ eapply N2.DeliverStep; try reflexivity; simpl; auto | ].
+      split; [ eapply N2.DeliveryStep; try reflexivity; simpl; auto | ].
       * apply option_map_list_In. eexists. split. apply Hpin. reflexivity.
       * rewrite -> (surjective_pairing (Pt2.procMsg _ _ _)). reflexivity.
       * pose proof (procMsgWithCheck_proj2 Ef) as (E1 & E2). rewrite <- E1, <- E2.
@@ -246,7 +246,7 @@ Proof.
     unfold procInt in E. rewrite -> (surjective_pairing (Pt1.procInt _ _)), <- E1 in E.
     (* TODO are the proofs above overly complicated? *)
     destruct (trigger_procInt _ _) eqn:Etr in E |- *.
-    + split; [ eapply N2.InternStep; try reflexivity; simpl; auto | ].
+    + split; [ eapply N2.InternalStep; try reflexivity; simpl; auto | ].
       1: rewrite -> (surjective_pairing (Pt2.procInt _ _)); reflexivity.
       clear E1 E2 Etr. 
       simpl. unfold stmap_proj2. rewrite -> (surjective_pairing (Pt2.procInt _ _)) in E |- *. 
@@ -264,7 +264,7 @@ Proof.
         all: apply in_map_iff in Hin; destruct Hin as (a' & <- & Hin'); try discriminate.
         apply pkt_proj2_refl_must in Hpj. subst. tauto.
     + clear E1 E2 Etr. revert E. intros [= <- <-].
-      split; [ eapply N2.IdleStep; try reflexivity; simpl; auto | ].
+      split; [ eapply N2.StutteringStep; try reflexivity; simpl; auto | ].
       hnf; simpl. split; [ intros ?; unfold stmap_proj2, upd, Ns2.upd; now destruct_eqdec as_ -> | ].
       hnf. intros p. unfold pkts_filter_proj2. autorewrite with psent.
       (* TODO cumbersome ... *)
@@ -274,12 +274,12 @@ Proof.
         destruct Hin as [ (a' & <- & Hin')%in_map_iff | ? ]; eauto. discriminate.
   - (* TODO repeating the proof above *)
     destruct m as [ mRB | mAC ]; simpl.
-    + split; [ eapply N2.IdleStep; try reflexivity; simpl; auto | ].
+    + split; [ eapply N2.StutteringStep; try reflexivity; simpl; auto | ].
       hnf; simpl. split; auto.
       hnf. intros p. unfold pkts_filter_proj2. autorewrite with psent.
       (* TODO cumbersome ... *)
       setoid_rewrite In_sendout1. firstorder. subst. discriminate.
-    + split; [ eapply N2.ByzStep; try reflexivity; simpl; auto | ].
+    + split; [ eapply N2.ByzantineStep; try reflexivity; simpl; auto | ].
       simpl. hnf; simpl. split; auto.
       hnf. intros p. unfold pkts_filter_proj2. autorewrite with psent.
       (* TODO cumbersome ... *)
