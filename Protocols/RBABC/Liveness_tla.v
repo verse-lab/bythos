@@ -26,12 +26,12 @@ Module Export SCPT := RBACTrigger A R ARP Sn V VBFT BTh RBN.M PPrim TSSPrim ACN.
   CM RBN.P ACN.P0 RBN.RBP ACN.ACP.
 
 Include CompLiveness2 A RBN.M ACN.M BTh RBN.P ACN.P0 RBN.RBP ACN.ACP SCPT RBN.Ns ACN.Ns
-  BSett RBN.RBAdv ACN.ACAdv RBN.PSOp ACN.PSOp RBN ACN.
+  BSett RBN.RBAdv ACN.ACAdv RBN ACN.
 
 Definition all_receives_RB src r v w : Prop :=
   RBLiveTLA.RBLive.all_receives src r v (world_proj1 w).
 
-Lemma go1 : forall src r f0 (Hnonbyz_src : is_byz src = false),
+Lemma go1 : forall src r f0 (Hnonbyz_src : isByz src = false),
   ⌜ init ⌝ ∧ nextf f0 ∧ fairness ∧ disambiguation f0 ⊢
   ⌜ λ w, (w @ src).(st1).(sent) r ⌝ ~~> ⌜ all_receives_RB src r (value_bft src r) ⌝.
 Proof.
@@ -43,7 +43,7 @@ Proof.
   pose proof (conj Hini' (conj (RBLiveTLA.nextf_impl_next _ _ Hf') Hfair)) as HH%(RBLiveTLA.validity_in_tla _ r Hnonbyz_src).
   apply RBLiveTLA.leads_to_exec_rel with (e':=exec_proj1 e) in HH; auto.
   - hnf; intros ?? (HHH & ?); now rewrite HHH.
-  - apply RBN.Ns.stmap_peq_cong_implies_World_rel_cong, RBLiveTLA.RBLive.all_receives_stmap_peq_cong.
+  - apply RBN.Ns.stmap_peq_cong_implies_SystemState_rel_cong, RBLiveTLA.RBLive.all_receives_stmap_peq_cong.
 Qed.
 
 Definition all_honest_nodes_submitted_AC v w : Prop :=
@@ -57,19 +57,19 @@ Lemma go2 : forall f0 v,
   ⌜ all_honest_nodes_submitted_AC v ⌝ ~~> ⌜ all_honest_nodes_confirmed_AC v ⌝.
 Proof.
   intros. hnf. intros e (Hini & Hf & Hfair & Hdg).
-  pose proof (exec_norm2_sound_next ACAdv.byz_constraints_World_rel e f0 Hf) as (Hrel & Hf').
+  pose proof (exec_norm2_sound_next ACAdv.byz_constraints_SystemState_rel e f0 Hf) as (Hrel & Hf').
   pose proof (exec_norm2_sound_init e f0 Hini) as Hini'.
   set (e' := exec_norm2 f0 e) in Hrel, Hf', Hini'.
   eapply exec_norm2_sound_fairness in Hfair; eauto.
   pose proof (conj Hini' (conj (ACLiveTLA.nextf_impl_next _ _ Hf') Hfair)) as HH%(ACLiveTLA.terminating_convergence_in_tla v num_byz_le_f).
   apply ACLiveTLA.leads_to_exec_rel with (e':=exec_proj2 e) in HH; auto.
-  all: apply ACN.Ns.stmap_peq_cong_implies_World_rel_cong; 
+  all: apply ACN.Ns.stmap_peq_cong_implies_SystemState_rel_cong; 
     auto using ACLiveTLA.ACLive.Terminating_Convergence.all_honest_nodes_submitted_stmap_peq_cong, 
       ACLiveTLA.ACLive.Terminating_Convergence.all_honest_nodes_confirmed_stmap_peq_cong.
 Qed.
 
 Lemma inv1 : forall w, reachable w -> 
-  forall n, is_byz n = false ->
+  forall n, isByz n = false ->
     (* this holds for any num_byz *)
     ((ACN.Ns.localState (world_proj2 w) n).(submitted_value) = None <->
       (RBN.Ns.localState (world_proj1 w) n).(output) arp = nil) /\
@@ -82,7 +82,7 @@ Proof.
     (* output persistence *)
     pose proof (ssd_proj1_sound Hstep) as (Hstep' & Hrel).
     pose proof (RBLiveTLA.RBLive.RBS.RBInv.persistent_invariants Hstep') as Htmp.
-    apply (RBN.lift_state_pair_inv_mirrors_World_rel (w1:=world_proj1 w) ltac:(reflexivity) Hrel) in Htmp.
+    apply (RBN.lift_state_pair_inv_mirrors_SystemState_rel (w1:=world_proj1 w) ltac:(reflexivity) Hrel) in Htmp.
     pick output_persistent as_ Ho by_ (pose proof (Htmp n) as []). specialize (Ho arp.1 arp.2). rewrite -surjective_pairing in Ho.
     clear Htmp Hstep' Hrel.
 
@@ -97,8 +97,8 @@ Proof.
         destruct (trigger_procMsg _ _) as [ [ v ] | ] eqn:Etr in Ef.
         --(* prepare for the indirectly ... *)
           (* TODO streamline this? *)
-          pose proof (reachable_proj2 Hr ACAdv.byz_constraints_World_rel) as (w_ & Hrel_ & Hr_).
-          pose proof Hrel_ as Htmp. apply ACN.next_world_preserves_World_rel with (q:=ACN.Intern n (SubmitIntTrans v)) in Htmp.
+          pose proof (reachable_proj2 Hr ACAdv.byz_constraints_SystemState_rel) as (w_ & Hrel_ & Hr_).
+          pose proof Hrel_ as Htmp. apply ACN.next_sysstate_preserves_SystemState_rel with (q:=ACN.Intern n (SubmitIntTrans v)) in Htmp.
           cbn in Htmp. rewrite (proj1 Hrel_) in Htmp. unfold world_proj2, stmap_proj2 in Htmp. simpl in Htmp.
           rewrite -> (surjective_pairing (ACN.ACP.procInt _ _)) in Htmp. 
           (* another way around *)
@@ -110,7 +110,7 @@ Proof.
           cbn in Hstep. rewrite -> (surjective_pairing (ACN.ACP.procInt _ _)) in Hstep. simpl in Hstep. 
           (* step for the reachable one *)
           destruct Hstep as (Hstep & Hrel).
-          pose proof Hstep as Hstep_. eapply ACN.step_mirrors_World_rel in Hstep; try apply ACAdv.byz_constraints_World_rel. (* FIXME: this is bad! *)
+          pose proof Hstep as Hstep_. eapply ACN.step_mirrors_SystemState_rel in Hstep; try apply ACAdv.byz_constraints_SystemState_rel. (* FIXME: this is bad! *)
           2: symmetry; apply Hrel_.
           (* 2: rewrite Htmp.  *)
           (* TODO why keep rewriting ... *)
@@ -144,7 +144,7 @@ Proof.
 Qed.
 
 Lemma inv1' : forall w, reachable w -> 
-  forall n, is_byz n = false ->
+  forall n, isByz n = false ->
     (* this holds for any num_byz *)
     (forall v, In v ((RBN.Ns.localState (world_proj1 w) n).(output) arp) ->
       (ACN.Ns.localState (world_proj2 w) n).(submitted_value) = Some v).
@@ -171,7 +171,7 @@ Proof.
   rewrite <- surjective_pairing in H. apply inv1' in H; auto.
 Qed.
 
-Lemma validity_overall f (Hnonbyz : is_byz arp.1 = false) :
+Lemma validity_overall f (Hnonbyz : isByz arp.1 = false) :
   ⌜ init ⌝ ∧ nextf f ∧ fairness ∧ disambiguation f ⊢
   ⌜ λ w, (w @ arp.1).(st1).(sent) arp.2 ⌝ ~~> ⌜ all_honest_nodes_confirmed_AC (value_bft arp.1 arp.2) ⌝.
 Proof.

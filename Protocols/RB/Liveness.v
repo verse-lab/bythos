@@ -15,17 +15,17 @@ Import A R V VBFT BTh BSett.
 Import ssrbool. (* anyway *)
 
 Module Export RBS := RBSafety A R V VBFT BTh BSett.
-Include Liveness A M BTh BSett P PSOp RBP Ns RBAdv RBN.
+Include Liveness A M BTh BSett P RBP Ns RBAdv RBN.
 
 Set Implicit Arguments. (* anyway *)
 
 (* at the beginning *)
-Definition some_receives src r v w : Prop := exists n, is_byz n = false /\ In v ((w @ n).(output) (src, r)).
+Definition some_receives src r v w : Prop := exists n, isByz n = false /\ In v ((w @ n).(output) (src, r)).
 
-(* Definition nonfaulty_bcast src r w : Prop := is_byz src = false /\ (w @ src).(sent) r. *)
+(* Definition nonfaulty_bcast src r w : Prop := isByz src = false /\ (w @ src).(sent) r. *)
 
 (* at the end *)
-Definition all_receives src r v w : Prop := forall n, is_byz n = false -> In v ((w @ n).(output) (src, r)).
+Definition all_receives src r v w : Prop := forall n, isByz n = false -> In v ((w @ n).(output) (src, r)).
 
 Fact all_receives_stmap_peq_cong src r v : stmap_peq_cong (all_receives src r v).
 Proof. unfold stmap_peq_cong, all_receives. intros w w' Hs. hnf in Hs. now setoid_rewrite Hs. Qed.
@@ -43,7 +43,7 @@ Section Proof_of_Global_Liveness.
     pkts_multi_to_all size w nonbyz_senders pkts (fun _ => VoteMsg src r v) (fun w n => (w @ n).(voted) (src, r) = Some v).
 
   Lemma pkts_needed_by_voted_nodes w size (H_w_reachable : reachable w)
-    nonbyz_senders (Hf_nonbyz : forall n, In n nonbyz_senders -> is_byz n = false)
+    nonbyz_senders (Hf_nonbyz : forall n, In n nonbyz_senders -> isByz n = false)
     (Hnodup : List.NoDup nonbyz_senders) (Hsize : size <= length nonbyz_senders)
     (Hallvoted : forall n, In n nonbyz_senders -> (w @ n).(voted) (src, r) = Some v) :
     exists pkts, pkts_needed size w nonbyz_senders pkts.
@@ -52,9 +52,9 @@ Section Proof_of_Global_Liveness.
     exists (List.filter (fun p => 
       match p.(msg) with
       | VoteMsg _ _ _ =>
-        (is_left (in_dec Address_eqdec (P.src p) nonbyz_senders)) && (negb (is_byz p.(dst)))
+        (is_left (in_dec Address_eqdec (P.src p) nonbyz_senders)) && (negb (isByz p.(dst)))
       | _ => false
-      end) (sentMsgs w)).
+      end) (packetSoup w)).
     hnf. split_and?; auto using incl_filter.
     - apply Forall_forall. intros [ s d [] b ] (Hin & Hcheck)%filter_In; simpl in Hcheck; try discriminate.
       unfold is_left in Hcheck. rewrite andb_true_iff, negb_true_iff, sumbool_is_left in Hcheck.
@@ -71,7 +71,7 @@ Section Proof_of_Global_Liveness.
 
   Section Round1.
 
-  Variable (w : World).
+  Variable (w : SystemState).
   Hypotheses (H_w_reachable : reachable w) (Hstart : some_receives src r v w).
 
   Definition pkts_needed_in_round_1 nonbyz_senders pkts : Prop :=
@@ -103,10 +103,10 @@ Section Proof_of_Global_Liveness.
   (* FIXME: this might be rewritten as mutual_receiving *)
   Definition round_1_end w' :=
     forall n1, In n1 nonbyz_senders -> 
-      forall n2, is_byz n2 = false ->
-        In (mkP n1 n2 (VoteMsg src r v) true) (sentMsgs w').
+      forall n2, isByz n2 = false ->
+        In (mkP n1 n2 (VoteMsg src r v) true) (packetSoup w').
 
-  Fact round_1_end_suffcond w' (Hincl : incl (map markRcv pkts) (sentMsgs w')) :
+  Fact round_1_end_suffcond w' (Hincl : incl (map markRcv pkts) (packetSoup w')) :
     round_1_end w'.
   Proof.
     hnf in Hround1. pick VoteMsg as_ HH by_ (destruct_and? Hround1).
@@ -116,9 +116,9 @@ Section Proof_of_Global_Liveness.
 
   (* at the same time as round 1 ends *)
   Definition round_2_start w' :=
-    forall n, is_byz n = false -> (w' @ n).(voted) (src, r) = Some v.
+    forall n, isByz n = false -> (w' @ n).(voted) (src, r) = Some v.
 
-  Lemma round_2_start_suffcond w0 l0 (Htrace0 : system_trace w l0) (Ew0 : w0 = final_world w l0) 
+  Lemma round_2_start_suffcond w0 l0 (Htrace0 : system_trace w l0) (Ew0 : w0 = final_sysstate w l0) 
     (Hw0 : round_1_end w0) : round_2_start w0.
   Proof.
     pose proof (reachable_by_trace Htrace0 H_w_reachable) as H_w0_reachable. rewrite <- Ew0 in H_w0_reachable.
@@ -147,13 +147,13 @@ Section Proof_of_Global_Liveness.
 
   Section Round2.
 
-  Variable (w : World).
+  Variable (w : SystemState).
   Hypothesis (H_w_reachable : reachable w) (Hstart : round_2_start w).
 
   Definition pkts_needed_in_round_2 nonbyz_senders pkts : Prop :=
     Eval unfold pkts_needed in pkts_needed (N - f) w nonbyz_senders pkts.
 
-  Let nonbyz_senders := (List.filter (fun n => negb (is_byz n)) valid_nodes).
+  Let nonbyz_senders := (List.filter (fun n => negb (isByz n)) valid_nodes).
 
   (* in the second round, there are (N-f) non-faulty nodes broadcasting Vote messages *)
   Lemma round_2_pkts :
@@ -171,7 +171,7 @@ Section Proof_of_Global_Liveness.
   Definition round_2_end w' :=
     Eval unfold mutual_receiving in mutual_receiving (fun _ => VoteMsg src r v) w'.
 
-  Fact round_2_end_suffcond w' (Hincl : incl (map markRcv pkts) (sentMsgs w')) :
+  Fact round_2_end_suffcond w' (Hincl : incl (map markRcv pkts) (packetSoup w')) :
     round_2_end w'.
   Proof.
     hnf in Hround2. pick VoteMsg as_ HH by_ (destruct_and? Hround2).
@@ -180,7 +180,7 @@ Section Proof_of_Global_Liveness.
     destruct HH as (_ & _ & HH). specialize (HH _ Hnonbyz_n2). destruct HH as (? & HH). now apply (in_map markRcv), Hincl in HH.
   Qed.
 
-  Lemma all_receives_suffcond w0 l0 (Htrace0 : system_trace w l0) (Ew0 : w0 = final_world w l0) 
+  Lemma all_receives_suffcond w0 l0 (Htrace0 : system_trace w l0) (Ew0 : w0 = final_sysstate w l0) 
     (Hw0 : round_2_end w0) : all_receives src r v w0.
   Proof.
     pose proof (reachable_by_trace Htrace0 H_w_reachable) as H_w0_reachable. rewrite <- Ew0 in H_w0_reachable.
@@ -207,17 +207,17 @@ Module Validity.
 Section Proof_of_Validity.
 
   Variables (src : Address) (r : Round).
-  Hypothesis (Hnonbyz_src : is_byz src = false).
+  Hypothesis (Hnonbyz_src : isByz src = false).
 
   Section Round1.
 
-  Variable (w : World).
+  Variable (w : SystemState).
   Hypotheses (H_w_reachable : reachable w) (Hstart : (w @ src).(sent) r).
 
   Definition pkts_needed_in_round_1 pkts : Prop :=
-    incl pkts (sentMsgs w) /\
+    incl pkts (packetSoup w) /\
     Forall good_packet pkts /\ (* since pkts is under-specified *)
-    (forall n, is_byz n = false ->
+    (forall n, isByz n = false ->
       exists used, In (mkP src n (InitialMsg r (value_bft src r)) used) pkts).
 
   Lemma round_1_pkts : exists pkts, pkts_needed_in_round_1 pkts.
@@ -225,7 +225,7 @@ Section Proof_of_Validity.
     unfold pkts_needed_in_round_1. saturate.
     exists (List.filter (fun p =>
       (Message_eqdec p.(msg) (InitialMsg r (value_bft src r))) &&
-      (Address_eqdec (P.src p) src) && (negb (is_byz p.(dst)))) (sentMsgs w)).
+      (Address_eqdec (P.src p) src) && (negb (isByz p.(dst)))) (packetSoup w)).
     split_and?; auto using incl_filter.
     - apply Forall_forall. intros [ s d m b ] (Hin & Hcheck)%filter_In. simpl in Hcheck.
       unfold is_left in Hcheck. rewrite ! andb_true_iff, ! negb_true_iff in Hcheck. hnf. destruct_eqdec in_ Hcheck as_ ?; try eqsolve. now simplify_eq.
@@ -238,9 +238,9 @@ Section Proof_of_Validity.
   Hypotheses (Hround1 : pkts_needed_in_round_1 pkts).
 
   Definition round_1_end w' :=
-    forall n, is_byz n = false -> In (mkP src n (InitialMsg r (value_bft src r)) true) (sentMsgs w').
+    forall n, isByz n = false -> In (mkP src n (InitialMsg r (value_bft src r)) true) (packetSoup w').
 
-  Fact round_1_end_suffcond w' (Hincl : incl (map markRcv pkts) (sentMsgs w')) :
+  Fact round_1_end_suffcond w' (Hincl : incl (map markRcv pkts) (packetSoup w')) :
     round_1_end w'.
   Proof.
     destruct Hround1 as (_ & _ & H2). 
@@ -250,9 +250,9 @@ Section Proof_of_Validity.
 
   (* at the same time as round 1 ends *)
   Definition round_2_start w' :=
-    forall n, is_byz n = false -> (w' @ n).(echoed) (src, r) = Some (value_bft src r).
+    forall n, isByz n = false -> (w' @ n).(echoed) (src, r) = Some (value_bft src r).
 
-  Lemma round_2_start_suffcond w0 l0 (Htrace0 : system_trace w l0) (Ew0 : w0 = final_world w l0) 
+  Lemma round_2_start_suffcond w0 l0 (Htrace0 : system_trace w l0) (Ew0 : w0 = final_sysstate w l0) 
     (Hw0 : round_1_end w0) : round_2_start w0.
   Proof.
     pose proof (reachable_by_trace Htrace0 H_w_reachable) as H_w0_reachable. rewrite <- Ew0 in H_w0_reachable.
@@ -270,14 +270,14 @@ Section Proof_of_Validity.
 
   Section Round2.
 
-  Variable (w : World).
+  Variable (w : SystemState).
   Hypotheses (H_w_reachable : reachable w) (Hstart : round_2_start w).
 
   Definition pkts_needed_in_round_2 nonbyz_senders pkts : Prop :=
     Eval unfold pkts_multi_to_all in pkts_multi_to_all (N - f) w nonbyz_senders pkts (fun _ => EchoMsg src r (value_bft src r))
       (fun w n => (w @ n).(echoed) (src, r) = Some (value_bft src r)).
 
-  Let nonbyz_senders := (List.filter (fun n => negb (is_byz n)) valid_nodes).
+  Let nonbyz_senders := (List.filter (fun n => negb (isByz n)) valid_nodes).
 
   (* in the second round, there are (N-f) non-faulty nodes broadcasting Echo messages *)
   Lemma round_2_pkts :
@@ -286,9 +286,9 @@ Section Proof_of_Validity.
     unfold pkts_needed_in_round_2, nonbyz_senders. saturate.
     exists (List.filter (fun p => 
       match p.(msg) with
-      | EchoMsg _ _ _ => (negb (is_byz (P.src p))) && (negb (is_byz p.(dst)))
+      | EchoMsg _ _ _ => (negb (isByz (P.src p))) && (negb (isByz p.(dst)))
       | _ => false
-      end) (sentMsgs w)).
+      end) (packetSoup w)).
     hnf. split_and?; auto using incl_filter, NoDup_filter, valid_nodes_NoDup, nonbyz_lower_bound.
     - apply Forall_forall. intros [ s d [] b ] (Hin & Hcheck)%filter_In; simpl in Hcheck; try discriminate.
       now rewrite andb_true_iff, ! negb_true_iff in Hcheck.
@@ -308,7 +308,7 @@ Section Proof_of_Validity.
     Eval unfold mutual_receiving in mutual_receiving (fun _ => EchoMsg src r (value_bft src r)) w'.
 
   (* FIXME: this is repeating *)
-  Fact round_2_end_suffcond w' (Hincl : incl (map markRcv pkts) (sentMsgs w')) :
+  Fact round_2_end_suffcond w' (Hincl : incl (map markRcv pkts) (packetSoup w')) :
     round_2_end w'.
   Proof.
     hnf in Hround2. pick EchoMsg as_ HH by_ (destruct_and? Hround2).
@@ -321,7 +321,7 @@ Section Proof_of_Validity.
   Definition round_3_start :=
     Eval unfold Global_Liveness.round_2_start in Global_Liveness.round_2_start src r (value_bft src r).
 
-  Lemma round_3_start_suffcond w0 l0 (Htrace0 : system_trace w l0) (Ew0 : w0 = final_world w l0) 
+  Lemma round_3_start_suffcond w0 l0 (Htrace0 : system_trace w l0) (Ew0 : w0 = final_sysstate w l0) 
     (Hw0 : round_2_end w0) : round_3_start w0.
   Proof.
     pose proof (reachable_by_trace Htrace0 H_w_reachable) as H_w0_reachable. rewrite <- Ew0 in H_w0_reachable.

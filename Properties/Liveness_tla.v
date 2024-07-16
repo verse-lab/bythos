@@ -11,22 +11,22 @@ From Bythos.Utils Require Export TLAmore.
 
 Module LivenessTLA (Export A : NetAddr) (Export M : MessageType)
   (Export BTh : ByzThreshold A) (Export BSett : ByzSetting A) 
-  (Export P : SimplePacket A M) (Export PSOp : PacketSoupOperations P)
+  (Export P : SimplePacket A M)
   (Export Pr : Protocol A M P BTh) (Export Ns : NetState A M P BTh Pr) 
-  (Export Adv : Adversary A M BTh BSett P Pr Ns) (Export N : Network A M BTh BSett P PSOp Pr Ns Adv).
+  (Export Adv : Adversary A M BTh BSett P Pr Ns) (Export N : Network A M BTh BSett P Pr Ns Adv).
 
 Section Preliminaries.
 
-Definition exec_rel (e e' : exec World) : Prop := ∀ n, World_rel (e n) (e' n).
+Definition exec_rel (e e' : exec SystemState) : Prop := ∀ n, SystemState_rel (e n) (e' n).
 
-Definition init w := w = initWorld.
+Definition init w := w = initSystemState.
 
 Definition next w w' := ∃ q, system_step q w w'.
 
 (* use functions to eliminate ambiguity, which refers to the case where
     multiple "q" may satisfy the "∃" above *)
 
-Definition nextf (f : exec system_step_descriptor) : predicate World :=
+Definition nextf (f : exec system_step_descriptor) : predicate SystemState :=
   fun e => ∀ n, system_step (f n) (e n) (e (S n)).
 
 Fact nextf_impl_next f : (nextf f ⊢ □ ⟨next⟩).
@@ -54,7 +54,7 @@ Qed.
 (* connecting finite trace with infinite trace *)
 
 Lemma exec_segment [e] (H : e ⊨ □ ⟨ next ⟩) k o :
-  ∃ l, system_trace (e k) l ∧ (e (o + k) = final_world (e k) l).
+  ∃ l, system_trace (e k) l ∧ (e (o + k) = final_sysstate (e k) l).
 Proof.
   autounfold with tla in H.
   try unfold next in H.
@@ -66,7 +66,7 @@ Proof.
     rewrite ! drop_n in Hstep.
     simpl in Hstep.
     exists (l ++ (q, e (S (o + k))) :: nil).
-    rewrite system_trace_snoc final_world_snoc -Ew0 //=.
+    rewrite system_trace_snoc final_sysstate_snoc -Ew0 //=.
 Qed.
 
 End Preliminaries.
@@ -83,9 +83,9 @@ Section Fairness.
 Definition good_deliver_action_p p w w' :=
   if received p 
   then True 
-  else In p (sentMsgs w) → system_step (Deliver p) w w'.
+  else In p (packetSoup w) → system_step (Deliver p) w w'.
 
-Definition fairness : predicate World :=
+Definition fairness : predicate SystemState :=
   (∀ p : Packet, ⌞ good_packet p ⌟ → weak_fairness (good_deliver_action_p p))%L.
 
 #[local] Hint Unfold good_deliver_action_p fairness : tla.
@@ -111,34 +111,34 @@ Qed.
 
 (*
 Fact consumed_is_changed_by_delivery_pre :
-  ∀ p, good_packet p → received p = false → ∀ w w', In p (sentMsgs w) →
-    w' = next_world (Deliver p) w → system_step (Deliver p) w w'.
+  ∀ p, good_packet p → received p = false → ∀ w w', In p (packetSoup w) →
+    w' = next_sysstate (Deliver p) w → system_step (Deliver p) w w'.
 Proof.
   intros. hnf in * |-. subst w'. eapply DeliverStep; try solve [ reflexivity | assumption | tauto ].
   simpl. rewrite (surjective_pairing (procMsg _ _ _)). reflexivity.
 Qed.
 *)
-Definition reliable_condition (e : exec World) :=
-  ∀ p, good_packet p → received p = false → ∀ n, In p (sentMsgs (e n)) →
+Definition reliable_condition (e : exec SystemState) :=
+  ∀ p, good_packet p → received p = false → ∀ n, In p (packetSoup (e n)) →
     ∃ k, system_step (Deliver p) (e (k + n)) (e (S (k + n))).
 
 (*
-Definition reliable_condition_ (e : exec World) :=
-  ∀ p, good_packet p → received p = false → ∀ n, In p (sentMsgs (e n)) →
-    ∃ k, e (S (k + n)) = next_world (Deliver p) (e (k + n)).
+Definition reliable_condition_ (e : exec SystemState) :=
+  ∀ p, good_packet p → received p = false → ∀ n, In p (packetSoup (e n)) →
+    ∃ k, e (S (k + n)) = next_sysstate (Deliver p) (e (k + n)).
 *)
 (* a lemma which will be used below, stating that the existence of
     an undelivered message will only be changed by an delivery action
   hope this would work for different network models ... *)
 
-Fact consumed_is_changed_by_delivery [e : exec World] (Hrc : e ⊨ □ ⟨ next ⟩) 
-  [p n] (E : received p = false) (Hin : In p (e n).(sentMsgs)) 
-  k (Hnotin : ¬ In p (e (k + n)).(sentMsgs)) :
+Fact consumed_is_changed_by_delivery [e : exec SystemState] (Hrc : e ⊨ □ ⟨ next ⟩) 
+  [p n] (E : received p = false) (Hin : In p (e n).(packetSoup)) 
+  k (Hnotin : ¬ In p (e (k + n)).(packetSoup)) :
   ∃ k' : nat, k' < k ∧ system_step (Deliver p) (e (k' + n)) (e (S (k' + n))).
 Proof.
   induction k as [ | k IH ]; intros; simpl in Hnotin.
   1: contradiction.
-  destruct (in_dec Packet_eqdec p (sentMsgs (e (k + n)))) as [ Hin' | Hnotin' ].
+  destruct (in_dec Packet_eqdec p (packetSoup (e (k + n)))) as [ Hin' | Hnotin' ].
   2: specialize (IH Hnotin'); destruct IH as (k' & Hlt & Hstep).
   2: exists k'; split; [ lia | assumption ].
   clear IH Hin.
@@ -167,13 +167,13 @@ Proof.
     split; [ constructor | assumption ].
 Qed.
 (*
-Fact reliable_condition_change [e : exec World] (Hrc : e ⊨ □ ⟨ next ⟩) :
+Fact reliable_condition_change [e : exec SystemState] (Hrc : e ⊨ □ ⟨ next ⟩) :
   reliable_condition e ↔ reliable_condition_ e.
 Proof.
   split; intros H; hnf in H |- *; intros; saturate_assumptions!; destruct H as (k & H).
-  - exists k. now apply next_world_sound.
+  - exists k. now apply next_sysstate_sound.
   - 
-    assert (¬ In p (e (S (k + n))).(sentMsgs)) as Htmp.
+    assert (¬ In p (e (S (k + n))).(packetSoup)) as Htmp.
     { rewrite H /= (surjective_pairing (procMsg _ _ _)) /= In_sendout In_consume. 
       intuition.
     apply consumed_is_changed_by_delivery in H
@@ -182,7 +182,7 @@ Proof.
 
 (* what if things go too strong *)
 (*
-Fact fairness_strictly_stronger [e : exec World] (Hrc : e ⊨ □ ⟨ next ⟩) :
+Fact fairness_strictly_stronger [e : exec SystemState] (Hrc : e ⊨ □ ⟨ next ⟩) :
   (e ⊨ (∀ p : Packet, ⌞ good_packet p ⌟ → weak_fairness (system_step (Deliver p)))%L)%L ↔ reliable_condition e.
 Proof.
   unfold reliable_condition.
@@ -198,7 +198,7 @@ Proof.
     + rewrite classical.classical.not_forall /tla_enabled/enabled/state_pred in H0.
       destruct H0 as (k & H0).
       rewrite drop_drop drop_n /= in H0.
-      assert (¬ In p (e (k + n)).(sentMsgs)) as Htmp.
+      assert (¬ In p (e (k + n)).(packetSoup)) as Htmp.
       { intros Htmp. apply H0. eexists. eapply DeliverStep; try reflexivity; try auto. 1: hnf in *; tauto. 
         rewrite (surjective_pairing (procMsg _ _ _)). reflexivity. }
       apply consumed_is_changed_by_delivery in Htmp; auto.
@@ -209,7 +209,7 @@ Proof.
 Abort.
 *)
 
-Fact fairness_adequate [e : exec World] (Hrc : e ⊨ □ ⟨ next ⟩) :
+Fact fairness_adequate [e : exec SystemState] (Hrc : e ⊨ □ ⟨ next ⟩) :
   (e ⊨ fairness)%L ↔ reliable_condition e.
 Proof.
   unfold reliable_condition.
@@ -220,7 +220,7 @@ Proof.
     rewrite E in H.
     destruct H as (k & H).
     rewrite ! drop_drop ! drop_n /= in H.
-    destruct (in_dec Packet_eqdec p (sentMsgs (e (k + n)))) as [ Hin' | Hnotin' ].
+    destruct (in_dec Packet_eqdec p (packetSoup (e (k + n)))) as [ Hin' | Hnotin' ].
     1: exists k; intuition.
     apply consumed_is_changed_by_delivery in Hnotin'; auto.
     destruct Hnotin' as (? & ? & ?).
@@ -231,13 +231,13 @@ Proof.
     specialize (H _ Hg E).
     (* here, we cannot directly construct the existence, 
       so we have to go classic (i.e., prove by contradiction) *)
-    destruct (Classical_Prop.classic (∃ n : nat, In p (sentMsgs (e (n + k))))) as [ (n & Hin) | H0 ].
+    destruct (Classical_Prop.classic (∃ n : nat, In p (packetSoup (e (n + k))))) as [ (n & Hin) | H0 ].
     + specialize (H _ Hin).
       destruct H as (k0 & Hstep).
       rewrite !Nat.add_assoc in Hstep.
       exists (k0 + n).
       now rewrite !drop_drop !drop_n /=.
-    + assert (∀ n : nat, ¬ In p (e (n + k)).(sentMsgs)) as H0'.
+    + assert (∀ n : nat, ¬ In p (e (n + k)).(packetSoup)) as H0'.
       { intros n Hcontra.
         apply H0; eauto.
       }
@@ -249,7 +249,7 @@ Qed.
 
 Lemma eventual_delivery_single [p] (Hgood : good_packet p) :
   □ ⟨ next ⟩ ∧ fairness ⊢
-  ⌜λ w, In p (sentMsgs w)⌝ ~~> ⌜λ w, In (markRcv p) (sentMsgs w)⌝.
+  ⌜λ w, In p (packetSoup w)⌝ ~~> ⌜λ w, In (markRcv p) (packetSoup w)⌝.
 Proof.
   destruct p as [ ? ? ? [] ]; simpl markRcv.
   1: simpl; apply impl_drop_hyp, leads_to_refl.
@@ -265,7 +265,7 @@ Proof.
   tauto.
   (*
   unfold next, fairness, good_deliver_action_p.
-  evar (bb : predicate World).
+  evar (bb : predicate SystemState).
   (* manual manipulation *)
   match goal with |- pred_impl (tla_and ?aa _) _ =>
     transitivity (tla_and aa bb) end.
@@ -302,8 +302,8 @@ Qed.
 
 Corollary eventual_delivery [pkts] (Hgood : Forall good_packet pkts) :
   □ ⟨ next ⟩ ∧ fairness ⊢
-  ⌜λ w, incl pkts (sentMsgs w)⌝ ~~> 
-  ⌜λ w, ∀ p, In p pkts → In (markRcv p) (sentMsgs w)⌝. (* need some detour if not to write in this way *)
+  ⌜λ w, incl pkts (packetSoup w)⌝ ~~> 
+  ⌜λ w, ∀ p, In p pkts → In (markRcv p) (packetSoup w)⌝. (* need some detour if not to write in this way *)
 Proof.
   apply leads_to_combine_batch' with (valid:=good_packet); try assumption.
   - intros; now apply eventual_delivery_single.
@@ -312,12 +312,12 @@ Proof.
 Qed.
 
 (* one-hop *)
-Lemma leads_to_by_eventual_delivery (P Q : World → Prop)
+Lemma leads_to_by_eventual_delivery (P Q : SystemState → Prop)
   (H : ∀ w (Hw : reachable w),
     (* message-driven *)
-    P w → ∃ pkts, Forall good_packet pkts ∧ incl pkts (sentMsgs w) ∧
-      (∀ w0 l0 (Htrace : system_trace w l0) (Ew0 : w0 = final_world w l0),
-        incl (map markRcv pkts) (sentMsgs w0) → Q w0)) :
+    P w → ∃ pkts, Forall good_packet pkts ∧ incl pkts (packetSoup w) ∧
+      (∀ w0 l0 (Htrace : system_trace w l0) (Ew0 : w0 = final_sysstate w l0),
+        incl (map markRcv pkts) (packetSoup w0) → Q w0)) :
   ⌜ init ⌝ ∧ □ ⟨ next ⟩ ∧ fairness ⊢ ⌜ P ⌝ ~~> ⌜ Q ⌝.
 Proof.
   tla_pose reachable_in_tla.
@@ -340,8 +340,8 @@ Qed.
 End Fairness.
 
 (* relational *)
-Lemma leads_to_exec_rel [e e' : exec World] (H : exec_rel e e')
-  (P Q : World → Prop) (HP : World_rel_cong P) (HQ : World_rel_cong Q) :
+Lemma leads_to_exec_rel [e e' : exec SystemState] (H : exec_rel e e')
+  (P Q : SystemState → Prop) (HP : SystemState_rel_cong P) (HQ : SystemState_rel_cong Q) :
   (e ⊨ ⌜ P ⌝ ~~> ⌜ Q ⌝) → (e' ⊨ ⌜ P ⌝ ~~> ⌜ Q ⌝).
 Proof.
   unseal. symmetry in H. pose proof (HP _ _ (H k)) as Htmp. saturate_assumptions!.

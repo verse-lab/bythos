@@ -18,15 +18,15 @@ Import ssrbool. (* anyway *)
 
 Module Export ACS := ACSafety A Sn V (* VBFT *) BTh BSett PPrim TSSPrim.
 Import ACN.ACDT.P ACN.ACDT.TSS.
-Include Liveness A M BTh BSett P0 PSOp ACP Ns ACAdv ACN.
+Include Liveness A M BTh BSett P0 ACP Ns ACAdv ACN.
 
 Module Terminating_Convergence.
 
 (* start *)
-Definition all_honest_nodes_submitted v w := forall n, is_byz n = false -> (w @ n).(submitted_value) = Some v.
+Definition all_honest_nodes_submitted v w := forall n, isByz n = false -> (w @ n).(submitted_value) = Some v.
 
 (* end *)
-Definition all_honest_nodes_confirmed v w := forall n, is_byz n = false -> (w @ n).(conf) /\ (w @ n).(submitted_value) = Some v.
+Definition all_honest_nodes_confirmed v w := forall n, isByz n = false -> (w @ n).(conf) /\ (w @ n).(submitted_value) = Some v.
 
 Fact all_honest_nodes_submitted_stmap_peq_cong v : stmap_peq_cong (all_honest_nodes_submitted v).
 Proof. unfold stmap_peq_cong, all_honest_nodes_submitted. intros w w' Hs. hnf in Hs. now setoid_rewrite Hs. Qed.
@@ -46,13 +46,13 @@ Section Proof_of_Terminating_Convergence.
 
   Section Round1.
 
-  Variable (w : World).
+  Variable (w : SystemState).
   Hypotheses (H_w_reachable : reachable w) (Hstart : all_honest_nodes_submitted v w).
 
   Definition pkts_needed_in_round_1 nonbyz_senders pkts :=
     pkts_multi_to_all (N - f) w nonbyz_senders pkts valid_submitmsg submitted_v.
 
-  Let nonbyz_senders := (List.filter (fun n => negb (is_byz n)) valid_nodes).
+  Let nonbyz_senders := (List.filter (fun n => negb (isByz n)) valid_nodes).
 
   Lemma round_1_pkts :
     exists pkts, pkts_needed_in_round_1 nonbyz_senders pkts.
@@ -61,9 +61,9 @@ Section Proof_of_Terminating_Convergence.
     exists (List.filter (fun p => 
       match p.(msg) with
       | SubmitMsg _ _ _ =>
-        (negb (is_byz p.(src))) && (negb (is_byz p.(dst)))
+        (negb (isByz p.(src))) && (negb (isByz p.(dst)))
       | _ => false
-      end) (sentMsgs w)).
+      end) (packetSoup w)).
     hnf. split_and?; auto using incl_filter, NoDup_filter, valid_nodes_NoDup.
     - pose proof (filter_nonbyz_lower_bound valid_nodes_NoDup). unfold N. lia.
     - apply Forall_forall. intros [ s d [] b ] (Hin & Hcheck)%filter_In; simpl in Hcheck; try discriminate.
@@ -84,7 +84,7 @@ Section Proof_of_Terminating_Convergence.
   Definition round_1_end w' :=
     Eval unfold mutual_receiving in mutual_receiving valid_submitmsg w'.
 
-  Fact round_1_end_suffcond w' (Hincl : incl (map markRcv pkts) (sentMsgs w')) :
+  Fact round_1_end_suffcond w' (Hincl : incl (map markRcv pkts) (packetSoup w')) :
     round_1_end w'.
   Proof.
     (* FIXME: can this be automated? *)
@@ -95,7 +95,7 @@ Section Proof_of_Terminating_Convergence.
     destruct HH as (? & HH). now apply (in_map markRcv), Hincl in HH.
   Qed.
 
-  Lemma all_honest_nodes_confirmed_suffcond w0 l0 (Htrace0 : system_trace w l0) (Ew0 : w0 = final_world w l0) 
+  Lemma all_honest_nodes_confirmed_suffcond w0 l0 (Htrace0 : system_trace w l0) (Ew0 : w0 = final_sysstate w l0) 
     (Hw0 : round_1_end w0) : all_honest_nodes_confirmed v w0.
   Proof.
     pose proof (reachable_by_trace Htrace0 H_w_reachable) as H_w0_reachable. rewrite <- Ew0 in H_w0_reachable.
@@ -150,7 +150,7 @@ Proof.
   now exists v1, v2, (sign v1 (key_map nb')), (sign v2 (key_map nb')), nsigs1, nsigs2.
 Qed.
 
-Definition nonbyz_confirmed n w : Prop := is_byz n = false /\ (localState w n).(conf).
+Definition nonbyz_confirmed n w : Prop := isByz n = false /\ (w @ n).(conf).
 
 (* start *)
 Definition confirmed_different_values n1 n2 w : Prop :=
@@ -186,14 +186,14 @@ Definition accountability w :=
   exists byzs : list Address, 
     NoDup byzs /\
     N - (f + f) <= length byzs /\
-    Forall is_byz byzs /\
-    (forall n, is_byz n = false -> incl byzs (genproof (w @ n).(received_certs))).
+    Forall isByz byzs /\
+    (forall n, isByz n = false -> incl byzs (genproof (w @ n).(received_certs))).
 
 Section Proof_of_Accountability.
 
   Section Round1.
 
-  Variables (w : World) (n1 n2 : Address).
+  Variables (w : SystemState) (n1 n2 : Address).
   Hypothesis (H_w_reachable : reachable w) (Hstart : confirmed_different_values n1 n2 w).
 
   Local Tactic Notation "prepare" hyp(H) :=
@@ -206,11 +206,11 @@ Section Proof_of_Accountability.
   Definition mutual_lightcerts v1 v2 b1 b2 b3 b4 := Eval cbn in
     let f (bb : bool) src dst b := 
       let: qq := if bb then v1 else v2 in (mkP src dst (LightConfirmMsg 
-      (qq, (lightsig_combine (localState w src).(collected_lightsigs)))) b) in
+      (qq, (lightsig_combine (w @ src).(collected_lightsigs)))) b) in
     (f true n1 n1 b1 :: f true n1 n2 b2 :: f false n2 n1 b3 :: f false n2 n2 b4 :: nil). 
 
   Definition pkts_needed_in_round_1 pkts :=
-    incl pkts (sentMsgs w) /\ Forall good_packet pkts /\
+    incl pkts (packetSoup w) /\ Forall good_packet pkts /\
     exists v1 v2 b1 b2 b3 b4, 
       (w @ n1).(submitted_value) = Some v1 /\
       (w @ n2).(submitted_value) = Some v2 /\
@@ -239,9 +239,9 @@ Section Proof_of_Accountability.
     exists v1 v2, 
       (w @ n1).(submitted_value) = Some v1 /\
       (w @ n2).(submitted_value) = Some v2 /\
-      incl (mutual_lightcerts v1 v2 true true true true) (sentMsgs w').
+      incl (mutual_lightcerts v1 v2 true true true true) (packetSoup w').
 
-  Fact round_1_end_suffcond w' (Hincl : incl (map markRcv pkts) (sentMsgs w')) :
+  Fact round_1_end_suffcond w' (Hincl : incl (map markRcv pkts) (packetSoup w')) :
     round_1_end w'.
   Proof. hnf in Hround1 |- *. destruct Hround1 as (? & ? & (? & ? & ? & ? & ? & ? & -> & -> & ->)). eauto. Qed.
 
@@ -252,7 +252,7 @@ Section Proof_of_Accountability.
     lightcert_conflict_check (w' @ n1).(received_lightcerts) /\
     lightcert_conflict_check (w' @ n2).(received_lightcerts).
 
-  Lemma round_2_start_suffcond w0 l0 (Htrace0 : system_trace w l0) (Ew0 : w0 = final_world w l0) 
+  Lemma round_2_start_suffcond w0 l0 (Htrace0 : system_trace w l0) (Ew0 : w0 = final_sysstate w l0) 
     (Hw0 : round_1_end w0) : round_2_start w0.
   Proof.
     pose proof (reachable_by_trace Htrace0 H_w_reachable) as H_w0_reachable. rewrite <- Ew0 in H_w0_reachable.
@@ -300,7 +300,7 @@ Section Proof_of_Accountability.
 
   Section Round2.
 
-  Variables (w : World) (n1 n2 : Address).
+  Variables (w : SystemState) (n1 n2 : Address).
   Hypothesis (H_w_reachable : reachable w) (Hstart : round_2_start n1 n2 w).
 
   Local Tactic Notation "prepare" hyp(H) :=
@@ -321,9 +321,9 @@ Section Proof_of_Accountability.
     exists (List.filter (fun p => 
       match p.(msg) with
       | ConfirmMsg _ =>
-        (Address_eqdec p.(src) n1 || Address_eqdec p.(src) n2) && (negb (is_byz p.(dst))) (* TODO maybe too general? *)
+        (Address_eqdec p.(src) n1 || Address_eqdec p.(src) n2) && (negb (isByz p.(dst))) (* TODO maybe too general? *)
       | _ => false
-      end) (sentMsgs w)).
+      end) (packetSoup w)).
     hnf. split_and?; auto using incl_filter, le_0_n.
     - repeat constructor; simpl; eqsolve. 
     - apply Forall_forall. intros [ s d [] b ] (Hin & Hcheck)%filter_In; simpl in Hcheck; try discriminate.
@@ -347,13 +347,13 @@ Section Proof_of_Accountability.
   Definition round_2_end w' :=
     match (w @ n1).(submitted_value), (w @ n2).(submitted_value) with
     | Some v1, Some v2 =>
-      forall n, is_byz n = false ->
-        In (mkP n1 n (ConfirmMsg (v1, zip_from_sigs (w @ n1))) true) (sentMsgs w') /\
-        In (mkP n2 n (ConfirmMsg (v2, zip_from_sigs (w @ n2))) true) (sentMsgs w')
+      forall n, isByz n = false ->
+        In (mkP n1 n (ConfirmMsg (v1, zip_from_sigs (w @ n1))) true) (packetSoup w') /\
+        In (mkP n2 n (ConfirmMsg (v2, zip_from_sigs (w @ n2))) true) (packetSoup w')
     | _, _ => False
     end.
 
-  Fact round_2_end_suffcond w' (Hincl : incl (map markRcv pkts) (sentMsgs w')) :
+  Fact round_2_end_suffcond w' (Hincl : incl (map markRcv pkts) (packetSoup w')) :
     round_2_end w'.
   Proof.
     hnf in Hround2 |- *. prepare Hstart.
@@ -365,7 +365,7 @@ Section Proof_of_Accountability.
     all: destruct_exists; match goal with H : In _ pkts |- _ => apply (in_map markRcv) in H; simpl in H; destruct_eqdec in_ H0 as_ ?; congruence end.
   Qed.
 
-  Lemma accountability_suffcond w0 l0 (Htrace0 : system_trace w l0) (Ew0 : w0 = final_world w l0) 
+  Lemma accountability_suffcond w0 l0 (Htrace0 : system_trace w l0) (Ew0 : w0 = final_sysstate w l0) 
     (Hw0 : round_2_end w0) : accountability w0.
   Proof.
     saturate. 

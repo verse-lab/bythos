@@ -11,7 +11,7 @@ Module RBInvariant (A : NetAddr) (R : Round) (V : Value) (VBFT : ValueBFT A R V)
 Import A R V VBFT BTh BSett.
 Import ssrbool. (* anyway *)
 
-Module Export RBN := RBNetwork A R V VBFT BTh BSett.
+Module Export RBN := EmptyModule <+ RBNetworkType A R V VBFT BTh BSett.
 
 Set Implicit Arguments. (* anyway *)
 
@@ -114,7 +114,7 @@ Definition sent_h2l_inner (src dst : Address) msg stmap : Prop :=
   end.
 
 Definition sent_h2l src dst msg stmap : Prop := Eval unfold sent_h2l_inner in 
-  is_byz src = false -> sent_h2l_inner src dst msg stmap.
+  isByz src = false -> sent_h2l_inner src dst msg stmap.
 
 Definition initialmsg_sent_h2l p stmap : Prop := Eval unfold sent_h2l in
   match p with
@@ -144,7 +144,7 @@ Definition recv_h2l_inner (src dst : Address) msg stmap : Prop :=
   end.
 
 Definition recv_h2l src dst msg stmap : Prop := Eval unfold recv_h2l_inner in 
-  is_byz dst = false -> recv_h2l_inner src dst msg stmap.
+  isByz dst = false -> recv_h2l_inner src dst msg stmap.
 
 Definition initialmsg_recv_h2l p stmap : Prop := Eval unfold recv_h2l in
   match p with
@@ -190,7 +190,7 @@ Local Hint Resolve incl_sendout_l incl_sendout_r : psent.
 
 Local Hint Extern 30 (In _ (set_add_simple _ _ _)) => (rewrite In_set_add_simple; tauto) : psent.
 
-Module Export SMT <: StateMntTemplate A M BTh P PSOp RBP Ns.
+Module Export SMT <: StateMntTemplate A M BTh P RBP Ns.
 
 (* materialize *)
 (* carrying proofs? seems OK, as long as it will never be used in equality proofs *)
@@ -288,7 +288,7 @@ Record node_state_invariants_pre st st' : Prop := {
 
 Fact state_mnt_sound q w w' (Hstep : system_step q w w') :
   forall n, exists l : state_mnt_type_list (w @ n) (w' @ n), 
-    psent_effect_star n (sentMsgs w') l /\ node_state_invariants_pre (w @ n) (w' @ n).
+    psent_effect_star n (packetSoup w') l /\ node_state_invariants_pre (w @ n) (w' @ n).
 Proof with (try (now exists (MNTnil _))).
   inversion_step' Hstep; clear Hstep; intros...
   - unfold upd.
@@ -387,11 +387,11 @@ Proof.
 Qed.
 
 Fact persistent_invariants_trace [w l] (Htrace : system_trace w l) :
-  lift_state_pair_inv node_persistent_invariants w (final_world w l).
+  lift_state_pair_inv node_persistent_invariants w (final_sysstate w l).
 Proof.
   revert w Htrace. induction l as [ | (q, w') l' IH ]; simpl; intros.
-  - rewrite final_world_nil. hnf. intros ?. constructor; hnf; auto.
-  - rewrite final_world_cons. destruct Htrace as (Hstep%persistent_invariants & Htrace).
+  - rewrite final_sysstate_nil. hnf. intros ?. constructor; hnf; auto.
+  - rewrite final_sysstate_cons. destruct Htrace as (Hstep%persistent_invariants & Htrace).
     specialize (IH _ Htrace). hnf in IH, Hstep |- *. intros n. specialize (Hstep n). specialize (IH n).
     etransitivity; eauto.
 Qed. 
@@ -482,7 +482,7 @@ Qed.
 
 End Forward.
 
-Module Export PMT <: PsentMntTemplate A M BTh BSett P PSOp RBP Ns RBAdv RBN.
+Module Export PMT <: PsentMntTemplate A M BTh BSett P RBP Ns RBAdv RBN.
 
 Inductive packets_shape_ : Type := PSbcast (n : Address) (m : Message).
 
@@ -504,12 +504,12 @@ Definition state_effect_bcast n m stmap :=
 
 Definition state_effect_send_by_shape (ps : packets_shape) (stmap : StateMap) : Prop :=
   match ps with
-  | PSbcast n m => is_byz n = false /\ state_effect_bcast n m stmap
+  | PSbcast n m => isByz n = false /\ state_effect_bcast n m stmap
   end.
 
 End PMT.
 
-Module Export PMTool := PsentMntToolkit A M BTh BSett P PSOp RBP Ns RBAdv RBN PMT.
+Module Export PMTool := PsentMntToolkit A M BTh BSett P RBP Ns RBAdv RBN PMT.
 
 Ltac pkts_match pkts ::=
   match pkts with
@@ -627,13 +627,13 @@ Proof.
   destruct Hstep as ([ b l | [ src dst msg ? ] ] & Hse & Hpsent); simpl in Hse, Hpsent.
   - (* nonbyz step *)
     destruct Hse as (Hb & Hse). 
-    remember (sentMsgs w') as psent eqn:Htmp; clear Htmp. (* TODO generalize? *)
+    remember (packetSoup w') as psent eqn:Htmp; clear Htmp. (* TODO generalize? *)
     revert psent Hpsent H Hse. 
     induction l as [ | a l IH ]; intros.
     all: simpl in Hse, Hpsent.
     (* TODO why we do not need to destruct H here (and only need to destruct later)? can I explain? *)
     + destruct b as [ | p' Hin' ]; simpl in Hb, Hpsent; hnf in Hpsent.
-      * split_and?; intros ?; rewrite Hpsent; revert p; try now apply (h2l_invariants_id Hstep_ (sentMsgs w)).
+      * split_and?; intros ?; rewrite Hpsent; revert p; try now apply (h2l_invariants_id Hstep_ (packetSoup w)).
       * split_and?; match goal with |- forall (_ : _), _ -> ?def _ _ => pick def as_ H' by_ (destruct_and? H) end; 
           clear H; rename H' into H; setoid_rewrite Hpsent.
         1: intros [ src dst msg used ] Hin%(In_consume_conv_full Hin'). 
@@ -696,8 +696,8 @@ Qed.
 Definition echo_exists_before_vote p psent : Prop :=
   match p with
   | mkP src dst (VoteMsg q r v) used =>
-    is_byz src = false ->
-      exists src' dst', is_byz src' = false /\ 
+    isByz src = false ->
+      exists src' dst', isByz src' = false /\ 
         In (mkP src' dst' (EchoMsg q r v) true) psent
   | _ => True
   end.
@@ -706,7 +706,7 @@ Definition echo_exists_before_vote p psent : Prop :=
 Definition echo_exists_before_vote psent st : Prop :=
   forall q r v, 
     st.(voted) (q, r) = Some v ->
-      exists src' dst', is_byz src' = false /\ 
+      exists src' dst', isByz src' = false /\ 
         In (mkP src' dst' (EchoMsg q r v) true) psent.
 
 Lemma echo_exists_before_vote_is_invariant :
@@ -741,7 +741,7 @@ Qed.
 Definition first_vote_due_to_echo w : Prop :=
   forall q r, 
     (* examining all nodes ... luckily Address is set to be finite *)
-    let: l := List.filter (fun n => (negb (is_byz n)) && (isSome ((w @ n).(voted) (q, r)))) valid_nodes in
+    let: l := List.filter (fun n => (negb (isByz n)) && (isSome ((w @ n).(voted) (q, r)))) valid_nodes in
     match l with
     | nil => True
     | _ => exists n', In n' l /\ 
@@ -807,7 +807,7 @@ Qed.
 
 Definition vote_uniqueness w : Prop :=
   forall src r dst1 dst2 v1 v2, 
-    is_byz dst1 = false -> is_byz dst2 = false ->
+    isByz dst1 = false -> isByz dst2 = false ->
     (* no matter if src is byz or not *)
     (w @ dst1).(voted) (src, r) = Some v1 ->
     (w @ dst2).(voted) (src, r) = Some v2 ->
@@ -821,9 +821,9 @@ Lemma vote_uniqueness_is_invariant :
     lift_pkt_inv node_psent_h2l_invariants_recv w) /\
     first_vote_due_to_echo w) vote_uniqueness.
 Proof.
-  (* H would only be useful in the previous World, so we can only use Hfve in the previous World *)
+  (* H would only be useful in the previous SystemState, so we can only use Hfve in the previous SystemState *)
   intros qq ?? ((_ & Hst_back & _ & Hh2ls_back & _) & Hfve) ((Hcoh & Hst & Hl2h & Hh2ls & Hh2lr) & _) H Hstep src r. specialize (H src r).
-  enough (forall dst1 dst2 v1 v2, dst1 <> dst2 -> is_byz dst1 = false -> is_byz dst2 = false ->
+  enough (forall dst1 dst2 v1 v2, dst1 <> dst2 -> isByz dst1 = false -> isByz dst2 = false ->
     (w @ dst1).(voted) (src, r) = None -> (w @ dst2).(voted) (src, r) = Some v2 ->
     (w' @ dst1).(voted) (src, r) = Some v1 -> (w' @ dst2).(voted) (src, r) = Some v2 ->
     v1 = v2) as Hsymgoal.

@@ -9,7 +9,7 @@ From stdpp Require Export tactics. (* anyway *)
 
 Module Type StateMntTemplate (Export A : NetAddr) (Export M : MessageType)
   (Export BTh : ByzThreshold A)
-  (Export P : SimplePacket A M) (Export PSOp : PacketSoupOperations P)
+  (Export P : SimplePacket A M)
   (Export Pr : Protocol A M P BTh) (Export Ns : NetState A M P BTh Pr).
 
 Parameter state_mnt_type : State -> Type.
@@ -20,9 +20,9 @@ End StateMntTemplate.
 
 Module StateMntToolkit (Export A : NetAddr) (Export M : MessageType)
   (Export BTh : ByzThreshold A)
-  (Export P : SimplePacket A M) (Export PSOp : PacketSoupOperations P)
+  (Export P : SimplePacket A M) (Export PSOp : PacketSoupOperations P) (* TODO since there is sendout0 inside, we cannot get rid of PSOp! *)
   (Export Pr : Protocol A M P BTh) (Export Ns : NetState A M P BTh Pr)
-  (Export SMT : StateMntTemplate A M BTh P PSOp Pr Ns).
+  (Export SMT : StateMntTemplate A M BTh P Pr Ns).
 
 Global Arguments state_mnt [_] _.
 Global Arguments psent_effect [_] _ _ _.
@@ -55,7 +55,7 @@ Lemma psent_effect_star_app n psent st st' st'' (l1 : state_mnt_type_list st st'
   psent_effect_star n psent l1 /\ psent_effect_star n psent l2.
 Proof. revert st'' l2. induction l1; intros; simpl; try tauto. rewrite IHl1. tauto. Qed.
 
-(* NOTE: the following only works for states defined as Records *)
+(* NOTE: the following only works for states defined as Records, since it depends on RecordUpdate *)
 
 Ltac state_analyze_select f := idtac "state_analyze_select is user defined.".
 
@@ -99,9 +99,9 @@ End StateMntToolkit.
 
 Module Type PsentMntTemplate (Export A : NetAddr) (Export M : MessageType)
   (Export BTh : ByzThreshold A) (Export BSett : ByzSetting A) 
-  (Export P : SimplePacket A M) (Export PSOp : PacketSoupOperations P)
+  (Export P : SimplePacket A M)
   (Export Pr : Protocol A M P BTh) (Export Ns : NetState A M P BTh Pr)
-  (Export Adv : Adversary A M BTh BSett P Pr Ns) (Export N : Network A M BTh BSett P PSOp Pr Ns Adv).
+  (Export Adv : Adversary A M BTh BSett P Pr Ns) (Export N : Network A M BTh BSett P Pr Ns Adv).
 
 Parameter packets_shape : Type.
 Parameter packets_shape_consistent : packets_shape -> list Packet -> Prop.
@@ -113,10 +113,10 @@ End PsentMntTemplate.
 
 Module PsentMntToolkit (Export A : NetAddr) (Export M : MessageType)
   (Export BTh : ByzThreshold A) (Export BSett : ByzSetting A) 
-  (Export P : SimplePacket A M) (Export PSOp : PacketSoupOperations P)
+  (Export P : SimplePacket A M)
   (Export Pr : Protocol A M P BTh) (Export Ns : NetState A M P BTh Pr)
-  (Export Adv : Adversary A M BTh BSett P Pr Ns) (Export N : Network A M BTh BSett P PSOp Pr Ns Adv)
-  (Export PMT : PsentMntTemplate A M BTh BSett P PSOp Pr Ns Adv N).
+  (Export Adv : Adversary A M BTh BSett P Pr Ns) (Export N : Network A M BTh BSett P Pr Ns Adv)
+  (Export PMT : PsentMntTemplate A M BTh BSett P Pr Ns Adv N).
 
 (* want to write it in another way so that the base part can be exposed, 
     which will enable some proofs about psent_mnt_type concatenation *)
@@ -195,7 +195,7 @@ Qed.
 Definition state_effect_base [psent] (stmap : StateMap) (b : psent_mnt_type_base psent) : Prop :=
   match b with
   | Pid _ => True (* under-specified *)
-  | Puse _ (mkP src n m used) _ => is_byz n = false /\ state_effect_recv src n m stmap
+  | Puse _ (mkP src n m used) _ => isByz n = false /\ state_effect_recv src n m stmap
   end.
 
 Global Arguments state_effect_base [_] _ !_.
@@ -221,7 +221,7 @@ Global Arguments PSKnonbyz [_] _ _.
 Definition state_effect (stmap : StateMap) [psent] (psk : psent_sender_kind psent) : Prop :=
   match psk with
   | PSKnonbyz b l => state_effect_base stmap b /\ state_effect_send stmap l
-  | PSKbyz _ p => is_byz p.(src) /\ p.(received) = false /\ byz_constraints p.(msg) (mkW stmap psent) (* FIXME: is byz_constraints only about psent? *)
+  | PSKbyz _ p => isByz p.(src) /\ p.(received) = false /\ byzConstraints p.(msg) (mkW stmap psent) (* FIXME: is byzConstraints only about psent? *)
   end.
 
 Ltac pkts_match pkts := idtac "pkts_match is user defined.".
@@ -249,7 +249,7 @@ Ltac psent_mnt_solve :=
   match goal with
   (*
   | |- exists (_ : _), _ = _ /\ _ => 
-    eexists; split; (* TODO appending anything after the semicolon here will result in non-termination? *)
+    eexists; split; (* TODO appending anything after the semicolon here will result in non-termination? bug? *)
     *)
   | |- exists (_ : _), (* _ = ?psent *) (Ineq _ ?psent) /\ _ => exists psent; split; 
     (* [ reflexivity | solve [ reflexivity (*| intros ?; autorewrite with psent; tauto ]*) ] ] *)
@@ -282,19 +282,19 @@ Definition psent_mnt_sound_goal_pre q w w' : Prop :=
   | Byz src dst m =>
     let: p := mkP src dst m false in
     localState w' = localState w /\ 
-    sentMsgs w' = sendout1 p (sentMsgs w) /\
-    state_effect (localState w') (PSKbyz (sentMsgs w) p)
+    packetSoup w' = sendout1 p (packetSoup w) /\
+    state_effect (localState w') (PSKbyz (packetSoup w) p)
   | _ =>
-    exists (b : psent_mnt_type_base (sentMsgs w)) (l : list psent_mnt_type), 
-      psent_mnt b l (sentMsgs w') /\ state_effect (localState w') (PSKnonbyz b l)
+    exists (b : psent_mnt_type_base (packetSoup w)) (l : list psent_mnt_type), 
+      psent_mnt b l (packetSoup w') /\ state_effect (localState w') (PSKnonbyz b l)
   end.
 
 Definition psent_mnt_sound_goal w w' : Prop :=
-  exists psk : psent_sender_kind (sentMsgs w),
+  exists psk : psent_sender_kind (packetSoup w),
     state_effect (localState w') psk /\
     match psk with
-    | PSKnonbyz b l => psent_mnt b l (sentMsgs w')
-    | PSKbyz _ p => localState w' = localState w (* this should be enough *) /\ sentMsgs w' = sendout1 p (sentMsgs w)
+    | PSKnonbyz b l => psent_mnt b l (packetSoup w')
+    | PSKbyz _ p => localState w' = localState w (* this should be enough *) /\ packetSoup w' = sendout1 p (packetSoup w)
     end.
 
 End PsentMntToolkit.

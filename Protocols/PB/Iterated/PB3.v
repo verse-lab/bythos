@@ -25,23 +25,23 @@ Import A.PBP.TSS. (* importing which does not really matter *)
 
 Section ABC.
 
-Variable (wb : B.Ns.World).
+Variable (wb : B.Ns.SystemState).
 
 Hypothesis (Hwb : B.reachable wb). 
 Hypothesis (Hvsame : forall n r, fst (VBFTB.value_bft n r) = fst (VBFTC.value_bft n r)).
 Hypothesis (Hconnect : forall n r cs, (B.Ns.localState wb n).(B.PBP.output) r = Some cs -> snd (VBFTC.value_bft n r) = cs).
 
-Definition unique_lock_availability (wc : C.Ns.World) : Prop :=
+Definition unique_lock_availability (wc : C.Ns.SystemState) : Prop :=
   forall n r csb csc, 
-    BSettB.is_byz n = false -> 
-    BSettC.is_byz n = false ->
+    BSettB.isByz n = false -> 
+    BSettC.isByz n = false ->
     (C.Ns.localState wc n).(C.PBP.output) r = Some csc ->
     (B.Ns.localState wb n).(B.PBP.output) r = Some csb ->
     let: v := fst (VBFTB.value_bft n r) in
     combined_verify (r, v) csb /\
     (exists l : list Address, 
       List.NoDup l /\ f < length l /\ 
-      (forall n0, In n0 l -> BSettC.is_byz n0 = false /\ (C.Ns.localState wc n0).(C.PBP.echoed) (n, r) = Some (VBFTC.value_bft n r))).
+      (forall n0, In n0 l -> BSettC.isByz n0 = false /\ (C.Ns.localState wc n0).(C.PBP.echoed) (n, r) = Some (VBFTC.value_bft n r))).
 
 Lemma unique_lock_availability_always_holds : C.always_holds unique_lock_availability.
 Proof using Hconnect Hvsame Hwb wb.

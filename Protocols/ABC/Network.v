@@ -24,7 +24,7 @@ Definition cert_correct (psent : PacketSoup) (c : Certificate) :=
   let: (v, nsigs) := c in
   forall n sig, 
     In (n, sig) nsigs ->
-    is_byz n = false ->
+    isByz n = false ->
     verify v sig n -> (* this can be expressed in other way *)
     sig_seen_in_history n v sig psent. 
 
@@ -46,7 +46,7 @@ Definition lcert_correct (psent : PacketSoup) (lc : LightCertificate) : Prop :=
     cs = lightsig_combine lsigs ->
     forall n lsig,
       In lsig lsigs ->
-      is_byz n = false ->
+      isByz n = false ->
       light_verify v lsig n ->
       lightsig_seen_in_history n v lsig psent. 
 
@@ -55,14 +55,14 @@ Definition lcert_correct_threshold (psent : PacketSoup) (lc : LightCertificate) 
 
 (* a weaker constraint than that provided by cryptographic primitives *)
 (* because such values cannot exist, not only cannot be sent *)
-Definition byz_constraints (m : Message) (w : World) : Prop :=
+Definition byzConstraints (m : Message) (w : SystemState) : Prop :=
   match m with
   | SubmitMsg v lsig sig => True
-  | LightConfirmMsg lc => lcert_correct_threshold (sentMsgs w) lc
-  | ConfirmMsg c => cert_correct (sentMsgs w) c
+  | LightConfirmMsg lc => lcert_correct_threshold (packetSoup w) lc
+  | ConfirmMsg c => cert_correct (packetSoup w) c
   end.
 
-Fact byz_constraints_World_rel m : World_rel_cong (byz_constraints m).
+Fact byz_constraints_SystemState_rel m : SystemState_rel_cong (byzConstraints m).
 Proof.
   intros w w' Hrel Hc.
   destruct m as [ | (v, cs) | (v, nsigs) ]; hnf in Hc |- *; auto; 
@@ -83,21 +83,11 @@ Import A V (* VBFT *) BTh BSett.
 Module Export ACDT <: SimpleACDataTypes A Sn V PPrim TSSPrim := EmptyModule <+ SimpleACDataTypes A Sn V PPrim TSSPrim.
 Module Export M <: MessageType := EmptyModule <+ ACMessage A Sn V PPrim TSSPrim ACDT.
 Module Export P0 <: SimplePacket A M := EmptyModule <+ SimplePacket A M.
-Module Export PSOp : (* hide implementation *) PacketSoupOperations P0 := PacketSoupOperationsImpl P0.
 Module Export ACP <: Protocol A M P0 BTh <: ACProtocol A Sn V (* VBFT *) BTh PPrim TSSPrim ACDT M P0 :=
   EmptyModule <+ ACProtocol A Sn V (* VBFT *) BTh PPrim TSSPrim ACDT M P0.
 Module Export Ns <: NetState A M P0 BTh ACP := EmptyModule <+ NetState A M P0 BTh ACP.
 Module Export ACAdv <: Adversary A M BTh BSett P0 ACP Ns := ACAdversary A Sn V (* VBFT *) BTh BSett PPrim TSSPrim ACDT M P0 ACP Ns.
 
-Include NetworkImpl A M BTh BSett P0 PSOp ACP Ns ACAdv.
+Include NetworkImpl A M BTh BSett P0 ACP Ns ACAdv.
 
 End ACNetworkType.
-
-Module ACNetwork (A : NetAddr) (Sn : Signable) (V : SignableValue Sn) (* (VBFT : ValueBFT A Sn V) *)
-  (BTh : ByzThreshold A) (BSett : ByzSetting A)
-  (PPrim : PKIPrim A Sn)
-  (TSSPrim : ThresholdSignatureSchemePrim A Sn with Definition thres := A.N - BTh.f) <: ACNetworkType A Sn V (* VBFT *) BTh BSett PPrim TSSPrim.
-
-Include ACNetworkType A Sn V (* VBFT *) BTh BSett PPrim TSSPrim.
-
-End ACNetwork.

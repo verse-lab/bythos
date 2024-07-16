@@ -15,30 +15,28 @@ Module CompLiveness2 (A : NetAddr) (M1 M2 : MessageType) (BTh : ByzThreshold A)
   (BSett : ByzSetting A)
   (* TODO is using the Adv of each sub-protocol really good? *)
   (Adv1 : Adversary A M1 BTh BSett Pk1 Pt1 Ns1) (Adv2 : Adversary A M2 BTh BSett Pk2 Pt2 Ns2)
-  (* TODO this is bad! *)
-  (PSOp1 : PacketSoupOperations Pk1) (PSOp2 : PacketSoupOperations Pk2)
-  (N1 : Network.Network A M1 BTh BSett Pk1 PSOp1 Pt1 Ns1 Adv1)
-  (N2 : Network.Network A M2 BTh BSett Pk2 PSOp2 Pt2 Ns2 Adv2).
+  (N1 : Network.Network A M1 BTh BSett Pk1 Pt1 Ns1 Adv1)
+  (N2 : Network.Network A M2 BTh BSett Pk2 Pt2 Ns2 Adv2).
 
-Module Export CN := CompNetwork A M1 M2 BTh Pk1 Pk2 Pt1 Pt2 SCPT Ns1 Ns2 BSett Adv1 Adv2 PSOp1 PSOp2 N1 N2.
+Module Export CN := CompNetwork A M1 M2 BTh Pk1 Pk2 Pt1 Pt2 SCPT Ns1 Ns2 BSett Adv1 Adv2 N1 N2.
 
-Include LivenessTLA A CM BTh BSett CPk CPSOp CPt CNs CAdv CN.
+Include LivenessTLA A CM BTh BSett CPk CPt CNs CAdv CN.
 
-Definition exec_proj1 (e : exec World) : exec Ns1.World := fun n => world_proj1 (e n).
+Definition exec_proj1 (e : exec SystemState) : exec Ns1.SystemState := fun n => world_proj1 (e n).
 
-Definition exec_proj2 (e : exec World) : exec Ns2.World := fun n => world_proj2 (e n).
+Definition exec_proj2 (e : exec SystemState) : exec Ns2.SystemState := fun n => world_proj2 (e n).
 
 Definition ssdexec_proj1 (f : exec system_step_descriptor) : exec N1.system_step_descriptor :=
   fun n => (ssd_proj1 (f n)).
 
-Definition ssdexec_proj2 (f : exec system_step_descriptor) (e : exec World) : exec N2.system_step_descriptor :=
+Definition ssdexec_proj2 (f : exec system_step_descriptor) (e : exec SystemState) : exec N2.system_step_descriptor :=
   fun n => (ssd_proj2 (f n) (world_proj1 (e n)) (world_proj1 (e (S n)))).
 
-Definition exec_norm1 f (e : exec World) : exec Ns1.World :=
-  N1.final_world_n (ssdexec_proj1 f) (world_proj1 (e 0)).
+Definition exec_norm1 f (e : exec SystemState) : exec Ns1.SystemState :=
+  N1.final_sysstate_n (ssdexec_proj1 f) (world_proj1 (e 0)).
 
-Definition exec_norm2 f (e : exec World) : exec Ns2.World :=
-  N2.final_world_n (ssdexec_proj2 f e) (world_proj2 (e 0)).
+Definition exec_norm2 f (e : exec SystemState) : exec Ns2.SystemState :=
+  N2.final_sysstate_n (ssdexec_proj2 f e) (world_proj2 (e 0)).
 
 Fact exec_norm1_0 e f : exec_norm1 f e 0 = exec_proj1 e 0.
 Proof eq_refl.
@@ -59,12 +57,12 @@ Proof. revert H. unseal. (* ??? *) Qed.
 (* this may not always hold, but can be achieved at the level of network semantics
     (by requiring all resulting worlds to be normalized) *)
 (* NOTE: this is stronger than what is actually needed, which is something like next_proj1 *)
-Definition disambiguation f (e : exec World) : Prop :=
+Definition disambiguation f (e : exec SystemState) : Prop :=
   forall q n, system_step q (e n) (e (S n)) → f n = q.
 
 (* FIXME: expedient; later change TLA to module type? *)
-Module _LiveTLA1 := LivenessTLA A M1 BTh BSett Pk1 PSOp1 Pt1 Ns1 Adv1 N1.
-Module _LiveTLA2 := LivenessTLA A M2 BTh BSett Pk2 PSOp2 Pt2 Ns2 Adv2 N2.
+Module _LiveTLA1 := LivenessTLA A M1 BTh BSett Pk1 Pt1 Ns1 Adv1 N1.
+Module _LiveTLA2 := LivenessTLA A M2 BTh BSett Pk2 Pt2 Ns2 Adv2 N2.
 
 Corollary exec_proj1_sound_init e (H : e ⊨ ⌜ init ⌝) : (exec_proj1 e ⊨ ⌜ _LiveTLA1.init ⌝).
 Proof. hnf in H |- *. unfold exec_proj1. rewrite H. reflexivity. Qed.
@@ -72,7 +70,7 @@ Proof. hnf in H |- *. unfold exec_proj1. rewrite H. reflexivity. Qed.
 Corollary exec_norm1_sound_init e f (H : e ⊨ ⌜ init ⌝) : (exec_norm1 f e ⊨ ⌜ _LiveTLA1.init ⌝).
 Proof. hnf. rewrite exec_norm1_0. now apply exec_proj1_sound_init. Qed.
 
-Fact exec_norm1_sound_next (Hbyz_rel : forall m, Ns1.World_rel_cong (Adv1.byz_constraints m)) (e : exec World) f (Hf : e ⊨ nextf f) :
+Fact exec_norm1_sound_next (Hbyz_rel : forall m, Ns1.SystemState_rel_cong (Adv1.byzConstraints m)) (e : exec SystemState) f (Hf : e ⊨ nextf f) :
   let: e' := exec_norm1 f e in
     _LiveTLA1.exec_rel e' (exec_proj1 e) ∧
     (* (e' ⊨ □ ⟨ _LiveTLA1.next ⟩). *)
@@ -85,23 +83,23 @@ Proof.
   autounfold with tla in Hf. hnf in Hf. apply and_wlog_r.
   - hnf. intros n. unfold exec_proj1, exec_norm1.
     induction n as [ | n IH ]; try reflexivity.
-    rewrite N1.final_world_n_add_1.
+    rewrite N1.final_sysstate_n_add_1.
     pose proof (ssd_proj1_sound (Hf n)) as (_ & H).
-    rewrite -H. now apply N1.next_world_preserves_World_rel.
+    rewrite -H. now apply N1.next_sysstate_preserves_SystemState_rel.
   - intros Hrel.
     split_and?; autounfold with tla.
     + intros k. (* exists (ssd_proj1 (f k)). rewrite !drop_n /=. *)
       pose proof (ssd_proj1_sound (Hf k)) as (Ha & Hb).
-      unfold exec_norm1 in *. rewrite N1.final_world_n_add_1. eapply N1.step_mirrors_World_rel.
+      unfold exec_norm1 in *. rewrite N1.final_sysstate_n_add_1. eapply N1.step_mirrors_SystemState_rel.
       1: symmetry; apply Hrel. 1: apply Ha. 1: assumption.
-      specialize (Hrel (S k)). rewrite N1.final_world_n_add_1 in Hrel. rewrite Hb Hrel. reflexivity.
+      specialize (Hrel (S k)). rewrite N1.final_sysstate_n_add_1 in Hrel. rewrite Hb Hrel. reflexivity.
     (* + intros k. hnf. intros q w w' Hstep. rewrite !drop_n /=.
       pose proof (ssd_proj1_sound _ _ _ Hstep) as (Ha & Hb).
-      subst e'. rewrite N1.final_world_n_add_1. eapply N1.step_mirrors_World_rel. *)
+      subst e'. rewrite N1.final_sysstate_n_add_1. eapply N1.step_mirrors_SystemState_rel. *)
 Qed.
 
-Fact exec_norm1_sound_fairness (e : exec World) f (H : e ⊨ nextf f) (Hdg : disambiguation f e)
-  (e' : exec Ns1.World) (Hrel : _LiveTLA1.exec_rel e' (exec_proj1 e))
+Fact exec_norm1_sound_fairness (e : exec SystemState) f (H : e ⊨ nextf f) (Hdg : disambiguation f e)
+  (e' : exec Ns1.SystemState) (Hrel : _LiveTLA1.exec_rel e' (exec_proj1 e))
   (* (H' : e' ⊨ □ ⟨ _LiveTLA1.next ⟩) : *)
   (H' : e' ⊨ _LiveTLA1.nextf (ssdexec_proj1 f)) :
   (e ⊨ fairness) → (e' ⊨ _LiveTLA1.fairness).
@@ -128,7 +126,7 @@ Proof. hnf in H |- *. unfold exec_proj2. rewrite H. reflexivity. Qed.
 Corollary exec_norm2_sound_init e f (H : e ⊨ ⌜ init ⌝) : (exec_norm2 f e ⊨ ⌜ _LiveTLA2.init ⌝).
 Proof. hnf. rewrite exec_norm2_0. now apply exec_proj2_sound_init. Qed.
 
-Fact exec_norm2_sound_next (Hbyz_rel : forall m, Ns2.World_rel_cong (Adv2.byz_constraints m)) (e : exec World) f (Hf : e ⊨ nextf f) :
+Fact exec_norm2_sound_next (Hbyz_rel : forall m, Ns2.SystemState_rel_cong (Adv2.byzConstraints m)) (e : exec SystemState) f (Hf : e ⊨ nextf f) :
   let: e' := exec_norm2 f e in
     _LiveTLA2.exec_rel e' (exec_proj2 e) ∧
     (e' ⊨ _LiveTLA2.nextf (ssdexec_proj2 f e)).
@@ -136,21 +134,21 @@ Proof.
   autounfold with tla in Hf. hnf in Hf. apply and_wlog_r.
   - hnf. intros n. unfold exec_proj2, exec_norm2.
     induction n as [ | n IH ]; try reflexivity.
-    rewrite N2.final_world_n_add_1.
+    rewrite N2.final_sysstate_n_add_1.
     pose proof (ssd_proj2_sound (Hf n)) as (_ & H).
-    rewrite -H. pose proof (Hf n) as EE%next_world_sound. rewrite -!EE. now apply N2.next_world_preserves_World_rel.
+    rewrite -H. pose proof (Hf n) as EE%next_sysstate_sound. rewrite -!EE. now apply N2.next_sysstate_preserves_SystemState_rel.
   - intros Hrel.
     split_and?; autounfold with tla.
     + intros k. (* exists (ssd_proj1 (f k)). rewrite !drop_n /=. *)
       pose proof (ssd_proj2_sound (Hf k)) as (Ha & Hb).
-      pose proof (Hf k) as EE%next_world_sound. rewrite -EE in Ha Hb. 
-      unfold exec_norm2 in *. rewrite N2.final_world_n_add_1. eapply N2.step_mirrors_World_rel.
+      pose proof (Hf k) as EE%next_sysstate_sound. rewrite -EE in Ha Hb. 
+      unfold exec_norm2 in *. rewrite N2.final_sysstate_n_add_1. eapply N2.step_mirrors_SystemState_rel.
       1: symmetry; apply Hrel. 1: apply Ha. 1: assumption.
-      specialize (Hrel (S k)). rewrite N2.final_world_n_add_1 in Hrel. rewrite Hb Hrel. reflexivity. 
+      specialize (Hrel (S k)). rewrite N2.final_sysstate_n_add_1 in Hrel. rewrite Hb Hrel. reflexivity. 
 Qed.
 
-Fact exec_norm2_sound_fairness (e : exec World) f (H : e ⊨ nextf f) (Hdg : disambiguation f e)
-  (e' : exec Ns2.World) (Hrel : _LiveTLA2.exec_rel e' (exec_proj2 e))
+Fact exec_norm2_sound_fairness (e : exec SystemState) f (H : e ⊨ nextf f) (Hdg : disambiguation f e)
+  (e' : exec Ns2.SystemState) (Hrel : _LiveTLA2.exec_rel e' (exec_proj2 e))
   (H' : e' ⊨ _LiveTLA2.nextf (ssdexec_proj2 f e)) :
   (e ⊨ fairness) → (e' ⊨ _LiveTLA2.fairness).
 Proof.

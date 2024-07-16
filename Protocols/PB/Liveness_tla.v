@@ -15,7 +15,7 @@ Import A R V Pf VBFT BTh BSett PBDT.
 Import ssrbool. (* anyway *)
 
 Module Export PBLive := PBLiveness A R Sn V Pf VBFT BTh BSett TSSPrim PBDT.
-Include LivenessTLA A M BTh BSett P0 PSOp PBP Ns PBAdv PBN.
+Include LivenessTLA A M BTh BSett P0 PBP Ns PBAdv PBN.
 Include PBN. Include PBInv. Include PBS. (* avoid too long qualified names *)
 
 Section A.
@@ -23,7 +23,7 @@ Section A.
   Import Termination.
 
   Variables (src : Address) (r : Round).
-  Hypothesis (Hnonbyz_src : is_byz src = false) (Hex : ex_validate r (value_bft src r).1 (value_bft src r).2).
+  Hypothesis (Hnonbyz_src : isByz src = false) (Hex : ex_validate r (value_bft src r).1 (value_bft src r).2).
 
   Lemma termination_1_in_tla :
     ⌜ init ⌝ ∧ □ ⟨ next ⟩ ∧ fairness ⊢

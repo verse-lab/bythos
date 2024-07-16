@@ -8,21 +8,21 @@ Module Type ByzSetting (Export A : NetAddr).
 
 (* this part is not related (and should never be related) with the protocol implementation, 
     and also should not be instantiated (i.e., work like universally quantified variables) *)
-(* FIXME: what if "is_byz" would change wrt. time? *)
+(* HMM what if "isByz" would change wrt. time? *)
 
-Parameter is_byz : Address -> bool.
+Parameter isByz : Address -> bool.
 
-(* this module is not intended to be instantiated, so let's include things here anyway *)
-Definition num_byz := length (List.filter is_byz valid_nodes).
+(* this module is not intended to be instantiated, so let's include definitions and proofs here anyway *)
+Definition num_byz := length (List.filter isByz valid_nodes).
 
-Fact is_byz_synonym n : is_byz n <-> In n (filter is_byz valid_nodes).
+Fact is_byz_synonym n : isByz n <-> In n (filter isByz valid_nodes).
 Proof. rewrite filter_In. pose proof (Address_is_finite n). intuition. Qed.
 
-Fact is_nonbyz_synonym n : is_byz n = false <-> In n (filter (fun n => negb (is_byz n)) valid_nodes).
+Fact is_nonbyz_synonym n : isByz n = false <-> In n (filter (fun n => negb (isByz n)) valid_nodes).
 Proof. rewrite filter_In, negb_true_iff. pose proof (Address_is_finite n). intuition. Qed.
 
 Fact filter_byz_upper_bound [l : list Address] (Hnodup : List.NoDup l) :
-  length (filter is_byz l) <= num_byz.
+  length (filter isByz l) <= num_byz.
 Proof.
   unfold num_byz.
   apply NoDup_incl_length; auto using NoDup_filter.
@@ -31,9 +31,9 @@ Proof.
 Qed.
 
 Corollary filter_nonbyz_lower_bound [l : list Address] (Hnodup : List.NoDup l) :
-  length l - num_byz <= length (filter (fun n => negb (is_byz n)) l).
+  length l - num_byz <= length (filter (fun n => negb (isByz n)) l).
 Proof.
-  pose proof (filter_length is_byz l).
+  pose proof (filter_length isByz l).
   pose proof (filter_byz_upper_bound Hnodup).
   lia.
 Qed.
@@ -46,21 +46,12 @@ Module Type RestrictedByzSetting (Export A : NetAddr) (Export BTh : ByzThreshold
 
 Include ByzSetting A.
 
-(* TODO a dilemma: 
-  (1) put BTh as an module argument, but then BTh cannot be instantiated in Network/Invariant module
-    since this ByzSetting will not be instantiated;
-  (2) use another local f and use "with Definition f := " to connect the two fs, 
-    but not sure if that will work well or not 
-  currently use (1), since we do not mean to instantiate the proof modules *)
-
 Axiom num_byz_le_f : num_byz <= f.
 
-(* this will not be instantiated, so anyway *)
-
 Lemma at_least_one_nonfaulty [l : list Address] (Hnodup : List.NoDup l)
-  (Hlen : f < length l) : exists n, is_byz n = false /\ In n l.
+  (Hlen : f < length l) : exists n, isByz n = false /\ In n l.
 Proof.
-  pose proof (filter_length is_byz l).
+  pose proof (filter_length isByz l).
   pose proof (filter_byz_upper_bound Hnodup).
   pose proof num_byz_le_f.
   destruct (filter (fun _ => _) l) as [ | n l0 ] eqn:E in H.
@@ -73,7 +64,7 @@ Proof.
 Qed.
 
 Lemma filter_nonbyz_lower_bound_f [l : list Address] (Hnodup : List.NoDup l) :
-  length l - f <= length (filter (fun n => negb (is_byz n)) l).
+  length l - f <= length (filter (fun n => negb (isByz n)) l).
 Proof.
   pose proof (filter_nonbyz_lower_bound Hnodup).
   pose proof num_byz_le_f.
@@ -81,7 +72,7 @@ Proof.
 Qed.
 
 Corollary nonbyz_lower_bound :
-  N - f <= length (filter (fun n => negb (is_byz n)) valid_nodes).
+  N - f <= length (filter (fun n => negb (isByz n)) valid_nodes).
 Proof. apply filter_nonbyz_lower_bound_f, valid_nodes_NoDup. Qed.
 
 End RestrictedByzSetting.
@@ -91,20 +82,22 @@ Module Type Adversary (Export A : NetAddr) (Export M : MessageType)
   (Export P : PacketType) (Export Pr : Protocol A M P BTh) 
   (Export Ns : NetState A M P BTh Pr).
 
-(* FIXME: do we need to consider the case where a Byzantine node sends out multiple messages
-    in one step? currently do not, since that would be equivalent with multiple steps *)
-Parameter byz_constraints : Message -> World -> Prop.
+(* NOTE: currently we do not consider the case where a Byzantine node sends out multiple messages
+    in one step, since that would be equivalent with multiple steps *)
+Parameter byzConstraints : Message -> SystemState -> Prop.
 
 End Adversary.
 
 Module Type Network (Export A : NetAddr) (Export M : MessageType) 
   (Export BTh : ByzThreshold A) (Export BSett : ByzSetting A) 
-  (Export P : SimplePacket A M) (Export PSOp : PacketSoupOperations P)
+  (Export P : SimplePacket A M)
   (Export Pr : Protocol A M P BTh) (Export Ns : NetState A M P BTh Pr) 
   (Export Adv : Adversary A M BTh BSett P Pr Ns).
 
+Module Export PSOp : (* hide implementation *) PacketSoupOperations P := PacketSoupOperationsImpl P.
+Module Export PSOp' := PacketSoupOperationsLemmas P PSOp.
 Module Export PC : (* hide implementation *) PacketConsumption A M P := PacketConsumptionImpl A M P.
-Module Export PC' := PacketConsumptionImpl' A M P PC.
+Module Export PC' := PacketConsumptionLemmas A M P PC.
 
 Inductive system_step_descriptor : Type :=
   | Idle (* stuttering *)
@@ -113,71 +106,71 @@ Inductive system_step_descriptor : Type :=
   | Byz (src dst : Address) (m : Message)
 .
 
-Definition next_world (q : system_step_descriptor) (w : World) : World :=
+Definition next_sysstate (q : system_step_descriptor) (w : SystemState) : SystemState :=
   match q with
   | Idle => w
   | Deliver p => 
     let: (st', ms) := procMsg (w @ (dst p)) (src p) (msg p) in
-    mkW (upd (dst p) st' (localState w)) (sendout ms (consume p (sentMsgs w)))
+    mkW (upd (dst p) st' (localState w)) (sendout ms (consume p (packetSoup w)))
   | Intern proc t =>
     let: (st', ms) := (procInt (w @ proc) t) in
-    mkW (upd proc st' (localState w)) (sendout ms (sentMsgs w))
+    mkW (upd proc st' (localState w)) (sendout ms (packetSoup w))
   | Byz src dst m =>
-    mkW (localState w) (sendout1 (mkP src dst m false) (sentMsgs w))
+    mkW (localState w) (sendout1 (mkP src dst m false) (packetSoup w))
   end.
 
-Fixpoint final_world_n (f : nat -> system_step_descriptor) (w : World) (n : nat) : World :=
+Fixpoint final_sysstate_n (f : nat -> system_step_descriptor) (w : SystemState) (n : nat) : SystemState :=
   match n with
   | O => w
-  | S n' => final_world_n (fun n => f (S n)) (next_world (f O) w) n'
+  | S n' => final_sysstate_n (fun n => f (S n)) (next_sysstate (f O) w) n'
   end.
 
-Fact final_world_n_add : forall k n w f, 
-  final_world_n (fun n0 => f (k + n0)) (final_world_n f w k) n =
-  final_world_n f w (k + n).
+Fact final_sysstate_n_add : forall k n w f, 
+  final_sysstate_n (fun n0 => f (k + n0)) (final_sysstate_n f w k) n =
+  final_sysstate_n f w (k + n).
 Proof.
   intros k. induction k as [ | k IH ]; intros; simpl; try reflexivity.
   rewrite <- IH. reflexivity.
 Qed.
 
-Corollary final_world_n_add_1 : forall n w f, 
-  final_world_n f w (S n) = next_world (f n) (final_world_n f w n).
+Corollary final_sysstate_n_add_1 : forall n w f, 
+  final_sysstate_n f w (S n) = next_sysstate (f n) (final_sysstate_n f w n).
 Proof.
-  intros. rewrite <- Nat.add_1_r at 1. rewrite <- final_world_n_add. simpl. now rewrite Nat.add_0_r. 
+  intros. rewrite <- Nat.add_1_r at 1. rewrite <- final_sysstate_n_add. simpl. now rewrite Nat.add_0_r. 
 Qed.
 
 (* TODO use this or indexed inductive relation? currently seems no difference *)
-Inductive system_step (q : system_step_descriptor) (w w' : World) : Prop :=
+Inductive system_step (q : system_step_descriptor) (w w' : SystemState) : Prop :=
 | IdleStep of q = Idle & w = w'
 
 | DeliverStep (p : Packet) of
       q = Deliver p &
-      In p (sentMsgs w) &
+      In p (packetSoup w) &
       (* try modelling message duplication by not checking whether p has been received or not *)
       (* FIXME: parameterizing here shall result in different models *)
-      is_byz (dst p) = false &
+      isByz (dst p) = false &
       (* cannot reduce inside the inductive definition *)
-      (* let: ww := next_world (Deliver p) w in w' = ww *)
-      let: (st', ms) := procMsg (localState w (dst p)) (src p) (msg p) in
+      (* let: ww := next_sysstate (Deliver p) w in w' = ww *)
+      let: (st', ms) := procMsg (w @ (dst p)) (src p) (msg p) in
       w' = mkW (upd (dst p) st' (localState w))
-               (sendout ms (consume p (sentMsgs w)))
+               (sendout ms (consume p (packetSoup w)))
 
 | InternStep (proc : Address) (t : InternalTransition) of
       q = Intern proc t &
-      is_byz proc = false &
-      let: (st', ms) := (procInt (localState w proc) t) in
+      isByz proc = false &
+      let: (st', ms) := (procInt (w @ proc) t) in
       w' = mkW (upd proc st' (localState w))
-               (sendout ms (sentMsgs w))
+               (sendout ms (packetSoup w))
 
 | ByzStep (src dst : Address) (m : Message) of
       q = Byz src dst m &
-      is_byz src &
-      byz_constraints m w &
+      isByz src &
+      byzConstraints m w &
       w' = mkW (localState w)
-               (sendout1 (mkP src dst m false) (sentMsgs w))
+               (sendout1 (mkP src dst m false) (packetSoup w))
 .
 
-Fact next_world_sound q w w' (H : system_step q w w') : w' = next_world q w.
+Fact next_sysstate_sound q w w' (H : system_step q w w') : w' = next_sysstate q w.
 Proof. inversion H; subst; simpl; auto. 1: now destruct (procMsg _ _ _). 1: now destruct (procInt _ _). Qed.
 
 Local Ltac inversion_step_ H Heq :=
@@ -227,18 +220,18 @@ Global Tactic Notation "inversion_step'" hyp(H) :=
     end;
     (* this try seems protocol specific *)
     unfold procMsg in Ef;
-    match type of Heq with ?w' = _ => try (subst w'; simpl_world) end
+    match type of Heq with ?w' = _ => try (subst w'; simpl_sysstate) end
   | destruct (procInt _ _) as (st', ms) eqn:E in Heq;
-    match type of Heq with ?w' = _ => try (subst w'; simpl_world) end
-  | match type of Heq with ?w' = _ => try (subst w'; simpl_world) end
+    match type of Heq with ?w' = _ => try (subst w'; simpl_sysstate) end
+  | match type of Heq with ?w' = _ => try (subst w'; simpl_sysstate) end
   ].
 
 (* inversion lemmas *)
 
 Fact DeliverStep_inv p w w' (H : system_step (Deliver p) w w') :
-  In p (sentMsgs w) /\ is_byz (dst p) = false /\
-  exists st' ms, procMsg (localState w (dst p)) (src p) (msg p) = (st', ms) /\
-    w' = mkW (upd (dst p) st' (localState w)) (sendout ms (consume p (sentMsgs w))).
+  In p (packetSoup w) /\ isByz (dst p) = false /\
+  exists st' ms, procMsg (w @ (dst p)) (src p) (msg p) = (st', ms) /\
+    w' = mkW (upd (dst p) st' (localState w)) (sendout ms (consume p (packetSoup w))).
 Proof.
   inversion H; try discriminate.
   match goal with HH : Deliver _ = Deliver _ |- _ => injection HH as <- end.
@@ -250,8 +243,8 @@ Qed.
 
 Section Network_Model_Generic_Lemmas.
 
-Fact next_world_preserves_World_rel w1 w1' (H : World_rel w1 w1')
-  q : World_rel (next_world q w1) (next_world q w1').
+Fact next_sysstate_preserves_SystemState_rel w1 w1' (H : SystemState_rel w1 w1')
+  q : SystemState_rel (next_sysstate q w1) (next_sysstate q w1').
 Proof.
   destruct q; simpl; try assumption.
   all: destruct H as (Hstmap & Hpsent); hnf in Hpsent; try rewrite <- Hstmap.
@@ -265,11 +258,11 @@ Proof.
     hnf. intros ?. autorewrite with psent. now rewrite Hpsent.
 Qed.
 
-Fact step_mirrors_World_rel w1 w1' w2 (H1 : World_rel w1 w1') 
+Fact step_mirrors_SystemState_rel w1 w1' w2 (H1 : SystemState_rel w1 w1') 
   q (H : system_step q w1 w2) 
   (* needs this! *)
-  (Hbyz_rel : forall m, World_rel_cong (byz_constraints m)) :
-  let: w2' := next_world q w1' in World_rel w2 w2' -> system_step q w1' w2'.
+  (Hbyz_rel : forall m, SystemState_rel_cong (byzConstraints m)) :
+  let: w2' := next_sysstate q w1' in SystemState_rel w2 w2' -> system_step q w1' w2'.
 Proof with try solve [ reflexivity | assumption ].
   intros H2. inversion_step_ H Ef; clear H; simpl in H2 |- *.
   all: destruct H1 as (Hstmap1 & Hpsent1), H2 as (Hstmap2 & Hpsent2); hnf in Hpsent1; try rewrite <- Hstmap1.
@@ -305,7 +298,7 @@ Proof.
 Qed.
 
 Fact system_step_psent_persistent [p w w' q] : 
-  In p (sentMsgs w) -> system_step q w w' -> exists p', pkt_le p p' /\ In p' (sentMsgs w').
+  In p (packetSoup w) -> system_step q w w' -> exists p', pkt_le p p' /\ In p' (packetSoup w').
 Proof.
   intros H Hstep.
   inversion Hstep; subst; eauto using Reflexive_pkt_le.
@@ -324,9 +317,9 @@ Proof.
 Qed.
 
 Corollary system_step_psent_persistent_weak_full [src dst msg w w' q] : 
-  (exists used, In (mkP src dst msg used) (sentMsgs w)) ->
+  (exists used, In (mkP src dst msg used) (packetSoup w)) ->
   system_step q w w' -> 
-  (exists used, In (mkP src dst msg used) (sentMsgs w')).
+  (exists used, In (mkP src dst msg used) (packetSoup w')).
 Proof.
   intros (used & H) Hstep.
   eapply system_step_psent_persistent in H; eauto.
@@ -335,7 +328,7 @@ Proof.
 Qed.
 
 Corollary system_step_psent_norevert [p w w' q] : 
-  In (markRcv p) (sentMsgs w) -> system_step q w w' -> In (markRcv p) (sentMsgs w').
+  In (markRcv p) (packetSoup w) -> system_step q w w' -> In (markRcv p) (packetSoup w').
 Proof.
   intros H H0.
   eapply system_step_psent_persistent in H; eauto.
@@ -345,7 +338,7 @@ Proof.
 Qed.
 
 Corollary system_step_psent_norevert_full [src dst msg w w' q] :
-  In (mkP src dst msg true) (sentMsgs w) -> system_step q w w' -> In (mkP src dst msg true) (sentMsgs w').
+  In (mkP src dst msg true) (packetSoup w) -> system_step q w w' -> In (mkP src dst msg true) (packetSoup w').
 Proof. rewrite <- receive_pkt_intact with (p:=mkP _ _ _ _) in |- * by auto. apply system_step_psent_norevert. Qed.
 
 (* a received message must be already in the last network state *)
@@ -354,8 +347,8 @@ Fact system_step_received_inversion_full [src dst msg w w' q]
   (* TODO well, this is not very good ... *)
   (Hfresh1 : forall st src m, Forall (fun p => p.(received) = false) (snd (procMsg st src m)))
   (Hfresh2 : forall st t, Forall (fun p => p.(received) = false) (snd (procInt st t))) : 
-  In (mkP src dst msg true) (sentMsgs w') -> system_step q w w' -> 
-  exists used, In (mkP src dst msg used) (sentMsgs w).
+  In (mkP src dst msg true) (packetSoup w') -> system_step q w w' -> 
+  exists used, In (mkP src dst msg used) (packetSoup w).
 Proof.
   intros H Hstep.
   inversion Hstep; subst; eauto using Reflexive_pkt_le; simpl in *.
@@ -381,71 +374,71 @@ Section Finite_System_Trace.
 
 (* two multistep propositions *)
 
-Fixpoint system_trace (w : World) (l : list (system_step_descriptor * World)) : Prop :=
+Fixpoint system_trace (w : SystemState) (l : list (system_step_descriptor * SystemState)) : Prop :=
   match l with
   | nil => True
   | (q, w') :: l' => system_step q w w' /\ system_trace w' l'
   end.
 
-Definition final_world (w : World) (l : list (system_step_descriptor * World)) := (snd (last l (Idle, w))).
+Definition final_sysstate (w : SystemState) (l : list (system_step_descriptor * SystemState)) := (snd (last l (Idle, w))).
 
 Fact system_trace_app w l1 l2 :
-  system_trace w (l1 ++ l2) <-> system_trace w l1 /\ system_trace (final_world w l1) l2.
+  system_trace w (l1 ++ l2) <-> system_trace w l1 /\ system_trace (final_sysstate w l1) l2.
 Proof.
   revert w l2.
   induction l1 as [ | (q, w') l1 IH ] using rev_ind; intros.
-  - now unfold final_world.
-  - unfold final_world.
+  - now unfold final_sysstate.
+  - unfold final_sysstate.
     rewrite <- app_assoc, ! IH, last_last.
     now simpl.
 Qed.
 
 Corollary system_trace_snoc w l q w' :
-  system_trace w (l ++ (q, w') :: nil) <-> system_trace w l /\ system_step q (final_world w l) w'.
+  system_trace w (l ++ (q, w') :: nil) <-> system_trace w l /\ system_step q (final_sysstate w l) w'.
 Proof. rewrite system_trace_app. simpl. intuition. Qed.
 
-Fact final_world_nil w : final_world w nil = w. Proof eq_refl.
+Fact final_sysstate_nil w : final_sysstate w nil = w. Proof eq_refl.
 
-Fact final_world_app w l1 l2 : final_world w (l1 ++ l2) = final_world (final_world w l1) l2.
+Fact final_sysstate_app w l1 l2 : final_sysstate w (l1 ++ l2) = final_sysstate (final_sysstate w l1) l2.
 Proof.
   revert w l1.
   induction l2 as [ | (q, w') l2 IH ] using rev_ind; intros.
   - rewrite app_nil_r.
-    now unfold final_world.
-  - unfold final_world.
+    now unfold final_sysstate.
+  - unfold final_sysstate.
     now rewrite -> app_assoc, ! last_last.
 Qed.
 
-Fact final_world_cons w q w' l : final_world w ((q, w') :: l) = final_world w' l.
+Fact final_sysstate_cons w q w' l : final_sysstate w ((q, w') :: l) = final_sysstate w' l.
 Proof.
   change (_ :: l) with (((q, w') :: nil) ++ l).
-  rewrite final_world_app.
+  rewrite final_sysstate_app.
   reflexivity.
 Qed.
 
-Fact final_world_snoc w q w' l : final_world w (l ++ (q, w') :: nil) = w'.
-Proof. now rewrite final_world_app. Qed. 
+Fact final_sysstate_snoc w q w' l : final_sysstate w (l ++ (q, w') :: nil) = w'.
+Proof. now rewrite final_sysstate_app. Qed. 
 
 End Finite_System_Trace.
 
-Inductive reachable : World -> Prop :=
-  | ReachableInit : reachable initWorld
-  | ReachableStep q (w w' : World) (Hstep : system_step q w w')
+Inductive reachable : SystemState -> Prop :=
+  | ReachableInit : reachable initSystemState
+  | ReachableStep q (w w' : SystemState) (Hstep : system_step q w w')
     (H_w_reachable : reachable w) : reachable w'.
 
 Global Arguments ReachableStep [_ _ _] _ _.
 
-Fact reachable_witness w : reachable w <-> exists l, system_trace initWorld l /\ w = final_world initWorld l.
+Fact reachable_witness w : reachable w <-> exists l, system_trace initSystemState l /\ w = final_sysstate initSystemState l.
 Proof.
   split.
   - intros H.
     induction H as [ | q w w' Hstep H_w_reachable (l & H1 & H2) ].
     + now exists nil.
     + exists (l ++ ((q, w') :: nil)).
-      now rewrite system_trace_snoc, final_world_snoc, <- H2.
+      now rewrite system_trace_snoc, final_sysstate_snoc, <- H2.
   - intros (l & H & ->).
     induction l as [ | (q, w) l IH ] using rev_ind; auto using ReachableInit.
-    rewrite final_world_snoc.
+    rewrite final_sysstate_snoc.
     rewrite system_trace_snoc in H.
     destruct H.
     econstructor; eauto.
@@ -453,19 +446,19 @@ Qed.
 
 (* definition of (non-dependent) invariant *)
 (*
-Definition is_invariant_trace_dep (P : World -> Prop) (Q : World -> World -> Prop) : Prop :=
-  forall w l, P w -> system_trace w l -> Q w (final_world w l).
+Definition is_invariant_trace_dep (P : SystemState -> Prop) (Q : SystemState -> SystemState -> Prop) : Prop :=
+  forall w l, P w -> system_trace w l -> Q w (final_sysstate w l).
 
-Definition is_invariant_step_dep (P : World -> Prop) (Q : World -> World -> Prop) : Prop :=
+Definition is_invariant_step_dep (P : SystemState -> Prop) (Q : SystemState -> SystemState -> Prop) : Prop :=
   forall q w w', P w -> system_step q w w' -> Q w w'.
 *)
-Definition is_invariant_trace (P : World -> Prop) : Prop :=
-  forall w l, P w -> system_trace w l -> P (final_world w l).
+Definition is_invariant_trace (P : SystemState -> Prop) : Prop :=
+  forall w l, P w -> system_trace w l -> P (final_sysstate w l).
 
-Definition is_invariant_step (P : World -> Prop) : Prop :=
+Definition is_invariant_step (P : SystemState -> Prop) : Prop :=
   forall q w w', P w -> system_step q w w' -> P w'.
 
-Fact is_invariant_step_trace (P : World -> Prop) :
+Fact is_invariant_step_trace (P : SystemState -> Prop) :
   is_invariant_trace P <-> is_invariant_step P.
 Proof.
   unfold is_invariant_trace, is_invariant_step.
@@ -475,7 +468,7 @@ Proof.
     now apply H.
   - intros H w l Hp Htrace.
     induction l as [ | (q, w') l IH ] using rev_ind; auto.
-    rewrite final_world_snoc.
+    rewrite final_sysstate_snoc.
     rewrite system_trace_snoc in Htrace.
     destruct Htrace as (Htrace & Hstep).
     clear Hp.
@@ -483,14 +476,14 @@ Proof.
     eapply H; eauto.
 Qed.
 
-Definition is_invariant_reachable_step (P : World -> Prop) : Prop :=
+Definition is_invariant_reachable_step (P : SystemState -> Prop) : Prop :=
   forall q w w', reachable w -> P w -> system_step q w w' -> P w'.
 
 (* full; with everything *)
-Definition is_invariant_reachable_step_under (P Q : World -> Prop) : Prop :=
+Definition is_invariant_reachable_step_under (P Q : SystemState -> Prop) : Prop :=
   forall q w w', reachable w -> reachable w' -> P w -> P w' -> Q w -> system_step q w w' -> Q w'.
 (*
-Fact is_invariant_implconj (P Q : World -> Prop) (Hisinv : is_invariant_step P) 
+Fact is_invariant_implconj (P Q : SystemState -> Prop) (Hisinv : is_invariant_step P) 
   (Hpq : forall w, P w -> Q w) : is_invariant_step (fun w => P w /\ Q w).
 Proof.
   hnf in Hisinv |- *.
@@ -505,7 +498,7 @@ Qed.
 (* invariant proof mode? *)
 (* or, maybe there is just no need ... we can just consider the invariants that always hold *)
 
-Definition always_holds (P : World -> Prop) : Prop := forall w, reachable w -> P w.
+Definition always_holds (P : SystemState -> Prop) : Prop := forall w, reachable w -> P w.
 
 Fact always_holds_and P Q : always_holds (fun w => P w /\ Q w) <-> always_holds P /\ always_holds Q.
 Proof. unfold always_holds. firstorder. Qed.
@@ -514,7 +507,7 @@ Fact always_holds_impl P Q (H : always_holds P) (H' : forall w, P w -> Q w) : al
 Proof. unfold always_holds. firstorder. Qed.
 
 Fact is_invariant_reachable_step_under_closed P Q (Hr : is_invariant_reachable_step_under P Q)
-  (Hi : Q initWorld) (H : always_holds P) : always_holds Q.
+  (Hi : Q initSystemState) (H : always_holds P) : always_holds Q.
 Proof.
   hnf in H, Hr |- *. intros w Hw. 
   induction Hw; auto. pose proof (ReachableStep Hstep Hw) as Hw'. pose proof (H _ Hw). pose proof (H _ Hw'). firstorder.
@@ -523,14 +516,14 @@ Qed.
 Global Ltac always_holds_decompose lemma :=
   let H := fresh "H" in pose proof lemma as H; rewrite ! always_holds_and in H; tauto.
 
-Definition is_grounded_invariant (P : World -> Prop) : Prop :=
-  P initWorld /\ is_invariant_step P.
+Definition is_grounded_invariant (P : SystemState -> Prop) : Prop :=
+  P initSystemState /\ is_invariant_step P.
 
 (* another way to prove always_holds is by induction on reachable relation *)
 Fact grounded_invariant_always_holds P (H : is_grounded_invariant P) : always_holds P.
 Proof. destruct H as (Hinit & H). hnf in H |- *. intros w Hr. induction Hr; firstorder. Qed. 
 
-Definition is_invariant_step_under (P Q : World -> Prop) : Prop :=
+Definition is_invariant_step_under (P Q : SystemState -> Prop) : Prop :=
   forall q w w', P w -> P w' -> Q w -> system_step q w w' -> Q w'.
 
 Fact is_invariant_step_under_clear [P] (Hinv : is_invariant_step P) Q : 
@@ -561,13 +554,13 @@ Proof. now hnf. Qed.
 Fact reachable_is_invariant : is_invariant_step reachable.
 Proof. intros ? ? ? ? ?. eapply ReachableStep; eauto. Qed.
 
-Fact reachable_by_trace [w l] (H : system_trace w l) (Hr : reachable w) : reachable (final_world w l).
+Fact reachable_by_trace [w l] (H : system_trace w l) (Hr : reachable w) : reachable (final_sysstate w l).
 Proof. pose proof (reachable_is_invariant) as HH. rewrite <- is_invariant_step_trace in HH. eapply HH; eauto. Qed.
 
-Corollary psent_norevert_is_invariant p : is_invariant_step (fun w => In (markRcv p) (sentMsgs w)).
+Corollary psent_norevert_is_invariant p : is_invariant_step (fun w => In (markRcv p) (packetSoup w)).
 Proof. hnf. intros ???. apply system_step_psent_norevert. Qed.
 
-Corollary psent_norevert_pkts_is_invariant pkts : is_invariant_step (fun w => incl (map markRcv pkts) (sentMsgs w)).
+Corollary psent_norevert_pkts_is_invariant pkts : is_invariant_step (fun w => incl (map markRcv pkts) (packetSoup w)).
 Proof.
   induction pkts as [ | p pkts IH ]; hnf; unfold incl; simpl; intros.
   1: contradiction.
@@ -581,12 +574,12 @@ Qed.
 (* good packet and angelic trace *)
 
 Definition good_packet p :=
-  is_byz (src p) = false /\ is_byz (dst p) = false.
+  isByz (src p) = false /\ isByz (dst p) = false.
 
 Fact good_packet_dec p : {good_packet p} + {~ good_packet p}.
 Proof.
   unfold good_packet.
-  destruct (is_byz (src p)), (is_byz (dst p)); auto.
+  destruct (isByz (src p)), (isByz (dst p)); auto.
   all: now right.
 Qed.
 
@@ -598,18 +591,18 @@ Proof. intros [ -> | -> ]. all: destruct p; intuition. Qed.
 (* this should be generalizable to any system with the same model *)
 
 Fact list_packets_deliverable [pkts w]
-  (Hgood : Forall good_packet pkts) (Hincl : incl pkts (sentMsgs w)) :
+  (Hgood : Forall good_packet pkts) (Hincl : incl pkts (packetSoup w)) :
   exists l, system_trace w l /\
-    incl (map markRcv pkts) (sentMsgs (final_world w l)).
+    incl (map markRcv pkts) (packetSoup (final_sysstate w l)).
 Proof.
   revert w Hincl.
   induction Hgood as [ | p pkts Hg Hgood IH ]; intros.
   - now exists nil.
-  - destruct (procMsg (localState w (dst p)) (src p) (msg p)) as (st', ms) eqn:E.
+  - destruct (procMsg (w @ (dst p)) (src p) (msg p)) as (st', ms) eqn:E.
     pose (w' := 
       if (in_dec Packet_eqdec p pkts)
-      then w else (mkW (upd (dst p) st' (localState w)) (sendout ms (consume p (sentMsgs w))))).
-    assert (incl pkts (sentMsgs w')) as Htmp.
+      then w else (mkW (upd (dst p) st' (localState w)) (sendout ms (consume p (packetSoup w))))).
+    assert (incl pkts (packetSoup w')) as Htmp.
     { subst w'.
       destruct (in_dec Packet_eqdec p pkts) as [ Hin | Hnotin ]; simpl; hnf in Hincl |- *.
       - firstorder.
@@ -636,7 +629,7 @@ Proof.
         apply DeliverStep with (p:=p); try reflexivity; try tauto.
         1: apply (Hincl _ (or_introl eq_refl)).
         now rewrite E.
-      * rewrite final_world_cons.
+      * rewrite final_sysstate_cons.
         hnf in Hres |- *.
         intros p' [ <- | Hin' ]; auto.
         (* use the invariant *)
@@ -681,51 +674,63 @@ Proof. etransitivity. 2: eapply set_intersection_size; eassumption. lia. Qed.
 
 End Network.
 
-(* kind of useful, so put here *)
+(* kind of useful and independent, so put here *)
 Module CommonLiftOperations (Export A : NetAddr) (Export M : MessageType)
   (Export BTh : ByzThreshold A) (Export BSett : ByzSetting A) 
-  (Export P : SimplePacket A M) (Export PSOp : PacketSoupOperations P)
+  (Export P : SimplePacket A M)
   (Export Pr : Protocol A M P BTh) (Export Ns : NetState A M P BTh Pr).
 
 Definition lift_point_to_edge {A : Type} (P : A -> Prop) : A -> A -> Prop :=
   fun st st' => P st -> P st'.
 
-Definition lift_state_pair_inv (P : State -> State -> Prop) : World -> World -> Prop :=
+Definition lift_state_pair_inv (P : State -> State -> Prop) : SystemState -> SystemState -> Prop :=
   fun w w' => forall n, P (w @ n) (w' @ n).
 
-Definition lift_state_inv (P : State -> Prop) : World -> Prop := fun w => forall n, P (w @ n).
+Definition lift_state_inv (P : State -> Prop) : SystemState -> Prop := fun w => forall n, P (w @ n).
 
-Definition lift_node_inv (P : PacketSoup -> State -> Prop) : World -> Prop :=
-  fun w => forall n, is_byz n = false -> P (sentMsgs w) (w @ n).
+Definition lift_node_inv (P : PacketSoup -> State -> Prop) : SystemState -> Prop :=
+  fun w => forall n, isByz n = false -> P (packetSoup w) (w @ n).
 
 Definition lift_pkt_inv' (P : Packet -> StateMap -> Prop) : PacketSoup -> StateMap -> Prop :=
   fun psent stmap => forall p, In p psent -> P p stmap.
 
-Definition lift_pkt_inv (P : Packet -> StateMap -> Prop) : World -> Prop :=
-  Eval unfold lift_pkt_inv' in fun w => lift_pkt_inv' P (sentMsgs w) (localState w).
+Definition lift_pkt_inv (P : Packet -> StateMap -> Prop) : SystemState -> Prop :=
+  Eval unfold lift_pkt_inv' in fun w => lift_pkt_inv' P (packetSoup w) (localState w).
 
 Definition lift_pkt_inv_alt' (P : Packet -> PacketSoup -> Prop) : PacketSoup -> Prop :=
   fun psent => forall p, In p psent -> P p psent.
 
-Definition lift_pkt_inv_alt (P : Packet -> PacketSoup -> Prop) : World -> Prop :=
-  Eval unfold lift_pkt_inv_alt' in fun w => lift_pkt_inv_alt' P (sentMsgs w).
+Definition lift_pkt_inv_alt (P : Packet -> PacketSoup -> Prop) : SystemState -> Prop :=
+  Eval unfold lift_pkt_inv_alt' in fun w => lift_pkt_inv_alt' P (packetSoup w).
 
-End CommonLiftOperations.
-
-Module NetworkImpl (Export A : NetAddr) (Export M : MessageType) 
-  (Export BTh : ByzThreshold A) (Export BSett : ByzSetting A) 
-  (Export P : SimplePacket A M) (Export PSOp : PacketSoupOperations P)
-  (Export Pr : Protocol A M P BTh) (Export Ns : NetState A M P BTh Pr) 
-  (Export Adv : Adversary A M BTh BSett P Pr Ns) <: Network A M BTh BSett P PSOp Pr Ns Adv.
-
-Include Network A M BTh BSett P PSOp Pr Ns Adv.
-Include CommonLiftOperations A M BTh BSett P PSOp Pr Ns. (* since usually NetworkImpl will be called when doing invariant proofs *)
-
-Fact lift_state_pair_inv_mirrors_World_rel [w1 w1' w2 w2']
-  (H1 : World_rel w1 w1') (H2 : World_rel w2 w2') (P : State -> State -> Prop)
+Fact lift_state_pair_inv_mirrors_SystemState_rel [w1 w1' w2 w2']
+  (H1 : SystemState_rel w1 w1') (H2 : SystemState_rel w2 w2') (P : State -> State -> Prop)
   (H : lift_state_pair_inv P w1 w2) : lift_state_pair_inv P w1' w2'.
 Proof.
   hnf in H |- *. intros n. specialize (H n). hnf in H1, H2. now rewrite <- (proj1 H1), <- (proj1 H2).
 Qed.
+
+End CommonLiftOperations.
+
+(* FIXME: the following functor requires less module arguments, but may make definitions inside Adv_ opaque
+    after instantiation? *)
+(*
+Module PracticalNetworkImpl (Export A : NetAddr) (Export M : MessageType) 
+  (Export BTh : ByzThreshold A) (Export BSett : ByzSetting A) 
+  (Export P : SimplePacket A M)
+  (Export Pr : Protocol A M P BTh)
+  (Adv_ : Adversary A M BTh BSett P Pr) (* functor *).
+
+Module Export Ns <: NetState A M P BTh Pr := EmptyModule <+ NetState A M P BTh Pr.
+Module Export Adv <: Adversary A M BTh BSett P Pr Ns := Adv_ Ns.
+*)
+Module NetworkImpl (Export A : NetAddr) (Export M : MessageType) 
+  (Export BTh : ByzThreshold A) (Export BSett : ByzSetting A) 
+  (Export P : SimplePacket A M)
+  (Export Pr : Protocol A M P BTh) (Export Ns : NetState A M P BTh Pr) 
+  (Export Adv : Adversary A M BTh BSett P Pr Ns) <: Network A M BTh BSett P Pr Ns Adv.
+
+Include Network A M BTh BSett P Pr Ns Adv.
+Include CommonLiftOperations A M BTh BSett P Pr Ns. (* since usually NetworkImpl will be called when doing invariant proofs *)
 
 End NetworkImpl.

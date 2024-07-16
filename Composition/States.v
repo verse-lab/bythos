@@ -23,11 +23,11 @@ Definition stmap_proj1 (stmap : StateMap) : Ns1.StateMap := fun n => (stmap n).(
 
 Definition stmap_proj2 (stmap : StateMap) : Ns2.StateMap := fun n => (stmap n).(st2).
 
-Definition world_proj1 (w : World) : Ns1.World :=
-  Ns1.mkW (stmap_proj1 (localState w)) (pkts_filter_proj1 (sentMsgs w)).
+Definition world_proj1 (w : SystemState) : Ns1.SystemState :=
+  Ns1.mkW (stmap_proj1 (localState w)) (pkts_filter_proj1 (packetSoup w)).
 
-Definition world_proj2 (w : World) : Ns2.World :=
-  Ns2.mkW (stmap_proj2 (localState w)) (pkts_filter_proj2 (sentMsgs w)).
+Definition world_proj2 (w : SystemState) : Ns2.SystemState :=
+  Ns2.mkW (stmap_proj2 (localState w)) (pkts_filter_proj2 (packetSoup w)).
 
 Local Set Implicit Arguments.
 

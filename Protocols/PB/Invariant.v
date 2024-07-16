@@ -94,7 +94,7 @@ Definition sent_h2l_inner (src dst : Address) msg stmap : Prop :=
   end.
 
 Definition sent_h2l src dst msg stmap : Prop := Eval unfold sent_h2l_inner in 
-  is_byz src = false -> sent_h2l_inner src dst msg stmap.
+  isByz src = false -> sent_h2l_inner src dst msg stmap.
 
 Definition initmsg_sent_h2l p stmap : Prop := Eval unfold sent_h2l in
   match p with
@@ -124,7 +124,7 @@ Definition recv_h2l_inner (src dst : Address) msg stmap : Prop :=
   end.
 
 Definition recv_h2l src dst msg stmap : Prop := Eval unfold recv_h2l_inner in 
-  is_byz dst = false -> recv_h2l_inner src dst msg stmap.
+  isByz dst = false -> recv_h2l_inner src dst msg stmap.
 
 Definition initmsg_recv_h2l p stmap : Prop := Eval unfold recv_h2l in
   match p with
@@ -170,7 +170,7 @@ Tactic Notation "basic_solver" :=
 
 Local Hint Resolve incl_sendout_l incl_sendout_r : psent.
 
-Module Export SMT <: StateMntTemplate A M BTh P0 PSOp PBP Ns.
+Module Export SMT <: StateMntTemplate A M BTh P0 PBP Ns.
 
 Inductive state_mnt_type_ (st : State) : Type :=
   | Msent : forall r,
@@ -247,7 +247,7 @@ Record node_state_invariants_pre st st' : Prop := {
 
 Fact state_mnt_sound q w w' (Hstep : system_step q w w') :
   forall n, exists l : state_mnt_type_list (w @ n) (w' @ n), 
-    psent_effect_star n (sentMsgs w') l /\ node_state_invariants_pre (w @ n) (w' @ n).
+    psent_effect_star n (packetSoup w') l /\ node_state_invariants_pre (w @ n) (w' @ n).
 Proof with (try (now exists (MNTnil _))).
   inversion_step' Hstep; clear Hstep; intros...
   - unfold upd.
@@ -344,11 +344,11 @@ Proof.
 Qed.
 
 Fact persistent_invariants_trace [w l] (Htrace : system_trace w l) :
-  lift_state_pair_inv node_persistent_invariants w (final_world w l).
+  lift_state_pair_inv node_persistent_invariants w (final_sysstate w l).
 Proof.
   revert w Htrace. induction l as [ | (q, w') l' IH ]; simpl; intros.
-  - rewrite final_world_nil. hnf. intros ?. constructor; hnf; auto.
-  - rewrite final_world_cons. destruct Htrace as (Hstep%persistent_invariants & Htrace).
+  - rewrite final_sysstate_nil. hnf. intros ?. constructor; hnf; auto.
+  - rewrite final_sysstate_cons. destruct Htrace as (Hstep%persistent_invariants & Htrace).
     specialize (IH _ Htrace). hnf in IH, Hstep |- *. intros n. specialize (Hstep n). specialize (IH n).
     etransitivity; eauto.
 Qed.
@@ -437,7 +437,7 @@ Qed.
 
 End Forward.
 
-Module Export PMT <: PsentMntTemplate A M BTh BSett P0 PSOp PBP Ns PBAdv PBN.
+Module Export PMT <: PsentMntTemplate A M BTh BSett P0 PBP Ns PBAdv PBN.
 
 Inductive packets_shape_ : Type :=
   | PSbcast (n : Address) (m : Message)
@@ -467,13 +467,13 @@ Definition state_effect_single src dst m stmap : Prop := Eval unfold sent_h2l_in
 
 Definition state_effect_send_by_shape (ps : packets_shape) (stmap : StateMap) : Prop :=
   match ps with
-  | PSbcast n m => is_byz n = false /\ state_effect_bcast n m stmap
-  | PSsingle src dst m => is_byz src = false /\ state_effect_single src dst m stmap
+  | PSbcast n m => isByz n = false /\ state_effect_bcast n m stmap
+  | PSsingle src dst m => isByz src = false /\ state_effect_single src dst m stmap
   end.
 
 End PMT.
 
-Module Export PMTool := PsentMntToolkit A M BTh BSett P0 PSOp PBP Ns PBAdv PBN PMT.
+Module Export PMTool := PsentMntToolkit A M BTh BSett P0 PBP Ns PBAdv PBN PMT.
 
 Ltac pkts_match pkts ::=
   match pkts with
@@ -599,13 +599,13 @@ Proof with (repeat (progress (hnf in *; intros))); simplify_eq; (repeat (progres
   destruct Hstep as ([ b l | [ src dst msg ? ] ] & Hse & Hpsent); simpl in Hse, Hpsent.
   - (* nonbyz step *)
     destruct Hse as (Hb & Hse). 
-    remember (sentMsgs w') as psent eqn:Htmp; clear Htmp. (* TODO generalize? *)
+    remember (packetSoup w') as psent eqn:Htmp; clear Htmp. (* TODO generalize? *)
     revert psent Hpsent H Hse. 
     induction l as [ | a l IH ]; intros.
     all: simpl in Hse, Hpsent.
     (* TODO why we do not need to destruct H here (and only need to destruct later)? can I explain? *)
     + destruct b as [ | p' Hin' ]; simpl in Hb, Hpsent; hnf in Hpsent.
-      * split_and?; intros ?; rewrite Hpsent; revert p; try now apply (h2l_invariants_id Hstep_ (sentMsgs w)).
+      * split_and?; intros ?; rewrite Hpsent; revert p; try now apply (h2l_invariants_id Hstep_ (packetSoup w)).
       * split_and?; match goal with |- forall (_ : _), _ -> ?def _ _ => pick def as_ H' by_ (destruct_and? H) end; 
           clear H; rename H' into H; setoid_rewrite Hpsent.
         1: intros [ src dst msg used ] Hin%(In_consume_conv_full Hin'). 

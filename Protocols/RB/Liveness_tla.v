@@ -13,7 +13,7 @@ Import A R V VBFT BTh BSett.
 Import ssrbool. (* anyway *)
 
 Module Export RBLive := RBLiveness A R V VBFT BTh BSett.
-Include LivenessTLA A M BTh BSett P PSOp RBP Ns RBAdv RBN.
+Include LivenessTLA A M BTh BSett P RBP Ns RBAdv RBN.
 
 Section A.
 
@@ -41,7 +41,7 @@ Section A.
 
 Import Validity.
 
-Lemma validity_in_tla src r (Hnonbyz_src : is_byz src = false) :
+Lemma validity_in_tla src r (Hnonbyz_src : isByz src = false) :
   ⌜ init ⌝ ∧ □ ⟨ next ⟩ ∧ fairness ⊢
   ⌜ λ w, (w @ src).(sent) r ⌝ ~~> ⌜ all_receives src r (value_bft src r) ⌝.
 Proof.

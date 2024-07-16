@@ -18,7 +18,7 @@ Import A R V Pf VBFT BTh BSett PBDT M P0 PBP PBP.TSS Ns.
 (* TODO need to take care that Round, Value and Proof may contain signatures ... *)
 
 (* well ... *)
-Definition byz_constraints (m : Message) (w : World) : Prop := True.
+Definition byzConstraints (m : Message) (w : SystemState) : Prop := True.
 
 End PBAdversary.
 
@@ -31,12 +31,11 @@ Import A R V Pf VBFT BTh BSett PBDT.
 
 Module Export M <: MessageType := EmptyModule <+ PBMessage A R Sn V Pf TSSPrim.
 Module Export P0 <: SimplePacket A M := EmptyModule <+ SimplePacket A M.
-Module Export PSOp : (* hide implementation *) PacketSoupOperations P0 := PacketSoupOperationsImpl P0.
 Module Export PBP <: Protocol A M P0 BTh <: PBProtocol A R Sn V Pf VBFT BTh TSSPrim PBDT M P0 :=
   EmptyModule <+ PBProtocol A R Sn V Pf VBFT BTh TSSPrim PBDT M P0.
 Module Export Ns <: NetState A M P0 BTh PBP := EmptyModule <+ NetState A M P0 BTh PBP.
 Module Export PBAdv <: Adversary A M BTh BSett P0 PBP Ns := PBAdversary A R Sn V Pf VBFT BTh BSett TSSPrim PBDT M P0 PBP Ns.
 
-Include NetworkImpl A M BTh BSett P0 PSOp PBP Ns PBAdv.
+Include NetworkImpl A M BTh BSett P0 PBP Ns PBAdv.
 
 End PBNetwork.

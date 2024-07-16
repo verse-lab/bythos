@@ -23,7 +23,7 @@ Proof. intros w Hw. induction Hw; eauto using id_coh_is_invariant. hnf. intros. 
 Fact state_invariants_always_holds : always_holds (lift_state_inv node_state_invariants).
 Proof.
   intros w Hw. induction Hw; eauto using state_invariants.
-  constructor; hnf; unfold initWorld, initState; simpl; intros; hnf in *; try eqsolve.
+  constructor; hnf; unfold initSystemState, initState; simpl; intros; hnf in *; try eqsolve.
   - match goal with |- (match ?mm with _ => _ end) => destruct mm end; auto; try constructor.
   - pose proof th_vote4output_gt_0. lia.
   - pose proof th_echo4vote_gt_0. pose proof th_vote4vote_gt_0. lia.
@@ -99,19 +99,19 @@ Ltac saturate :=
 
 Definition vote_integrity w : Prop :=
   forall dst src r v, 
-    is_byz dst = false -> is_byz src = false ->
+    isByz dst = false -> isByz src = false ->
     (w @ dst).(voted) (src, r) = Some v ->
     (w @ src).(sent) r /\ value_bft src r = v.
 
 Definition output_integrity w : Prop :=
   forall dst src r v, 
-    is_byz dst = false -> is_byz src = false ->
+    isByz dst = false -> isByz src = false ->
     In v ((w @ dst).(output) (src, r)) ->
     (w @ src).(sent) r /\ value_bft src r = v.
 
 Definition output_uniqueness w : Prop :=
   forall dst1 dst2 src r v1 v2, 
-    is_byz dst1 = false -> is_byz dst2 = false ->
+    isByz dst1 = false -> isByz dst2 = false ->
     (* no matter if src is byz or not *)
     In v1 ((w @ dst1).(output) (src, r)) ->
     In v2 ((w @ dst2).(output) (src, r)) ->
@@ -119,7 +119,7 @@ Definition output_uniqueness w : Prop :=
 
 Definition single_output w : Prop :=
   forall dst src r, 
-    is_byz dst = false ->
+    isByz dst = false ->
     (* no matter if src is byz or not *)
     length ((w @ dst).(output) (src, r)) <= 1.
 

@@ -26,7 +26,7 @@ Proof. intros w Hw. induction Hw; eauto using id_coh_is_invariant. hnf. intros. 
 Fact state_invariants_always_holds : always_holds (lift_state_inv node_state_invariants).
 Proof.
   intros w Hw. induction Hw; eauto using state_invariants.
-  constructor; hnf; unfold initWorld, initState; simpl; intros; hnf in *; try eqsolve.
+  constructor; hnf; unfold initSystemState, initState; simpl; intros; hnf in *; try eqsolve.
   - constructor.
   - pose proof th_output_gt_0. lia.
 Qed.
@@ -80,9 +80,9 @@ Definition lightsig_seen_in_history (src dst : Address) (v : Round * Value) (ls 
     cs = lightsig_combine lsigs ->
     forall n lsig,
       In lsig lsigs ->
-      is_byz n = false ->
+      isByz n = false ->
       light_verify v lsig n ->
-      lightsig_seen_in_history n dst v lsig (sentMsgs w).
+      lightsig_seen_in_history n dst v lsig (packetSoup w).
 
 Definition light_sign_inj : Prop :=
   forall (rv rv' : Round * Value) n, 
@@ -103,22 +103,22 @@ Definition node_in_counter w : Prop :=
     In (src, light_sign (r, (value_bft n r).1) (lightkey_map src)) ((w @ n).(counter) r).
 
 Definition echoed_backtrack w : Prop :=
-  forall src dst r vpf, is_byz src = false -> is_byz dst = false ->
+  forall src dst r vpf, isByz src = false -> isByz dst = false ->
     (w @ dst).(echoed) (src, r) = Some vpf -> vpf = value_bft src r.
 
 Definition counter_backtrack w : Prop :=
-  forall src dst r, is_byz src = false -> is_byz dst = false ->
+  forall src dst r, isByz src = false -> isByz dst = false ->
     In src (map fst ((w @ dst).(counter) r)) -> 
     (w @ src).(echoed) (dst, r) = Some (value_bft dst r) /\ ex_validate r (value_bft dst r).1 (value_bft dst r).2.
 
 (* also implies external validity *)
 Definition output_ok w : Prop :=
-  forall n r cs, is_byz n = false -> (w @ n).(output) r = Some cs ->
+  forall n r cs, isByz n = false -> (w @ n).(output) r = Some cs ->
     let: v := (value_bft n r).1 in
     ex_validate r v (value_bft n r).2 /\ combined_verify (r, v) cs /\
     (exists l : list Address, 
       List.NoDup l /\ f < length l /\ 
-      (forall n0, In n0 l -> is_byz n0 = false /\ (w @ n0).(echoed) (n, r) = Some (value_bft n r))).
+      (forall n0, In n0 l -> isByz n0 = false /\ (w @ n0).(echoed) (n, r) = Some (value_bft n r))).
 
 Lemma node_in_counter_always_holds : always_holds node_in_counter.
 Proof.
@@ -169,7 +169,7 @@ Proof.
     pick output_is_delivery_cert as_ H2 by_ (pose proof (Hst n) as []). apply H2 in H0. subst cs. unfold delivery_cert. f_equal.
     pick counter_ok as_ H3 by_ (pose proof (Hst n) as []). fold (counter_ok (w @ n)) in H3. rewrite counter_ok_alt in H3. 
     rewrite H3 at 1. now rewrite map_map, Hcoh.
-  - exists (List.filter (fun n => negb (is_byz n)) (map fst (counter (w @ n) r))).
+  - exists (List.filter (fun n => negb (isByz n)) (map fst (counter (w @ n) r))).
     split; [ auto using NoDup_filter | ].
     split. 1:{ pose proof (filter_nonbyz_lower_bound_f Hnodup). rewrite map_length, H1 in H2. unfold th_output in H2. pose proof f_lt_N_minus_2f. lia. }
     intros n1 (Hin & Hnonbyz_n1%negb_true_iff)%filter_In. split; auto.

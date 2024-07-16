@@ -1,16 +1,14 @@
-From Coq Require Import List Lia RelationClasses.
+From Coq Require Import List Lia RelationClasses Morphisms.
 From Bythos.Systems Require Export Protocol.
 
 Module Type NetState (Export A : NetAddr) (Export M : MessageType) 
   (Export P : PacketType) (Export BTh : ByzThreshold A) (Export Pr : Protocol A M P BTh).
 
-(* using a map library seems to be overkill *)
-(* FIXME: make this total or partial? maybe we should only represent the states of non-Byzantine nodes *)
+(* using a map library seems to be overkill, so use some simple definitions instead *)
 
 Definition StateMap := Address -> State. 
 
 Definition upd (n : Address) (st : State) (states : StateMap) : StateMap :=
-  (* fun m => if Address_eqdec n m then st else states m. *)
   Eval unfold map_update in map_update Address_eqdec n st states.
 
 Fact upd_refl n st stmap : upd n st stmap n = st.
@@ -24,37 +22,36 @@ Proof. now apply map_update_intact. Qed.
 Definition PacketSoup := list Packet.
 
 (* holistic network state *)
-Record World :=
+Record SystemState :=
   mkW {
     localState : StateMap;
-    sentMsgs : PacketSoup;
+    packetSoup : PacketSoup;
   }.
 
-Definition initWorld := mkW initState nil.
+Definition initSystemState := mkW initState nil.
 
-(* some handy things *)
+(* some handy notation *)
 Global Notation "w '@' n" := (localState w n) (at level 50, left associativity).
 
 (* pointwise eq *)
 Definition stmap_peq (stmap stmap' : StateMap) : Prop :=
   forall n, stmap n = stmap' n.
 
-Definition World_rel (w w' : World) : Prop := Eval unfold stmap_peq in
-  stmap_peq (localState w) (localState w') /\ Ineq (sentMsgs w) (sentMsgs w').
+Definition SystemState_rel (w w' : SystemState) : Prop := Eval unfold stmap_peq in
+  stmap_peq (localState w) (localState w') /\ Ineq (packetSoup w) (packetSoup w').
 
-(* usually, we only need this *)
-Definition stmap_peq_cong (P : World -> Prop) : Prop :=
+(* FIXME: there should be some algebraic thing describing such prop. what is it? *)
+Definition stmap_peq_cong (P : SystemState -> Prop) : Prop :=
   forall w w', stmap_peq (localState w) (localState w') -> P w -> P w'.
 
-(* FIXME: make this a typeclass *)
-Definition World_rel_cong (P : World -> Prop) : Prop :=
-  forall w w', World_rel w w' -> P w -> P w'.
+Definition SystemState_rel_cong (P : SystemState -> Prop) : Prop :=
+  forall w w', SystemState_rel w w' -> P w -> P w'.
 
-Fact stmap_peq_cong_implies_World_rel_cong P : stmap_peq_cong P -> World_rel_cong P.
+Fact stmap_peq_cong_implies_SystemState_rel_cong P : stmap_peq_cong P -> SystemState_rel_cong P.
 Proof. intros H. hnf in H |- *. intros ?? (H0 & _). now specialize (H _ _ H0). Qed.
 
 (* using Global to help it penetrate nested modules *)
-Global Instance Equivalence_World_rel : Equivalence World_rel.
+Global Instance Equivalence_SystemState_rel : Equivalence SystemState_rel.
 Proof.
   constructor; hnf.
   - intros. hnf; split; intros; reflexivity.
@@ -62,26 +59,19 @@ Proof.
   - intros x y z (H & H0) (H' & H0'). hnf. split; intros; rewrite ?H, ?H0, ?H', ?H0'; reflexivity.
 Qed.
 
-Global Tactic Notation "simpl_world" := simpl localState in *; simpl sentMsgs in *.
+Global Tactic Notation "simpl_sysstate" := simpl localState in *; simpl packetSoup in *.
 
 Global Tactic Notation "rewrite_w_expand" ident(w) "in_" hyp(H) :=
-  replace w with (mkW (localState w) (sentMsgs w)) in H by (now destruct w).
-
-(* TODO not good design *)
-(* this will be instantiated for each protocol, since we do not have id field here *)
-Global Ltac destruct_localState_id_coh_check P w := idtac.
+  replace w with (mkW (localState w) (packetSoup w)) in H by (now destruct w).
 
 Global Tactic Notation "destruct_localState" ident(w) ident(n) "as_" simple_intropattern(pat) "eqn_" ident(E) :=
   match goal with 
   | H : ?P |- _ =>
-    tryif destruct_localState_id_coh_check P w
-    then
-      let Htmp := fresh "Htmp" in
-      pose proof (H n) as Htmp;
-      destruct (localState w n) as pat eqn:E; 
-      simpl in Htmp; 
-      match type of Htmp with ?nn = _ => subst nn end
-    else fail 0
+    let Htmp := fresh "Htmp" in
+    pose proof (H n) as Htmp;
+    destruct (localState w n) as pat eqn:E; 
+    simpl in Htmp; 
+    match type of Htmp with ?nn = _ => subst nn end
   end.
 
 Global Tactic Notation "destruct_localState" ident(w) ident(n) "as_" simple_intropattern(pat) :=
@@ -89,15 +79,19 @@ Global Tactic Notation "destruct_localState" ident(w) ident(n) "as_" simple_intr
   (destruct_localState w n as_ pat eqn_ E); clear E.
 
 (* ask: can a faulty node produce something with type A, which meets some requirement P, 
-    by just using what is in the world? *)
+    by just using what is in the system state? *)
 (* do not really make sense to give a proof saying that if produ_check holds, then P holds.
-    just for proving *)
-(* can be used to describe the adversary capability in the Dolev-Yao style *)
+    this definition can be just taken as premise in some proofs *)
+(* in particular, it can be used to describe the adversary capability in the Dolev-Yao style *)
 Class producible (A : Type) (P : A -> Prop) :=
-  produ_check : World -> A -> Prop.
+  produ_check : SystemState -> A -> Prop.
 
 End NetState.
 
+(* the two modules are here since they are about packet soup, but that might not be a good reason *)
+(* FIXME: maybe the following modularization is superfluous?
+    the intention for the modularization is merely for hiding the details of sendout/consume, though. 
+    maybe need to move them inside some module, instead of making them top-level *)
 Module Type PacketSoupOperations (Export P : PacketType).
 
 (* indicating that our proof does not rely on concrete maintaining methods of packet soup,
@@ -111,30 +105,13 @@ Axiom In_sendout : forall pkts psent p, In p (sendout pkts psent) <-> In p pkts 
 Axiom sendout0 : forall psent, sendout nil psent = psent.
 (* not sure if this is good for autorewrite? *)
 
-(* expedient *)
-Axiom sendout1_sendout : forall p psent, sendout1 p psent = sendout (p :: nil) psent.
-
 Create HintDb psent.
 
 Global Hint Rewrite -> In_sendout1 In_sendout in_app_iff in_cons_iff : psent.
 
-Fact incl_sendout_l (l1 l2 : list Packet) : incl l1 (sendout l1 l2).
-Proof. hnf. intros. rewrite In_sendout. now left. Qed.
-
-Fact incl_sendout_r (l1 l2 : list Packet) : incl l1 (sendout l2 l1).
-Proof. hnf. intros. rewrite In_sendout. now right. Qed.
-
-Fact incl_sendout_app_l (l l1 l2 l3 : list Packet) (H : incl l (sendout l1 l3)) :
-  incl l (sendout (l1 ++ l2) l3).
-Proof. hnf in H |- *. intros a HH. specialize (H _ HH). rewrite In_sendout in H |- *. rewrite in_app_iff. tauto. Qed.
-
-Fact incl_sendout_app_r (l l1 l2 l3 : list Packet) (H : incl l (sendout l2 l3)) :
-  incl l (sendout (l1 ++ l2) l3).
-Proof. hnf in H |- *. intros a HH. specialize (H _ HH). rewrite In_sendout in H |- *. rewrite in_app_iff. tauto. Qed.
-
 End PacketSoupOperations.
 
-Module PacketSoupOperationsImpl (Export P : PacketType) <: PacketSoupOperations P.
+Module PacketSoupOperationsImpl (Export P : PacketType) : PacketSoupOperations P.
 
 Definition sendout1 : Packet -> list Packet -> list Packet := cons.
 Definition sendout : list Packet -> list Packet -> list Packet := @List.app Packet.
@@ -148,7 +125,10 @@ Proof. intros. unfold sendout. now rewrite in_app_iff. Qed.
 Fact sendout0 : forall psent, sendout nil psent = psent.
 Proof (fun _ => eq_refl).
 
-(* FIXME: can we eliminate this duplicate? *)
+End PacketSoupOperationsImpl.
+
+Module PacketSoupOperationsLemmas (Export P : PacketType) (Export PSOp : PacketSoupOperations P).
+
 Fact incl_sendout_l (l1 l2 : list Packet) : incl l1 (sendout l1 l2).
 Proof. hnf. intros. rewrite In_sendout. now left. Qed.
 
@@ -163,15 +143,12 @@ Fact incl_sendout_app_r (l l1 l2 l3 : list Packet) (H : incl l (sendout l2 l3)) 
   incl l (sendout (l1 ++ l2) l3).
 Proof. hnf in H |- *. intros a HH. specialize (H _ HH). rewrite In_sendout in H |- *. rewrite in_app_iff. tauto. Qed.
 
-Fact sendout1_sendout : forall p psent, sendout1 p psent = sendout (p :: nil) psent.
-Proof. intros. reflexivity. Qed.
-
-End PacketSoupOperationsImpl.
+End PacketSoupOperationsLemmas.
 
 Module Type PacketConsumption (Export A : NetAddr) (Export M : MessageType) (Export P : SimplePacket A M).
 
-(* since we distinguish between packets that have been delivered and packets that have not been delivered,
-    we need some mechanism to mark a packet as delivered *)
+(* since we distinguish between packets that have been received and packets that have not been received,
+    we need some mechanism to mark a packet as received *)
 
 Parameter consume : Packet -> list Packet -> list Packet.
 
@@ -181,7 +158,7 @@ Axiom In_consume : forall p psent p',
 End PacketConsumption.
 
 Module PacketConsumptionImpl (Export A : NetAddr) (Export M : MessageType) 
-  (Export P : SimplePacket A M) <: PacketConsumption A M P.
+  (Export P : SimplePacket A M) : PacketConsumption A M P.
 
 Definition consume (p : Packet) (psent : list Packet) :=
   (markRcv p) :: (List.remove Packet_eqdec p psent).
@@ -192,10 +169,8 @@ Proof. intros. simpl. rewrite in_remove_iff. intuition. Qed.
 
 End PacketConsumptionImpl.
 
-Module PacketConsumptionImpl' (Export A : NetAddr) (Export M : MessageType) (Export P : SimplePacket A M)
+Module PacketConsumptionLemmas (Export A : NetAddr) (Export M : MessageType) (Export P : SimplePacket A M)
   (Export PC : PacketConsumption A M P).
-
-(* TODO only consider the case where the received packet is in psent? *)
 
 Section Main.
 
@@ -208,7 +183,7 @@ Section Main.
     destruct (Packet_eqdec (mkP src dst msg true) p') in |- *; eqsolve.
   Qed.
 
-  (* FIXME: any below can be subsumed by In_consume_iff? *)
+  (* FIXME: any below can be subsumed by In_consume_iff? potentially, there are too many lemmas here *)
   Lemma In_consume_fwd [p'] (Hin' : In p' psent) :
     In (if Packet_eqdec p' p then markRcv p' else p') (consume p psent).
   Proof.
@@ -250,4 +225,4 @@ Section Main.
 
 End Main.
 
-End PacketConsumptionImpl'.
+End PacketConsumptionLemmas.

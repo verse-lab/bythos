@@ -37,20 +37,20 @@ Ltac saturate :=
   end.
 
 Definition genproof_soundness w : Prop :=
-  forall n nb, is_byz n = false -> In nb (genproof (w @ n).(received_certs)) ->
-    is_byz nb.
+  forall n nb, isByz n = false -> In nb (genproof (w @ n).(received_certs)) ->
+    isByz nb.
 
 (* directly behave as Byz *)
 Definition behave_byz_is_byz w :=
   forall n v1 v2 sig1 sig2 lsig1 lsig2 dst1 dst2, 
     v1 <> v2 ->
-    In (mkP n dst1 (SubmitMsg v1 lsig1 sig1) true) (sentMsgs w) ->
-    In (mkP n dst2 (SubmitMsg v2 lsig2 sig2) true) (sentMsgs w) ->
-    is_byz n.
+    In (mkP n dst1 (SubmitMsg v1 lsig1 sig1) true) (packetSoup w) ->
+    In (mkP n dst2 (SubmitMsg v2 lsig2 sig2) true) (packetSoup w) ->
+    isByz n.
 
 Definition agreement w :=
   forall n1 n2, 
-    is_byz n1 = false -> is_byz n2 = false ->
+    isByz n1 = false -> isByz n2 = false ->
     (w @ n1).(conf) -> (w @ n2).(conf) ->
     match (w @ n1).(submitted_value), (w @ n2).(submitted_value) with
     | Some v1, Some v2 => v1 = v2
@@ -101,7 +101,7 @@ Proof.
   hnf. intros w Hr. saturate.
   hnf. intros n nb Hnonbyz Hcheck.
   (* prove by contradiction *)
-  destruct (is_byz nb) eqn:E; auto.
+  destruct (isByz nb) eqn:E; auto.
   rewrite (proj2 genproof_correct) in Hcheck.
   destruct Hcheck as (v1 & v2 & sig1 & sig2 & nsigs1 & nsigs2 & Hvneq & Hin1 & Hin2 & Hin_nsigs1 & Hin_nsigs2).
   (* cert in rcerts --> valid Confirm msg *)
@@ -118,11 +118,11 @@ Proof.
   destruct Hin1 as (src1 & Hin1), Hin2 as (src2 & Hin2).
   (* since we assumed that nb is non-Byz, now get to know its submitted value *)
   assert (forall v nsigs src dst used
-    (Hin : In (mkP src dst (ConfirmMsg (v, nsigs)) used) (sentMsgs w)) (* no matter who sends to whom *)
+    (Hin : In (mkP src dst (ConfirmMsg (v, nsigs)) used) (packetSoup w)) (* no matter who sends to whom *)
     (Hin_nsigs : In (nb, sign v (key_map nb)) nsigs),
     (w @ nb).(submitted_value) = Some v) as Htraceback.
   { intros v0 nsigs0 src0 dst0 used0 Hin Hin_nsigs.
-    destruct (is_byz src0) eqn:Ebyz0.
+    destruct (isByz src0) eqn:Ebyz0.
     - (* since Byz nodes cannot forge signatures ... *)
       pick inv_confirmmsg_correct_byz as_ H2 by_ (pose proof (Hh2lbyz _ Hin) as []).
       unfold cert_correct, sig_seen_in_history in H2. 
@@ -150,7 +150,7 @@ Proof.
   hnf. intros w Hr. saturate.
   hnf. intros. 
   (* prove by contradiction *)
-  destruct (is_byz n) eqn:E; auto.
+  destruct (isByz n) eqn:E; auto.
   pick inv_submitmsg_correct as_ Ht1 by_ (pose proof (Hh2l _ H0) as []).
   pick inv_submitmsg_correct as_ Ht2 by_ (pose proof (Hh2l _ H1) as []).
   eqsolve.
@@ -184,7 +184,7 @@ Proof.
   remember (List.filter (fun n' : Address => in_dec Address_eqdec n' from1) from2) as l eqn:El.
   (* FIXME: is the following overlapped with conflicting_cert_quorum_in_proof? *)
   assert ((N - (f + f)) <= length l) as Hsize by (subst l; apply quorum_intersection; auto; lia).
-  assert (Forall (fun x => is_byz x = true) l) as Hbyz.
+  assert (Forall (fun x => isByz x = true) l) as Hbyz.
   { (* trace back *)
     subst l. apply Forall_forall. intros n (Hin2 & Hin1%sumbool_is_left)%filter_In.
     (* show that n has equivocated (behave byz) *)
@@ -202,7 +202,7 @@ Proof.
     eapply Hq1 in Hin1_submit; try reflexivity. eapply Hq2 in Hin2_submit; try reflexivity.
     eapply behave_byz_is_byz_always_holds; eauto. }
   assert (length l <= num_byz) as Hgoal.
-  { rewrite <- (forallb_filter_id is_byz l).
+  { rewrite <- (forallb_filter_id isByz l).
     - apply filter_byz_upper_bound. subst l. now apply NoDup_filter.
     - clear -Hbyz. induction Hbyz; simpl; auto. now rewrite andb_true_iff. }
   (* now simple math *)

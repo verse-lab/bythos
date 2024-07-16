@@ -16,7 +16,7 @@ Import ssrbool. (* anyway *)
 
 Module Export ACLive := ACLiveness A Sn V (* VBFT *) BTh BSett PPrim TSSPrim.
 Import ACN.ACDT.P ACN.ACDT.TSS.
-Include LivenessTLA A M BTh BSett P0 PSOp ACP Ns ACAdv ACN.
+Include LivenessTLA A M BTh BSett P0 ACP Ns ACAdv ACN.
 
 Section A.
 
