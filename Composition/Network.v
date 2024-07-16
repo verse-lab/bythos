@@ -23,9 +23,9 @@ Module CompNetwork (A : NetAddr) (M1 M2 : MessageType) (BTh : ByzThreshold A)
 
 Import BTh SCPT.
 
-Module Export CM := CompMessageImpl M1 M2.
+Module Export CM := EmptyModule <+ CompMessage M1 M2.
 
-Module Export CPk := CompSimplePacketImpl A M1 M2 CM Pk1 Pk2.
+Module Export CPk := EmptyModule <+ CompSimplePacket A M1 M2 CM Pk1 Pk2.
 
 Module Export CNs := CompNetState A M1 M2 BTh CM Pk1 Pk2 CPk Pt1 Pt2 SCPT Ns1 Ns2.
 

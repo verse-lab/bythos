@@ -68,16 +68,16 @@ Set Extraction Output Directory "Extraction/extracted".
 Module Playground (L : JustAList).
 
 Module A := AddrAsFiniteList L.
-Module BTh := ClassicByzThresholdImpl A.
+Module BTh := EmptyModule <+ ClassicByzThreshold A.
 
 Module RealRBProtocolImpl (R : Round) (V : Value) (VBFT : RB.Types.ValueBFT A R V). 
 
 Import RB.Protocol.
 
-Module RBM := RBMessageImpl A R V.
-Module RBPk := SimplePacketImpl A RBM.
+Module RBM := EmptyModule <+ RBMessage A R V.
+Module RBPk := EmptyModule <+ SimplePacket A RBM.
 
-Include (RBProtocolImpl A R V VBFT BTh RBM RBPk).
+Include (RBProtocol A R V VBFT BTh RBM RBPk).
 
 End RealRBProtocolImpl.
 
@@ -97,10 +97,10 @@ Module RealPBProtocolImpl (R : Round) (V : Value) (Pf : PB.Types.PBProof)
 
 Import PB.Protocol.
 
-Module PBM := PBMessageImpl A R Sn V Pf TSSPrim.
-Module PBPk := SimplePacketImpl A PBM.
+Module PBM := EmptyModule <+ PBMessage A R Sn V Pf TSSPrim.
+Module PBPk := EmptyModule <+ SimplePacket A PBM.
 
-Include (PBProtocolImpl A R Sn V Pf VBFT BTh TSSPrim PBDT PBM PBPk).
+Include (PBProtocol A R Sn V Pf VBFT BTh TSSPrim PBDT PBM PBPk).
 
 End RealPBProtocolImpl.
 
@@ -114,11 +114,11 @@ Import ABC.Protocol.
 
 Module TSST <: TSSThres with Definition thres := A.N - ACBTh.f. Definition thres := A.N - ACBTh.f. End TSST.
 Module TSSPrim := SimpleTSSPrim A Sn PPrim TSST.
-Module ACDT := ABC.Types.SimpleACDataTypesImpl A Sn V PPrim TSSPrim.
-Module ACM := ACMessageImpl A Sn V PPrim TSSPrim ACDT.
-Module ACPk := SimplePacketImpl A ACM.
+Module ACDT := EmptyModule <+ ABC.Types.SimpleACDataTypes A Sn V PPrim TSSPrim.
+Module ACM := EmptyModule <+ ACMessage A Sn V PPrim TSSPrim ACDT.
+Module ACPk := EmptyModule <+ SimplePacket A ACM.
 
-Include (ABC.Protocol.ACProtocolImpl A Sn V ACBTh PPrim TSSPrim ACDT ACM ACPk).
+Include (ABC.Protocol.ACProtocol A Sn V ACBTh PPrim TSSPrim ACDT ACM ACPk).
 
 End RealACProtocolImpl.
 
@@ -129,8 +129,8 @@ Module RealRBABCProtocolImpl (R : Round) (ARP : RBABC.Types.AddrRoundPair A R)
 
 Module RBP := RealRBProtocolImpl R V VBFT.
 Module ACP := RealACProtocolImpl Sn V PPrim BTh.
-Module CM := Composition.Types.CompMessageImpl RBP.RBM ACP.ACM.
-Module CPk := Composition.Types.CompSimplePacketImpl A RBP.RBM ACP.ACM CM RBP.RBPk ACP.ACPk.
+Module CM := EmptyModule <+ Composition.Types.CompMessage RBP.RBM ACP.ACM.
+Module CPk := EmptyModule <+ Composition.Types.CompSimplePacket A RBP.RBM ACP.ACM CM RBP.RBPk ACP.ACPk.
 
 Import RBABC.Protocol.
 

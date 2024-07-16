@@ -188,11 +188,3 @@ Definition procMsg (st : State) (src : Address) (msg : Message) : State * list P
   end.
 
 End RBProtocol.
-
-Module RBProtocolImpl (A : NetAddr) (R : Round) (V : Value) (VBFT : ValueBFT A R V) 
-  (BTh : ClassicByzThreshold A) (M : RBMessage A R V)
-  (P : SimplePacket A M) <: Protocol A M P BTh <: RBProtocol A R V VBFT BTh M P.
-
-Include RBProtocol A R V VBFT BTh M P.
-
-End RBProtocolImpl.

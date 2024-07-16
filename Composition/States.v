@@ -16,7 +16,7 @@ Import BTh CM CPk SCPT.
 (* HMM what if we do Include here ... *)
 Module Export CPt := SeqCompProtocol A M1 M2 BTh CM Pk1 Pk2 CPk Pt1 Pt2 SCPT.
 
-Include NetStateImpl A CM CPk BTh CPt.
+Include NetState A CM CPk BTh CPt.
 
 (* auxiliary operations *)
 Definition stmap_proj1 (stmap : StateMap) : Ns1.StateMap := fun n => (stmap n).(st1).

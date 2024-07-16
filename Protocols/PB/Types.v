@@ -46,10 +46,3 @@ Definition Message_eqdec : forall (m1 m2 : Message), {m1 = m2} + {m1 <> m2}.
 Qed.
 
 End PBMessage.
-
-Module PBMessageImpl (A : NetAddr) (R : Round) (Sn : Signable) (V : Value) (Pf : PBProof) (TSSPrim : ThresholdSignatureSchemePrim A Sn)
-  <: MessageType <: PBMessage A R Sn V Pf TSSPrim.
-
-Include PBMessage A R Sn V Pf TSSPrim.
-
-End PBMessageImpl.

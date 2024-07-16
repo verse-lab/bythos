@@ -273,12 +273,6 @@ Global Tactic Notation "simpl_pkt" :=
 
 End SimplePacket.
 
-Module SimplePacketImpl (Export A : NetAddr) (Export M : MessageType) <: (SimplePacket A M) <: PacketType.
-
-Include SimplePacket A M.
-
-End SimplePacketImpl.
-
 (* some commonly used concepts *)
 
 Module Type Value.
@@ -302,3 +296,7 @@ Parameter Round : Type.
 Parameter Round_eqdec : forall r1 r2 : Round, {r1 = r2} + {r1 <> r2}.
 
 End Round.
+
+(* using the "<+" trick described in https://coq-club.inria.narkive.com/ux8RG4m7/module-best-practices
+    to replace all boilerplate "Impl" functors *)
+Module EmptyModule. End EmptyModule.

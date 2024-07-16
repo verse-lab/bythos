@@ -119,13 +119,3 @@ Definition procMsg (st : State) (src : Address) (msg : Message) : State * list P
   end.
 
 End PBProtocol.
-
-Module PBProtocolImpl (A : NetAddr) (R : Round) (Sn : Signable) (V : Value) (Pf : PBProof) (VBFT : ValueBFT A R V Pf) 
-  (BTh : ClassicByzThreshold A)
-  (TSSPrim : ThresholdSignatureSchemePrim A Sn with Definition thres := A.N - BTh.f) (* ! *)
-  (PBDT : PBDataTypes A R Sn V Pf) (M : PBMessage A R Sn V Pf TSSPrim)
-  (P0 : SimplePacket A M) <: Protocol A M P0 BTh <: PBProtocol A R Sn V Pf VBFT BTh TSSPrim PBDT M P0.
-
-Include PBProtocol A R Sn V Pf VBFT BTh TSSPrim PBDT M P0.
-
-End PBProtocolImpl.

@@ -29,12 +29,12 @@ Module PBNetwork (A : NetAddr) (R : Round) (Sn : Signable) (V : Value) (Pf : PBP
 
 Import A R V Pf VBFT BTh BSett PBDT.
 
-Module Export M <: MessageType := PBMessageImpl A R Sn V Pf TSSPrim.
-Module Export P0 <: SimplePacket A M := SimplePacketImpl A M.
+Module Export M <: MessageType := EmptyModule <+ PBMessage A R Sn V Pf TSSPrim.
+Module Export P0 <: SimplePacket A M := EmptyModule <+ SimplePacket A M.
 Module Export PSOp : (* hide implementation *) PacketSoupOperations P0 := PacketSoupOperationsImpl P0.
 Module Export PBP <: Protocol A M P0 BTh <: PBProtocol A R Sn V Pf VBFT BTh TSSPrim PBDT M P0 :=
-  PBProtocolImpl A R Sn V Pf VBFT BTh TSSPrim PBDT M P0.
-Module Export Ns <: NetState A M P0 BTh PBP := NetStateImpl A M P0 BTh PBP.
+  EmptyModule <+ PBProtocol A R Sn V Pf VBFT BTh TSSPrim PBDT M P0.
+Module Export Ns <: NetState A M P0 BTh PBP := EmptyModule <+ NetState A M P0 BTh PBP.
 Module Export PBAdv <: Adversary A M BTh BSett P0 PBP Ns := PBAdversary A R Sn V Pf VBFT BTh BSett TSSPrim PBDT M P0 PBP Ns.
 
 Include NetworkImpl A M BTh BSett P0 PSOp PBP Ns PBAdv.

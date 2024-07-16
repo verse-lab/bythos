@@ -98,14 +98,6 @@ Class producible (A : Type) (P : A -> Prop) :=
 
 End NetState.
 
-Module NetStateImpl (Export A : NetAddr) (Export M : MessageType) 
-  (Export P : PacketType) (Export BTh : ByzThreshold A) (Export Pr : Protocol A M P BTh) 
-  <: NetState A M P BTh Pr.
-
-Include (NetState A M P BTh Pr).
-
-End NetStateImpl.
-
 Module Type PacketSoupOperations (Export P : PacketType).
 
 (* indicating that our proof does not rely on concrete maintaining methods of packet soup,

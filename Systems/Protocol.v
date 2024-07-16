@@ -48,12 +48,6 @@ Proof. pose proof f_times_3_lt_N. lia. Qed.
 
 End ClassicByzThreshold.
 
-Module ClassicByzThresholdImpl (Export A : NetAddr) <: ClassicByzThreshold A <: ByzThreshold A.
-
-Include ClassicByzThreshold A.
-
-End ClassicByzThresholdImpl.
-
 Module Type Protocol (Export A : NetAddr) (Export M : MessageType) (Export P : PacketType)
   (Export BTh : ByzThreshold A).
 

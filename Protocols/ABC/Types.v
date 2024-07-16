@@ -236,13 +236,6 @@ End CertCheckersImpl.
 
 End SimpleACDataTypes.
 
-Module SimpleACDataTypesImpl (A : NetAddr) (Sn : Signable) (V : SignableValue Sn) (PPrim : PKIPrim A Sn) (TSSPrim : ThresholdSignatureSchemePrim A Sn)
-  <: SimpleACDataTypes A Sn V PPrim TSSPrim <: ACDataTypes.
-
-Include SimpleACDataTypes A Sn V PPrim TSSPrim.
-
-End SimpleACDataTypesImpl.
-
 Module Type ACMessage (A : NetAddr) (Sn : Signable) (V : SignableValue Sn) (PPrim : PKIPrim A Sn) (TSSPrim : ThresholdSignatureSchemePrim A Sn)
   (ACDT : ACDataTypes) <: MessageType.
 
@@ -263,10 +256,3 @@ Definition Message_eqdec : forall (m1 m2 : Message), {m1 = m2} + {m1 <> m2}.
 Qed.
 
 End ACMessage.
-
-Module ACMessageImpl (A : NetAddr) (Sn : Signable) (V : SignableValue Sn) (PPrim : PKIPrim A Sn) (TSSPrim : ThresholdSignatureSchemePrim A Sn)
-  (ACDT : ACDataTypes) <: MessageType <: ACMessage A Sn V PPrim TSSPrim ACDT.
-
-Include ACMessage A Sn V PPrim TSSPrim ACDT.
-
-End ACMessageImpl.

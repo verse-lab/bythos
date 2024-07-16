@@ -26,12 +26,12 @@ Module Type RBNetworkType (A : NetAddr) (R : Round) (V : Value) (VBFT : ValueBFT
 Import A R V VBFT BTh BSett.
 
 (* Module Export BTh <: ClassicByzThreshold A := ClassicByzThresholdImpl A. *)
-Module Export M <: MessageType := RBMessageImpl A R V.
-Module Export P <: SimplePacket A M := SimplePacketImpl A M.
+Module Export M <: MessageType := EmptyModule <+ RBMessage A R V.
+Module Export P <: SimplePacket A M := EmptyModule <+ SimplePacket A M.
 Module Export PSOp : (* hide implementation *) PacketSoupOperations P := PacketSoupOperationsImpl P.
 Module Export RBP <: Protocol A M P BTh <: RBProtocol A R V VBFT BTh M P :=
-  RBProtocolImpl A R V VBFT BTh M P.
-Module Export Ns <: NetState A M P BTh RBP := NetStateImpl A M P BTh RBP.
+  EmptyModule <+ RBProtocol A R V VBFT BTh M P.
+Module Export Ns <: NetState A M P BTh RBP := EmptyModule <+ NetState A M P BTh RBP.
 Module Export RBAdv <: Adversary A M BTh BSett P RBP Ns := RBAdversary A R V VBFT BTh BSett M P RBP Ns.
 
 Include NetworkImpl A M BTh BSett P PSOp RBP Ns RBAdv.

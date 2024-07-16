@@ -21,7 +21,7 @@ Module ACLiveTLA := ACLiveness2 A Sn V BTh BSett PPrim TSSPrim.
 
 Import RBLiveTLA.RBLive.RBS.RBInv ACLiveTLA.ACLive.ACS.ACInv.
 
-Module Export CM := CompMessageImpl RBN.M ACN.M.
+Module Export CM := EmptyModule <+ CompMessage RBN.M ACN.M.
 Module Export SCPT := RBACTrigger A R ARP Sn V VBFT BTh RBN.M PPrim TSSPrim ACN.ACDT ACN.M
   CM RBN.P ACN.P0 RBN.RBP ACN.ACP.
 

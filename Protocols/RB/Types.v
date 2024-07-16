@@ -37,9 +37,3 @@ Definition Message_eqdec : forall (m1 m2 : Message), {m1 = m2} + {m1 <> m2}.
 Qed.
 
 End RBMessage.
-
-Module RBMessageImpl (A : NetAddr) (R : Round) (V : Value) <: MessageType <: RBMessage A R V.
-
-Include RBMessage A R V.
-
-End RBMessageImpl.

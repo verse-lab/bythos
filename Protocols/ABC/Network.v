@@ -80,13 +80,13 @@ Module Type ACNetworkType (A : NetAddr) (Sn : Signable) (V : SignableValue Sn) (
 
 Import A V (* VBFT *) BTh BSett.
 
-Module Export ACDT <: SimpleACDataTypes A Sn V PPrim TSSPrim := SimpleACDataTypesImpl A Sn V PPrim TSSPrim.
-Module Export M <: MessageType := ACMessageImpl A Sn V PPrim TSSPrim ACDT.
-Module Export P0 <: SimplePacket A M := SimplePacketImpl A M.
+Module Export ACDT <: SimpleACDataTypes A Sn V PPrim TSSPrim := EmptyModule <+ SimpleACDataTypes A Sn V PPrim TSSPrim.
+Module Export M <: MessageType := EmptyModule <+ ACMessage A Sn V PPrim TSSPrim ACDT.
+Module Export P0 <: SimplePacket A M := EmptyModule <+ SimplePacket A M.
 Module Export PSOp : (* hide implementation *) PacketSoupOperations P0 := PacketSoupOperationsImpl P0.
 Module Export ACP <: Protocol A M P0 BTh <: ACProtocol A Sn V (* VBFT *) BTh PPrim TSSPrim ACDT M P0 :=
-  ACProtocolImpl A Sn V (* VBFT *) BTh PPrim TSSPrim ACDT M P0.
-Module Export Ns <: NetState A M P0 BTh ACP := NetStateImpl A M P0 BTh ACP.
+  EmptyModule <+ ACProtocol A Sn V (* VBFT *) BTh PPrim TSSPrim ACDT M P0.
+Module Export Ns <: NetState A M P0 BTh ACP := EmptyModule <+ NetState A M P0 BTh ACP.
 Module Export ACAdv <: Adversary A M BTh BSett P0 ACP Ns := ACAdversary A Sn V (* VBFT *) BTh BSett PPrim TSSPrim ACDT M P0 ACP Ns.
 
 Include NetworkImpl A M BTh BSett P0 PSOp ACP Ns ACAdv.

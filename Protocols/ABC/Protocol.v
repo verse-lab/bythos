@@ -224,14 +224,3 @@ Definition procInt (st : State) (tr : InternalTransition) :=
   end.
 
 End ACProtocol.
-
-Module ACProtocolImpl (A : NetAddr) (Sn : Signable) (V : SignableValue Sn) (* (VBFT : ValueBFT A Sn V) *)
-  (BTh : ByzThreshold A)
-  (PPrim : PKIPrim A Sn)
-  (TSSPrim : ThresholdSignatureSchemePrim A Sn with Definition thres := A.N - BTh.f)
-  (ACDT : SimpleACDataTypes A Sn V PPrim TSSPrim) (M : ACMessage A Sn V PPrim TSSPrim ACDT)
-  (P0 : SimplePacket A M) <: Protocol A M P0 BTh <: ACProtocol A Sn V (* VBFT *) BTh PPrim TSSPrim ACDT M P0.
-
-Include ACProtocol A Sn V (* VBFT *) BTh PPrim TSSPrim ACDT M P0.
-
-End ACProtocolImpl.

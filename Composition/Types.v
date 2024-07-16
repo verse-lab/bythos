@@ -17,12 +17,6 @@ Qed.
 
 End CompMessage.
 
-Module CompMessageImpl (M1 M2 : MessageType) <: MessageType <: CompMessage M1 M2.
-
-Include CompMessage M1 M2.
-
-End CompMessageImpl.
-
 Module Type CompSimplePacket (A : NetAddr) (M1 M2 : MessageType) (CM : CompMessage M1 M2)
   (Pk1 : SimplePacket A M1) (Pk2 : SimplePacket A M2) <: SimplePacket A CM.
 
@@ -95,10 +89,3 @@ Hint Rewrite -> pkts_filter_proj1_all pkts_filter_proj1_no pkts_filter_proj2_all
   pkts_filter_proj1_app pkts_filter_proj2_app app_nil_r : pkts_filter.
 
 End CompSimplePacket.
-
-Module CompSimplePacketImpl (A : NetAddr) (M1 M2 : MessageType) (CM : CompMessage M1 M2)
-  (Pk1 : SimplePacket A M1) (Pk2 : SimplePacket A M2) <: SimplePacket A CM <: CompSimplePacket A M1 M2 CM Pk1 Pk2.
-
-Include CompSimplePacket A M1 M2 CM Pk1 Pk2.
-
-End CompSimplePacketImpl.
