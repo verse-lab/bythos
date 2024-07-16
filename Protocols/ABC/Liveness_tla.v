@@ -9,7 +9,7 @@ From Bythos.Properties Require Export Liveness_tla.
 Module ACLiveness2 (A : NetAddr) (Sn : Signable) (V : SignableValue Sn) (* (VBFT : ValueBFT A Sn V) *)
   (BTh : ByzThreshold A) (BSett : ByzSetting A)
   (PPrim : PKIPrim A Sn)
-  (TSSPrim : ThresholdSignatureSchemePrim A Sn with Definition thres := A.N - BTh.t0).
+  (TSSPrim : ThresholdSignatureSchemePrim A Sn with Definition thres := A.N - BTh.f).
 
 Import A V (* VBFT *) BTh BSett.
 Import ssrbool. (* anyway *)
@@ -23,7 +23,7 @@ Section A.
 Import Terminating_Convergence.
 
 (* HMM put premises into TLA level? *)
-Lemma terminating_convergence_in_tla v (H_byz_minor : num_byz ≤ t0) :
+Lemma terminating_convergence_in_tla v (H_byz_minor : num_byz ≤ f) :
   ⌜ init ⌝ ∧ □ ⟨ next ⟩ ∧ fairness ⊢
   ⌜ all_honest_nodes_submitted v ⌝ ~~> ⌜ all_honest_nodes_confirmed v ⌝.
 Proof.

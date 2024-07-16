@@ -11,7 +11,7 @@ From stdpp Require Import tactics. (* anyway *)
 Module ACLiveness (A : NetAddr) (Sn : Signable) (V : SignableValue Sn) (* (VBFT : ValueBFT A Sn V) *)
   (BTh : ByzThreshold A) (BSett : ByzSetting A)
   (PPrim : PKIPrim A Sn)
-  (TSSPrim : ThresholdSignatureSchemePrim A Sn with Definition thres := A.N - BTh.t0).
+  (TSSPrim : ThresholdSignatureSchemePrim A Sn with Definition thres := A.N - BTh.f).
 
 Import A V (* VBFT *) BTh BSett.
 Import ssrbool. (* anyway *)
@@ -38,7 +38,7 @@ Section Proof_of_Terminating_Convergence.
 
   Variables (v : Value).
 
-  Hypothesis (H_byz_minor : num_byz <= t0).
+  Hypothesis (H_byz_minor : num_byz <= f).
 
   Let submitted_v w n : Prop := (w @ n).(submitted_value) = Some v.
   Let valid_submitmsg n : Message := let: vv := (* value_bft n *) v in
@@ -50,7 +50,7 @@ Section Proof_of_Terminating_Convergence.
   Hypotheses (H_w_reachable : reachable w) (Hstart : all_honest_nodes_submitted v w).
 
   Definition pkts_needed_in_round_1 nonbyz_senders pkts :=
-    pkts_multi_to_all (N - t0) w nonbyz_senders pkts valid_submitmsg submitted_v.
+    pkts_multi_to_all (N - f) w nonbyz_senders pkts valid_submitmsg submitted_v.
 
   Let nonbyz_senders := (List.filter (fun n => negb (is_byz n)) valid_nodes).
 
@@ -185,7 +185,7 @@ Qed.
 Definition accountability w :=
   exists byzs : list Address, 
     NoDup byzs /\
-    N - (t0 + t0) <= length byzs /\
+    N - (f + f) <= length byzs /\
     Forall is_byz byzs /\
     (forall n, is_byz n = false -> incl byzs (genproof (w @ n).(received_certs))).
 

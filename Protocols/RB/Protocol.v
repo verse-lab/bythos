@@ -8,7 +8,7 @@ From RecordUpdate Require Import RecordUpdate.
 
 Module Type RBProtocol (A : NetAddr) (R : Round) (V : Value) (VBFT : ValueBFT A R V) 
   (* although the fraction 1/3 will not be used in the protocol, 
-      this protocol only makes sense with t0 being N/3 ...
+      this protocol only makes sense with f being N/3 ...
       use module type to tell this restriction *)
   (BTh : ClassicByzThreshold A) (M : RBMessage A R V)
   (P : SimplePacket A M) <: Protocol A M P BTh.
@@ -56,7 +56,7 @@ Record State_ :=
 
 Definition State := State_.
 
-Definition Init (n : Address) : State :=
+Definition initState (n : Address) : State :=
   Node n (fun _ => false) (fun _ => None) (fun _ => None) (fun _ => nil) (fun _ => nil).
 
 Definition procInt (st : State) (r : InternalTransition) : State * list Packet :=
@@ -75,7 +75,7 @@ Definition procInt (st : State) (r : InternalTransition) : State * list Packet :
     Echo, but by short-circuiting the node collects enough Vote messages and thus 
     the subsequent triggering message becomes Vote. *)
 
-Definition procMsg (st : State) (src : Address) (msg : Message) : option (State * list Packet) :=
+Definition procMsgPre (st : State) (src : Address) (msg : Message) : option (State * list Packet) :=
   let: Node n smap emap vmap cnt omap := st in
   match msg with
   | InitialMsg r v =>
@@ -112,15 +112,15 @@ Definition procMsg (st : State) (src : Address) (msg : Message) : option (State 
 
 (* some auxiliary definitions for the monitor *)
 
-Definition th_echo4vote := N - t0.
-Definition th_vote4vote := N - (t0 + t0).
-Definition th_vote4output := N - t0.
+Definition th_echo4vote := N - f.
+Definition th_vote4vote := N - (f + f).
+Definition th_vote4output := N - f.
 
 Fact th_echo4vote_gt_0 : 0 < th_echo4vote.
-Proof. unfold th_echo4vote. pose proof t0_lt_N. lia. Qed.
+Proof. unfold th_echo4vote. pose proof f_lt_N. lia. Qed.
 
 Fact th_vote4vote_gt_0 : 0 < th_vote4vote.
-Proof. unfold th_vote4vote. pose proof t0_lt_N_minus_2t0. lia. Qed.
+Proof. unfold th_vote4vote. pose proof f_lt_N_minus_2f. lia. Qed.
 
 Fact th_vote4output_gt_0 : 0 < th_vote4output.
 Proof th_echo4vote_gt_0.
@@ -177,8 +177,8 @@ Definition routine_check (st : State) (msg : Message) : State * list Packet :=
     else st' in
   (st'', pkts).
 
-Definition procMsgWithCheck (st : State) (src : Address) (msg : Message) : State * list Packet :=
-  match procMsg st src msg with
+Definition procMsg (st : State) (src : Address) (msg : Message) : State * list Packet :=
+  match procMsgPre st src msg with
   | Some (st', pkts) =>
     match msg with
     | InitialMsg _ _ => (st', pkts)

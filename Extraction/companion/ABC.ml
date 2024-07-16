@@ -18,7 +18,7 @@ let procInt_simpler st itr =
   (st', List.map packet_simplify pkts)
 
 let procMsg_simpler st src msg = 
-  let (st', pkts) = ACP.procMsgWithCheck st src msg in
+  let (st', pkts) = ACP.procMsg st src msg in
   (st', List.map packet_simplify pkts)
 
 let string_of_value v = string_of_int v
@@ -122,7 +122,7 @@ let run a = function
   | 0 ->
     (* non-faulty *)
     Random.init !me_port;
-    let st = ref (ACP.coq_Init a) in
+    let st = ref (ACP.initState a) in
     let loop f = begin
       while true do
         ignore (procInt_wrapper st);
@@ -137,7 +137,7 @@ let run a = function
   | _ ->
     (* only submit two values, then keep silence *)
     Random.init !me_port;
-    let st = ref (ACP.coq_Init a) in
+    let st = ref (ACP.initState a) in
     let loop _ = begin
       while true do 
         ignore (procInt_wrapper_byz st);

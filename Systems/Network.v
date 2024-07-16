@@ -49,20 +49,20 @@ Include ByzSetting A.
 (* TODO a dilemma: 
   (1) put BTh as an module argument, but then BTh cannot be instantiated in Network/Invariant module
     since this ByzSetting will not be instantiated;
-  (2) use another local t0 and use "with Definition t0 := " to connect the two t0s, 
+  (2) use another local f and use "with Definition f := " to connect the two fs, 
     but not sure if that will work well or not 
   currently use (1), since we do not mean to instantiate the proof modules *)
 
-Axiom num_byz_le_t0 : num_byz <= t0.
+Axiom num_byz_le_f : num_byz <= f.
 
 (* this will not be instantiated, so anyway *)
 
 Lemma at_least_one_nonfaulty [l : list Address] (Hnodup : List.NoDup l)
-  (Hlen : t0 < length l) : exists n, is_byz n = false /\ In n l.
+  (Hlen : f < length l) : exists n, is_byz n = false /\ In n l.
 Proof.
   pose proof (filter_length is_byz l).
   pose proof (filter_byz_upper_bound Hnodup).
-  pose proof num_byz_le_t0.
+  pose proof num_byz_le_f.
   destruct (filter (fun _ => _) l) as [ | n l0 ] eqn:E in H.
   1: simpl in H; lia.
   pose proof (or_introl eq_refl : In n (n :: l0)) as HH.
@@ -72,17 +72,17 @@ Proof.
   now rewrite <- negb_true_iff.
 Qed.
 
-Lemma filter_nonbyz_lower_bound_t0 [l : list Address] (Hnodup : List.NoDup l) :
-  length l - t0 <= length (filter (fun n => negb (is_byz n)) l).
+Lemma filter_nonbyz_lower_bound_f [l : list Address] (Hnodup : List.NoDup l) :
+  length l - f <= length (filter (fun n => negb (is_byz n)) l).
 Proof.
   pose proof (filter_nonbyz_lower_bound Hnodup).
-  pose proof num_byz_le_t0.
+  pose proof num_byz_le_f.
   lia.
 Qed.
 
 Corollary nonbyz_lower_bound :
-  N - t0 <= length (filter (fun n => negb (is_byz n)) valid_nodes).
-Proof. apply filter_nonbyz_lower_bound_t0, valid_nodes_NoDup. Qed.
+  N - f <= length (filter (fun n => negb (is_byz n)) valid_nodes).
+Proof. apply filter_nonbyz_lower_bound_f, valid_nodes_NoDup. Qed.
 
 End RestrictedByzSetting.
 
@@ -117,7 +117,7 @@ Definition next_world (q : system_step_descriptor) (w : World) : World :=
   match q with
   | Idle => w
   | Deliver p => 
-    let: (st', ms) := procMsgWithCheck (w @ (dst p)) (src p) (msg p) in
+    let: (st', ms) := procMsg (w @ (dst p)) (src p) (msg p) in
     mkW (upd (dst p) st' (localState w)) (sendout ms (consume p (sentMsgs w)))
   | Intern proc t =>
     let: (st', ms) := (procInt (w @ proc) t) in
@@ -158,7 +158,7 @@ Inductive system_step (q : system_step_descriptor) (w w' : World) : Prop :=
       is_byz (dst p) = false &
       (* cannot reduce inside the inductive definition *)
       (* let: ww := next_world (Deliver p) w in w' = ww *)
-      let: (st', ms) := procMsgWithCheck (localState w (dst p)) (src p) (msg p) in
+      let: (st', ms) := procMsg (localState w (dst p)) (src p) (msg p) in
       w' = mkW (upd (dst p) st' (localState w))
                (sendout ms (consume p (sentMsgs w)))
 
@@ -178,7 +178,7 @@ Inductive system_step (q : system_step_descriptor) (w w' : World) : Prop :=
 .
 
 Fact next_world_sound q w w' (H : system_step q w w') : w' = next_world q w.
-Proof. inversion H; subst; simpl; auto. 1: now destruct (procMsgWithCheck _ _ _). 1: now destruct (procInt _ _). Qed.
+Proof. inversion H; subst; simpl; auto. 1: now destruct (procMsg _ _ _). 1: now destruct (procInt _ _). Qed.
 
 Local Ltac inversion_step_ H Heq :=
   (* conventional naming *)
@@ -219,14 +219,14 @@ Global Tactic Notation "inversion_step'" hyp(H) :=
     let dst := fresh "dst" in
     let msg := fresh "msg" in
     let used := fresh "used" in *)
-    destruct (procMsgWithCheck _ _ _) as (stf, msf) eqn:Ef in Heq;
+    destruct (procMsg _ _ _) as (stf, msf) eqn:Ef in Heq;
     match type of Ef with
-    | procMsgWithCheck _ _ (?msgfunc ?p) = _ =>
+    | procMsg _ _ (?msgfunc ?p) = _ =>
       destruct p as [ src dst msg used ]; simpl_pkt
     | _ => idtac
     end;
     (* this try seems protocol specific *)
-    unfold procMsgWithCheck in Ef;
+    unfold procMsg in Ef;
     match type of Heq with ?w' = _ => try (subst w'; simpl_world) end
   | destruct (procInt _ _) as (st', ms) eqn:E in Heq;
     match type of Heq with ?w' = _ => try (subst w'; simpl_world) end
@@ -237,12 +237,12 @@ Global Tactic Notation "inversion_step'" hyp(H) :=
 
 Fact DeliverStep_inv p w w' (H : system_step (Deliver p) w w') :
   In p (sentMsgs w) /\ is_byz (dst p) = false /\
-  exists st' ms, procMsgWithCheck (localState w (dst p)) (src p) (msg p) = (st', ms) /\
+  exists st' ms, procMsg (localState w (dst p)) (src p) (msg p) = (st', ms) /\
     w' = mkW (upd (dst p) st' (localState w)) (sendout ms (consume p (sentMsgs w))).
 Proof.
   inversion H; try discriminate.
   match goal with HH : Deliver _ = Deliver _ |- _ => injection HH as <- end.
-  rewrite (surjective_pairing (procMsgWithCheck _ _ _)) in *.
+  rewrite (surjective_pairing (procMsg _ _ _)) in *.
   do 2 (split; try assumption).
   do 2 eexists.
   split; [ reflexivity | assumption ].
@@ -255,7 +255,7 @@ Fact next_world_preserves_World_rel w1 w1' (H : World_rel w1 w1')
 Proof.
   destruct q; simpl; try assumption.
   all: destruct H as (Hstmap & Hpsent); hnf in Hpsent; try rewrite <- Hstmap.
-  - destruct (procMsgWithCheck _ _ _).
+  - destruct (procMsg _ _ _).
     hnf. simpl. split; [ intros ?; unfold upd; now destruct_eqdec as_ ? | ].
     hnf. intros ?. autorewrite with psent. now rewrite !In_consume, Hpsent.
   - destruct (procInt _ _).
@@ -276,7 +276,7 @@ Proof with try solve [ reflexivity | assumption ].
   - now apply IdleStep.
   - eapply DeliverStep... all: try now apply Hpsent1.
     rewrite <- Hstmap1.
-    now rewrite (surjective_pairing (procMsgWithCheck _ _ _)).
+    now rewrite (surjective_pairing (procMsg _ _ _)).
   - eapply InternStep...
     rewrite <- Hstmap1.
     now rewrite (surjective_pairing (procInt _ _)).
@@ -289,7 +289,7 @@ Fact localState_change_atomic [q w w'] (H : system_step q w w') :
   localState w' = localState w \/ exists n st, localState w' = upd n st (localState w).
 Proof.
   inversion H; try subst; auto.
-  1: rewrite (surjective_pairing (procMsgWithCheck _ _ _)) in *.
+  1: rewrite (surjective_pairing (procMsg _ _ _)) in *.
   2: rewrite (surjective_pairing (procInt _ _)) in *.
   all: simpl in *; subst; simpl; eauto.
 Qed.
@@ -310,7 +310,7 @@ Proof.
   intros H Hstep.
   inversion Hstep; subst; eauto using Reflexive_pkt_le.
   3: exists p; simpl; rewrite In_sendout1; auto using Reflexive_pkt_le.
-  1: destruct (procMsgWithCheck _ _ _) in *.
+  1: destruct (procMsg _ _ _) in *.
   2: destruct (procInt _ _) in *.
   all: subst w'; simpl.
   all: setoid_rewrite In_sendout.
@@ -352,18 +352,18 @@ Proof. rewrite <- receive_pkt_intact with (p:=mkP _ _ _ _) in |- * by auto. appl
 (* HMM more like a trick? *)
 Fact system_step_received_inversion_full [src dst msg w w' q]
   (* TODO well, this is not very good ... *)
-  (Hfresh1 : forall st src m, Forall (fun p => p.(received) = false) (snd (procMsgWithCheck st src m)))
+  (Hfresh1 : forall st src m, Forall (fun p => p.(received) = false) (snd (procMsg st src m)))
   (Hfresh2 : forall st t, Forall (fun p => p.(received) = false) (snd (procInt st t))) : 
   In (mkP src dst msg true) (sentMsgs w') -> system_step q w w' -> 
   exists used, In (mkP src dst msg used) (sentMsgs w).
 Proof.
   intros H Hstep.
   inversion Hstep; subst; eauto using Reflexive_pkt_le; simpl in *.
-  1: destruct (procMsgWithCheck _ _ _) eqn:E in *.
+  1: destruct (procMsg _ _ _) eqn:E in *.
   2: destruct (procInt _ _) eqn:E in *.
   all: try subst; simpl in H.
   all: autorewrite with psent in H.
-  1: match type of E with procMsgWithCheck ?a ?b ?c = _ => 
+  1: match type of E with procMsg ?a ?b ?c = _ => 
     specialize (Hfresh1 a b c); rewrite Forall_forall, E in Hfresh1; simpl in Hfresh1 end. 
   2: match type of E with procInt ?a ?b = _ => 
     specialize (Hfresh2 a b); rewrite Forall_forall, E in Hfresh2; simpl in Hfresh2 end. 
@@ -605,7 +605,7 @@ Proof.
   revert w Hincl.
   induction Hgood as [ | p pkts Hg Hgood IH ]; intros.
   - now exists nil.
-  - destruct (procMsgWithCheck (localState w (dst p)) (src p) (msg p)) as (st', ms) eqn:E.
+  - destruct (procMsg (localState w (dst p)) (src p) (msg p)) as (st', ms) eqn:E.
     pose (w' := 
       if (in_dec Packet_eqdec p pkts)
       then w else (mkW (upd (dst p) st' (localState w)) (sendout ms (consume p (sentMsgs w))))).
@@ -675,8 +675,8 @@ Proof.
 Qed.
 
 Corollary quorum_intersection [l1 l2 : list Address] (Hnodup1 : NoDup l1) (Hnodup2 : NoDup l2)
-  (Hsize1 : N - t0 <= length l1) (Hsize2 : N - t0 <= length l2) :
-  (N - (t0 + t0)) <= length (filter (fun n => In_dec Address_eqdec n l1) l2).
+  (Hsize1 : N - f <= length l1) (Hsize2 : N - f <= length l2) :
+  (N - (f + f)) <= length (filter (fun n => In_dec Address_eqdec n l1) l2).
 Proof. etransitivity. 2: eapply set_intersection_size; eassumption. lia. Qed.
 
 End Network.

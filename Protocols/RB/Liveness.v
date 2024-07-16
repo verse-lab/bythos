@@ -75,9 +75,9 @@ Section Proof_of_Global_Liveness.
   Hypotheses (H_w_reachable : reachable w) (Hstart : some_receives src r v w).
 
   Definition pkts_needed_in_round_1 nonbyz_senders pkts : Prop :=
-    Eval unfold pkts_needed in pkts_needed (N - (t0 + t0)) w nonbyz_senders pkts.
+    Eval unfold pkts_needed in pkts_needed (N - (f + f)) w nonbyz_senders pkts.
 
-  (* in the first round, there are (N-2t0) non-faulty nodes broadcasting Vote messages *)
+  (* in the first round, there are (N-2f) non-faulty nodes broadcasting Vote messages *)
   Lemma round_1_pkts :
     exists nonbyz_senders pkts, pkts_needed_in_round_1 nonbyz_senders pkts.
   Proof.
@@ -87,7 +87,7 @@ Section Proof_of_Global_Liveness.
     pick output_vote_size as_ H1 by_ (pose proof (Hst n) as []). specialize (H1 _ _ _ Hr).
     unfold th_vote4output in H1.
     pick msgcnt_nodup as_ Hnodup by_ (pose proof (Hst n) as []). specialize (Hnodup (VoteMsg src r v)). simpl in Hnodup.
-    pose proof (filter_nonbyz_lower_bound_t0 Hnodup) as Hlen.
+    pose proof (filter_nonbyz_lower_bound_f Hnodup) as Hlen.
     match type of Hlen with _ <= length ?ll => exists ll end.
     apply pkts_needed_by_voted_nodes; auto using NoDup_filter; try lia.
     all: intros n1 (Hin1 & Hnonbyz%negb_true_iff)%filter_In; auto.
@@ -129,7 +129,7 @@ Section Proof_of_Global_Liveness.
     destruct (voted _ _) as [ v' | ] eqn:Ev' in |- *.
     - (* use vote_uniqueness *)
       f_equal. 
-      pose proof N_minus_2t0_gt_0 as Ht0. pose proof (length_gt_0_notnil (l:=nonbyz_senders) ltac:(lia)) as (_ & (nn & Hin)).
+      pose proof N_minus_2f_gt_0 as Hf. pose proof (length_gt_0_notnil (l:=nonbyz_senders) ltac:(lia)) as (_ & (nn & Hin)).
       pose proof (HH _ Hin) as (Hnonbyz_nn & Hvnn & _). 
       (* FIXME: make this usage of persistence a tactic? *)
       pose proof (persistent_invariants_trace Htrace0) as Hps. rewrite <- Ew0 in *.
@@ -151,11 +151,11 @@ Section Proof_of_Global_Liveness.
   Hypothesis (H_w_reachable : reachable w) (Hstart : round_2_start w).
 
   Definition pkts_needed_in_round_2 nonbyz_senders pkts : Prop :=
-    Eval unfold pkts_needed in pkts_needed (N - t0) w nonbyz_senders pkts.
+    Eval unfold pkts_needed in pkts_needed (N - f) w nonbyz_senders pkts.
 
   Let nonbyz_senders := (List.filter (fun n => negb (is_byz n)) valid_nodes).
 
-  (* in the second round, there are (N-t0) non-faulty nodes broadcasting Vote messages *)
+  (* in the second round, there are (N-f) non-faulty nodes broadcasting Vote messages *)
   Lemma round_2_pkts :
     exists pkts, pkts_needed_in_round_2 nonbyz_senders pkts.
   Proof.
@@ -274,12 +274,12 @@ Section Proof_of_Validity.
   Hypotheses (H_w_reachable : reachable w) (Hstart : round_2_start w).
 
   Definition pkts_needed_in_round_2 nonbyz_senders pkts : Prop :=
-    Eval unfold pkts_multi_to_all in pkts_multi_to_all (N - t0) w nonbyz_senders pkts (fun _ => EchoMsg src r (value_bft src r))
+    Eval unfold pkts_multi_to_all in pkts_multi_to_all (N - f) w nonbyz_senders pkts (fun _ => EchoMsg src r (value_bft src r))
       (fun w n => (w @ n).(echoed) (src, r) = Some (value_bft src r)).
 
   Let nonbyz_senders := (List.filter (fun n => negb (is_byz n)) valid_nodes).
 
-  (* in the second round, there are (N-t0) non-faulty nodes broadcasting Echo messages *)
+  (* in the second round, there are (N-f) non-faulty nodes broadcasting Echo messages *)
   Lemma round_2_pkts :
     exists pkts, pkts_needed_in_round_2 nonbyz_senders pkts.
   Proof.

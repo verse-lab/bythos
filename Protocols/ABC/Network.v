@@ -8,7 +8,7 @@ From Bythos.Protocols.ABC Require Export Protocol.
 Module ACAdversary (A : NetAddr) (Sn : Signable) (V : SignableValue Sn) (* (VBFT : ValueBFT A Sn V) *)
   (BTh : ByzThreshold A) (BSett : ByzSetting A)
   (PPrim : PKIPrim A Sn)
-  (TSSPrim : ThresholdSignatureSchemePrim A Sn with Definition thres := A.N - BTh.t0)
+  (TSSPrim : ThresholdSignatureSchemePrim A Sn with Definition thres := A.N - BTh.f)
   (ACDT : SimpleACDataTypes A Sn V PPrim TSSPrim) (M : ACMessage A Sn V PPrim TSSPrim ACDT)
   (P0 : SimplePacket A M) 
   (ACP : ACProtocol A Sn V (* VBFT *) BTh PPrim TSSPrim ACDT M P0) 
@@ -76,7 +76,7 @@ End ACAdversary.
 Module Type ACNetworkType (A : NetAddr) (Sn : Signable) (V : SignableValue Sn) (* (VBFT : ValueBFT A Sn V) *)
   (BTh : ByzThreshold A) (BSett : ByzSetting A)
   (PPrim : PKIPrim A Sn)
-  (TSSPrim : ThresholdSignatureSchemePrim A Sn with Definition thres := A.N - BTh.t0).
+  (TSSPrim : ThresholdSignatureSchemePrim A Sn with Definition thres := A.N - BTh.f).
 
 Import A V (* VBFT *) BTh BSett.
 
@@ -96,7 +96,7 @@ End ACNetworkType.
 Module ACNetwork (A : NetAddr) (Sn : Signable) (V : SignableValue Sn) (* (VBFT : ValueBFT A Sn V) *)
   (BTh : ByzThreshold A) (BSett : ByzSetting A)
   (PPrim : PKIPrim A Sn)
-  (TSSPrim : ThresholdSignatureSchemePrim A Sn with Definition thres := A.N - BTh.t0) <: ACNetworkType A Sn V (* VBFT *) BTh BSett PPrim TSSPrim.
+  (TSSPrim : ThresholdSignatureSchemePrim A Sn with Definition thres := A.N - BTh.f) <: ACNetworkType A Sn V (* VBFT *) BTh BSett PPrim TSSPrim.
 
 Include ACNetworkType A Sn V (* VBFT *) BTh BSett PPrim TSSPrim.
 

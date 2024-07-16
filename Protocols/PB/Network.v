@@ -7,7 +7,7 @@ From Bythos.Protocols.PB Require Export Protocol.
 
 Module PBAdversary (A : NetAddr) (R : Round) (Sn : Signable) (V : Value) (Pf : PBProof) (VBFT : ValueBFT A R V Pf) 
   (BTh : ClassicByzThreshold A) (BSett : ByzSetting A)
-  (TSSPrim : ThresholdSignatureSchemePrim A Sn with Definition thres := A.N - BTh.t0) (* ! *)
+  (TSSPrim : ThresholdSignatureSchemePrim A Sn with Definition thres := A.N - BTh.f) (* ! *)
   (PBDT : PBDataTypes A R Sn V Pf) (M : PBMessage A R Sn V Pf TSSPrim)
   (P0 : SimplePacket A M) 
   (PBP : PBProtocol A R Sn V Pf VBFT BTh TSSPrim PBDT M P0)
@@ -24,7 +24,7 @@ End PBAdversary.
 
 Module PBNetwork (A : NetAddr) (R : Round) (Sn : Signable) (V : Value) (Pf : PBProof) (VBFT : ValueBFT A R V Pf) 
   (BTh : ClassicByzThreshold A) (BSett : RestrictedByzSetting A BTh)
-  (TSSPrim : ThresholdSignatureSchemePrim A Sn with Definition thres := A.N - BTh.t0) (* ! *)
+  (TSSPrim : ThresholdSignatureSchemePrim A Sn with Definition thres := A.N - BTh.f) (* ! *)
   (PBDT : PBDataTypes A R Sn V Pf).
 
 Import A R V Pf VBFT BTh BSett PBDT.

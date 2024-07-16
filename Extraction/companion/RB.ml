@@ -31,7 +31,7 @@ let procInt_simpler st itr =
   (st', List.map packet_simplify pkts)
 
 let procMsg_simpler st src msg = 
-  let (st', pkts) = RBP.procMsgWithCheck st src msg in
+  let (st', pkts) = RBP.procMsg st src msg in
   (st', List.map packet_simplify pkts)
 
 (* can we automate the string_of derivations for these types?
@@ -102,7 +102,7 @@ let run a = function
   | 0 ->
     (* non-faulty *)
     Random.init !me_port;
-    let st = ref (RBP.coq_Init a) in
+    let st = ref (RBP.initState a) in
     let loop f = begin
       while true do
         ignore (procInt_wrapper st);

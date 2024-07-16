@@ -89,7 +89,7 @@ Extraction "RB.ml" RealRBProtocolImpl.
     for now, just use TSSPrim in the companion file *)
 Module Playground2 (Sn : Signable) (PPrim : PKIPrim A Sn).
 
-Module TSST <: TSSThres with Definition thres := A.N - BTh.t0. Definition thres := A.N - BTh.t0. End TSST.
+Module TSST <: TSSThres with Definition thres := A.N - BTh.f. Definition thres := A.N - BTh.f. End TSST.
 Module TSSPrim := SimpleTSSPrim A Sn PPrim TSST.
 
 Module RealPBProtocolImpl (R : Round) (V : Value) (Pf : PB.Types.PBProof)
@@ -112,7 +112,7 @@ Module RealACProtocolImpl (Sn : Signable) (V : SignableValue Sn) (PPrim : PKIPri
 
 Import ABC.Protocol.
 
-Module TSST <: TSSThres with Definition thres := A.N - ACBTh.t0. Definition thres := A.N - ACBTh.t0. End TSST.
+Module TSST <: TSSThres with Definition thres := A.N - ACBTh.f. Definition thres := A.N - ACBTh.f. End TSST.
 Module TSSPrim := SimpleTSSPrim A Sn PPrim TSST.
 Module ACDT := ABC.Types.SimpleACDataTypesImpl A Sn V PPrim TSSPrim.
 Module ACM := ACMessageImpl A Sn V PPrim TSSPrim ACDT.

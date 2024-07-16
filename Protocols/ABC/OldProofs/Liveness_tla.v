@@ -7,7 +7,7 @@ From Bythos.Properties Require Export Liveness_tla.
 
 Module ACLiveness (A : NetAddr) (Sn : Signable) (V : SignableValue Sn) (VBFT : ValueBFT A Sn V) 
   (BTh : ByzThreshold A) (BSett : ByzSetting A)
-  (P : PKI A Sn) (TSS0 : ThresholdSignatureSchemePrim A Sn with Definition thres := BTh.t0) (* ! *)
+  (P : PKI A Sn) (TSS0 : ThresholdSignatureSchemePrim A Sn with Definition thres := BTh.f) (* ! *)
   (TSS : ThresholdSignatureScheme A Sn with Module TSSPrim := TSS0).
 
 Import A V VBFT BTh BSett P TSS.
@@ -17,7 +17,7 @@ Include LivenessTLA A M BTh BSett P0 PSOp ACP Ns ACAdv ACN.
 
 (* now, really nice things *)
 
-Lemma terminating_convergence_in_tla v (H_byz_minor : num_byz ≤ t0) :
+Lemma terminating_convergence_in_tla v (H_byz_minor : num_byz ≤ f) :
   ⌜ init ⌝ ∧ □ ⟨ next ⟩ ∧ fairness ⊢
   ⌜ all_honest_nodes_submitted v ⌝ ~~> ⌜ all_honest_nodes_confirmed ⌝.
 Proof.

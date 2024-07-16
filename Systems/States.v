@@ -8,7 +8,6 @@ Module Type NetState (Export A : NetAddr) (Export M : MessageType)
 (* FIXME: make this total or partial? maybe we should only represent the states of non-Byzantine nodes *)
 
 Definition StateMap := Address -> State. 
-Definition initState := (fun n => Init n).
 
 Definition upd (n : Address) (st : State) (states : StateMap) : StateMap :=
   (* fun m => if Address_eqdec n m then st else states m. *)

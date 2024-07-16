@@ -9,7 +9,7 @@ From stdpp Require Import tactics. (* anyway *)
 
 Module PBSafety (A : NetAddr) (R : Round) (Sn : Signable) (V : Value) (Pf : PBProof) (VBFT : ValueBFT A R V Pf) 
   (BTh : ClassicByzThreshold A) (BSett : RestrictedByzSetting A BTh)
-  (TSSPrim : ThresholdSignatureSchemePrim A Sn with Definition thres := A.N - BTh.t0)
+  (TSSPrim : ThresholdSignatureSchemePrim A Sn with Definition thres := A.N - BTh.f)
   (PBDT : PBDataTypes A R Sn V Pf).
 
 Import A R V Pf VBFT BTh BSett PBDT.
@@ -117,7 +117,7 @@ Definition output_ok w : Prop :=
     let: v := (value_bft n r).1 in
     ex_validate r v (value_bft n r).2 /\ combined_verify (r, v) cs /\
     (exists l : list Address, 
-      List.NoDup l /\ t0 < length l /\ 
+      List.NoDup l /\ f < length l /\ 
       (forall n0, In n0 l -> is_byz n0 = false /\ (w @ n0).(echoed) (n, r) = Some (value_bft n r))).
 
 Lemma node_in_counter_always_holds : always_holds node_in_counter.
@@ -161,7 +161,7 @@ Proof.
   pick from_nodup as_ Hnodup by_ (pose proof (Hst n) as []). specialize (Hnodup r).
   split_and?.
   - apply at_least_one_nonfaulty in Hnodup.
-    2: rewrite map_length, H1; unfold th_output; pose proof N_minus_2t0_gt_0; lia.
+    2: rewrite map_length, H1; unfold th_output; pose proof N_minus_2f_gt_0; lia.
     destruct Hnodup as (n1 & Hnonbyz_n1 & Hin).
     now apply counter_backtrack_always_holds in Hin.
   - apply combine_correct.
@@ -171,7 +171,7 @@ Proof.
     rewrite H3 at 1. now rewrite map_map, Hcoh.
   - exists (List.filter (fun n => negb (is_byz n)) (map fst (counter (w @ n) r))).
     split; [ auto using NoDup_filter | ].
-    split. 1:{ pose proof (filter_nonbyz_lower_bound_t0 Hnodup). rewrite map_length, H1 in H2. unfold th_output in H2. pose proof t0_lt_N_minus_2t0. lia. }
+    split. 1:{ pose proof (filter_nonbyz_lower_bound_f Hnodup). rewrite map_length, H1 in H2. unfold th_output in H2. pose proof f_lt_N_minus_2f. lia. }
     intros n1 (Hin & Hnonbyz_n1%negb_true_iff)%filter_In. split; auto.
     apply counter_backtrack_always_holds in Hin; auto. tauto.
 Qed.
@@ -184,7 +184,7 @@ Proof.
   (* get the nonfaulty node *)
   pose proof Hnodup as His. unfold thres in *. eapply quorum_intersection with (l1:=ns) (l2:=ns') in His; auto; try lia.
   pose proof Hnodup' as Hone. apply NoDup_filter with (f:=(fun n => in_dec Address_eqdec n ns)), at_least_one_nonfaulty in Hone.
-  2: pose proof t0_lt_N_minus_2t0; lia.
+  2: pose proof f_lt_N_minus_2f; lia.
   destruct Hone as (n & Hnonbyz & Hin). autorewrite with booldec in Hin. destruct Hin as (Hin & Hin').
   (* get the provenance of light signatures *)
   specialize (H n (light_sign (r, v) (lightkey_map n)) (in_map _ ns n ltac:(auto))).

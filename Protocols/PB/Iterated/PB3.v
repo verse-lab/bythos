@@ -9,7 +9,7 @@ Module PB3 (Ad : NetAddr) (R : Round) (Sn : Signable) (V : Value) (Pf : PBProof)
   (BSettA : RestrictedByzSetting Ad BTh)
   (BSettB : RestrictedByzSetting Ad BTh)
   (BSettC : RestrictedByzSetting Ad BTh)
-  (TSSPrim : ThresholdSignatureSchemePrim Ad Sn with Definition thres := Ad.N - BTh.t0)
+  (TSSPrim : ThresholdSignatureSchemePrim Ad Sn with Definition thres := Ad.N - BTh.f)
   (PfB : PBProofB Ad Sn BTh TSSPrim)
   (VBFTB : ValueBFT Ad R V PfB)
   (VBFTC : ValueBFT Ad R V PfB)
@@ -40,7 +40,7 @@ Definition unique_lock_availability (wc : C.Ns.World) : Prop :=
     let: v := fst (VBFTB.value_bft n r) in
     combined_verify (r, v) csb /\
     (exists l : list Address, 
-      List.NoDup l /\ t0 < length l /\ 
+      List.NoDup l /\ f < length l /\ 
       (forall n0, In n0 l -> BSettC.is_byz n0 = false /\ (C.Ns.localState wc n0).(C.PBP.echoed) (n, r) = Some (VBFTC.value_bft n r))).
 
 Lemma unique_lock_availability_always_holds : C.always_holds unique_lock_availability.

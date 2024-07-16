@@ -11,7 +11,7 @@ From stdpp Require Import tactics. (* anyway *)
 Module ACInvariant (A : NetAddr) (Sn : Signable) (V : SignableValue Sn) (* (VBFT : ValueBFT A Sn V) *)
   (BTh : ByzThreshold A) (BSett : ByzSetting A)
   (PPrim : PKIPrim A Sn)
-  (TSSPrim : ThresholdSignatureSchemePrim A Sn with Definition thres := A.N - BTh.t0).
+  (TSSPrim : ThresholdSignatureSchemePrim A Sn with Definition thres := A.N - BTh.f).
 
 Import A V (* VBFT *) BTh BSett.
 Import ssrbool. (* anyway *)
@@ -31,13 +31,13 @@ Definition inv_set_size st : Prop :=
 
 Definition inv_conf_correct st : Prop :=
   if st.(conf)
-  then length st.(from_set) = N - t0
-  else length st.(from_set) < N - t0.
+  then length st.(from_set) = N - f
+  else length st.(from_set) < N - f.
 
 Definition inv_from_nodup st : Prop :=
   NoDup st.(from_set).
 
-(* "NoDup nsigs" and "N - t0 <= (length nsigs)" should also hold 
+(* "NoDup nsigs" and "N - f <= (length nsigs)" should also hold 
     even if the certificate is sent by a Byzantine node *)
 
 Definition inv_rlcerts st : Prop :=
@@ -48,7 +48,7 @@ Definition inv_rcerts_mixin st : Prop :=
   forall v nsigs, In (v, nsigs) st.(received_certs) -> 
     certificate_valid v nsigs /\
     (NoDup nsigs) /\ 
-    N - t0 <= (length nsigs).
+    N - f <= (length nsigs).
 
 Definition inv_submit_mixin st : Prop :=
   match st.(submitted_value) with
@@ -191,7 +191,7 @@ Definition inv_submitmsg_receive_ p st : Prop :=
       | Some ov => 
         (* the length condition may be more natural, but it would be hard to reason about 
           without invariant 1; so replace it with the condition on conf *)
-        (* length st.(from_set) < N - t0 -> *)
+        (* length st.(from_set) < N - f -> *)
         st.(conf) = false ->
         v = ov -> verify v sig src -> light_verify v lsig src ->
           In src st.(from_set) (* this should be enough; TODO why no need to write zip_from_sigs? *)
@@ -216,7 +216,7 @@ Definition inv_confirmmsg_receive p stmap : Prop :=
   | mkP src dst (ConfirmMsg (v, nsigs)) true =>
     let: st := stmap dst in
     is_byz dst = false ->
-    certificate_valid v nsigs -> NoDup nsigs -> (N - t0 <= (length nsigs)) ->
+    certificate_valid v nsigs -> NoDup nsigs -> (N - f <= (length nsigs)) ->
       In (v, nsigs) st.(received_certs)
   | _ => True
   end.
@@ -324,7 +324,7 @@ Inductive state_mnt_type_ (st : State) : Type :=
   | Mlcert : forall (src : Address) v cs,
     combined_verify v cs -> state_mnt_type_ st
   | Mcert : forall (src : Address) v nsigs,
-    NoDup nsigs -> (N - t0) <= length nsigs -> certificate_valid v nsigs -> 
+    NoDup nsigs -> (N - f) <= length nsigs -> certificate_valid v nsigs -> 
     state_mnt_type_ st
 .
 
@@ -477,7 +477,7 @@ Proof with (intros; rewrite ?sendout0; try (rewrite In_sendout; right); eauto us
   unfold upd.
   destruct (Address_eqdec _ _) as [ <- | Hneq ].
   2: split_and?; auto. 2: intros H; specialize (H n); destruct_and? H; split_and?; auto...
-  destruct (procMsg _ _ _) as [ (st', ms) | ] eqn:E in Ef; simplify_eq.
+  destruct (procMsgPre _ _ _) as [ (st', ms) | ] eqn:E in Ef; simplify_eq.
   2: split_and?; auto. 2: intros H; specialize (H dst); destruct_and? H; split_and?; auto...
   (* get stf first *)
   destruct (w @ dst) as [ dst' cf ov from lsigs sigs rlcerts rcerts buffer ] eqn:Est. simpl_state.
@@ -529,7 +529,7 @@ Proof.
   clear Hstep Est Hs. revert st' ps_ Efr.
   induction buffer as [ | (src, msg) buffer IH ]; intros; simpl in Efr.
   - now simplify_eq.
-  - destruct (procMsgWithCheck _ _ _) as (sta, psa) eqn:E0 in Efr.
+  - destruct (procMsg _ _ _) as (sta, psa) eqn:E0 in Efr.
     destruct (fold_right _ _ _) as (stb, psb) eqn:E1 in Efr. rewrite E1 in E0. simpl in E0, Efr. 
     revert Efr. intros [= <- <-].
     simpl in Hrcv. specialize (IH (fun a H => Hrcv a (or_intror H))).
@@ -580,7 +580,7 @@ Proof with (try (now exists (MNTnil _))).
   2: exfalso; eapply Hq_; reflexivity.
   unfold upd.
   destruct (Address_eqdec _ _) as [ <- | Hneq ]...
-  destruct (procMsg _ _ _) as [ (st', ms) | ] eqn:E in Ef; simplify_eq...
+  destruct (procMsgPre _ _ _) as [ (st', ms) | ] eqn:E in Ef; simplify_eq...
   destruct (w @ dst) as [ dst' conf ov from lsigs sigs rlcerts rcerts buffer ].
   destruct msg as [ v ls s | (v, cs) | (v, nsigs) ]; simpl in E; simplify_eq. (* pair inj *)
   - destruct ov as [ vthis | ].
@@ -591,7 +591,7 @@ Proof with (try (now exists (MNTnil _))).
         simpl. destruct (lightcert_conflict_check _) in |- *; simpl.
         all: local_solver.
       * destruct (in_dec _ _ _) as [ | Hnotin ] in E; try discriminate. simplify_eq.
-        destruct (N - t0 <=? S (length from)) eqn:Eth; 
+        destruct (N - f <=? S (length from)) eqn:Eth; 
           [ apply Nat.leb_le in Eth | apply Nat.leb_nle in Eth ].
         all: unshelve eexists; [ analyze_step Mfrom_in ltac:(try eassumption); auto | ]; try apply MNTnil.
         1: analyze_step Mconf ltac:(idtac); auto. 1: apply MNTnil.
@@ -646,7 +646,7 @@ Proof with (try (now exists (MNTnil _))).
   { clear Est. revert st' ps_ Efr. induction buffer as [ | (src, msg) buffer IH ]; intros; simpl in Efr.
     - simplify_eq...
     - simpl.
-      destruct (procMsgWithCheck _ _ _) as (sta, psa) eqn:E0 in Efr.
+      destruct (procMsg _ _ _) as (sta, psa) eqn:E0 in Efr.
       destruct (fold_right _ _ _) as (stb, psb) eqn:E1 in Efr. rewrite E1 in E0. simpl in E0, Efr. 
       revert Efr. intros [= <- <-].
       simpl in Hrcv. specialize (IH (fun a H => Hrcv a (or_intror H))).
@@ -772,9 +772,9 @@ Fact state_invariants : always_holds (lift_state_inv node_state_invariants).
 Proof.
   intros w Hw. induction Hw as [ | q w w' Hstep Hw H ]; auto.
   - (* TODO streamline the proof here? *)
-    unfold initWorld, initState, Init.
+    unfold initWorld, initState.
     hnf. intros n. constructor; simpl; hnf; simpl; try solve [ discriminate | contradiction | constructor; auto | lia | auto ].
-    pose proof t0_lt_N. lia.
+    pose proof f_lt_N. lia.
   - hnf. intros n. specialize (H n).
     pose proof (state_mnt_sound Hstep Hw n) as (l & _ & Hinv_pre).
     pose proof (persistent_invariants_pre l) as (_ & HH). 
@@ -930,7 +930,7 @@ Definition state_effect_recv_ (src : Address) (m : Message) (st : State) : Prop 
     | Some ov => 
       (* the length condition may be more natural, but it would be hard to reason about 
         without invariant 1; so replace it with the condition on conf *)
-      (* length st.(from_set) < N - t0 -> *)
+      (* length st.(from_set) < N - f -> *)
       st.(conf) = false ->
       v = ov -> verify v sig src -> light_verify v lsig src ->
         In src st.(from_set) (* ths should be enough *)
@@ -938,7 +938,7 @@ Definition state_effect_recv_ (src : Address) (m : Message) (st : State) : Prop 
   | LightConfirmMsg (v, cs) =>
     combined_verify v cs -> In (v, cs) st.(received_lightcerts)
   | ConfirmMsg (v, nsigs) => 
-    certificate_valid v nsigs -> NoDup nsigs -> (N - t0 <= (length nsigs)) ->
+    certificate_valid v nsigs -> NoDup nsigs -> (N - f <= (length nsigs)) ->
     In (v, nsigs) st.(received_certs)
   end.
 
@@ -967,14 +967,14 @@ Section Backward.
 
 Fact psent_mnt_sound_pre_pre p (Hnonbyz : is_byz (dst p) = false) stf msf w w'
   (Hcoh : id_coh w) (* still needed *)
-  (Ef : procMsgWithCheck (w @ dst p) (src p) (msg p) = (stf, msf))
+  (Ef : procMsg (w @ dst p) (src p) (msg p) = (stf, msf))
   psent (E0 : w' = mkW (upd (dst p) stf (localState w)) (sendout msf psent)) (Hpin : In p psent) :
   exists l : list psent_mnt_type,
     psent_mnt (Pid psent) l (sentMsgs w') /\ state_effect (localState w') (PSKnonbyz (Puse psent p Hpin) l).
     (* /\ (lift_pkt_inv' inv_submitmsg_receive psent (localState w) ->
       lift_pkt_inv' inv_submitmsg_receive (sendout msf psent) (localState w')). *)
 Proof.
-  destruct p as [ src dst msg used ]. simpl_pkt. subst w'. simpl. unfold procMsgWithCheck in Ef. 
+  destruct p as [ src dst msg used ]. simpl_pkt. subst w'. simpl. unfold procMsg in Ef. 
   destruct_localState w dst as_ [ ? conf ov from lsigs sigs rlcerts rcerts buffer ] eqn_ Est.
   destruct msg as [ v ls s | (v, cs) | (v, nsigs) ]; simpl in Ef; simplify_eq. (* pair inj *)
   + destruct ov as [ vthis | ].
@@ -991,7 +991,7 @@ Proof.
       --destruct (in_dec _ _ _) as [ Hin | Hnotin ] in Ef; simplify_eq.
         1: psent_analyze. 
         simpl.
-        destruct (N - t0 <=? S (length from)) eqn:Eth; simpl;
+        destruct (N - f <=? S (length from)) eqn:Eth; simpl;
           [ apply Nat.leb_le in Eth | apply Nat.leb_nle in Eth ].
         1: destruct (lightcert_conflict_check _) eqn:? in |- *; simpl.
         all: psent_analyze.
@@ -1011,9 +1011,9 @@ Qed.
 (* required below? *)
 
 Fact procMsgWithCheck_fresh st src m :
-  Forall (fun p => p.(received) = false) (snd (procMsgWithCheck st src m)).
+  Forall (fun p => p.(received) = false) (snd (procMsg st src m)).
 Proof with (simpl; rewrite ?Forall_app; auto using broadcast_all_fresh).
-  unfold procMsgWithCheck, routine_check.
+  unfold procMsg, routine_check.
   destruct st as [ n conf ov from lsigs sigs rlcerts rcerts buffer ], m as [ v lsig sig | (v, cs) | (v, nsigs) ]; simpl.
   - destruct ov...
     destruct (andb _ _)... destruct conf.
@@ -1053,7 +1053,7 @@ Proof.
     psent_mnt (Pid (sentMsgs w)) l (sendout ps_ (sentMsgs w)) /\ state_effect_send (upd n st' (localState w)) l) as Hgoal.
   { clear Est. revert st' ps_ Efr. induction buffer as [ | (src, msg) buffer IH ]; intros; simpl in Efr.
     - simplify_eq. split_and?; auto. psent_analyze.
-    - destruct (procMsgWithCheck _ _ _) as (sta, psa) eqn:E0 in Efr.
+    - destruct (procMsg _ _ _) as (sta, psa) eqn:E0 in Efr.
       destruct (fold_right _ _ _) as (stb, psb) eqn:E1 in Efr. rewrite E1 in E0. simpl in E0, Efr. 
       revert Efr. intros [= <- <-].
       simpl in Hrcv. specialize (IH (fun a H => Hrcv a (or_intror H))).
@@ -1130,7 +1130,7 @@ Fact psent_mnt_sound q w w' (Hstep : system_step q w w') (Hw : reachable w) :
 Proof.
   unfold psent_mnt_sound_goal. inversion_step' Hstep.
   - split; auto. now exists (PSKnonbyz (Pid _) nil).
-  - pose proof (procMsgWithCheck_fresh (w @ dst) src msg) as Hfresh. unfold procMsgWithCheck in Hfresh. rewrite Ef in Hfresh. simpl in Hfresh.
+  - pose proof (procMsgWithCheck_fresh (w @ dst) src msg) as Hfresh. unfold procMsg in Hfresh. rewrite Ef in Hfresh. simpl in Hfresh.
     pose proof (id_coh_always_holds Hw) as Hcoh.
     let pkt := constr:(mkP src dst msg used) in
       unshelve eapply psent_mnt_sound_pre_pre with (p:=markRcv pkt) (psent:=consume pkt (sentMsgs w)) in Ef; try reflexivity; auto.
@@ -1172,7 +1172,7 @@ Fact inv_submitmsg_receive_always_holds : always_holds (lift_pkt_inv inv_submitm
 Proof.
   intros w Hw. induction Hw as [ | q w w' Hstep Hw H ]; auto.
   - (* TODO streamline the proof here? *)
-    unfold initWorld, initState, Init. hnf. simpl. intros. contradiction.
+    unfold initWorld, initState. hnf. simpl. intros. contradiction.
   - eapply psent_mnt_sound in H; eauto.
 Qed.
 

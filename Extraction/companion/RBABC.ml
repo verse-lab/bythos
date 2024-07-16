@@ -41,7 +41,7 @@ let procInt_simpler st itr =
   (st', List.map packet_simplify pkts)
 
 let procMsg_simpler st src msg = 
-  let (st', pkts) = RBACP.procMsgWithCheck st src msg in
+  let (st', pkts) = RBACP.procMsg st src msg in
   (st', List.map packet_simplify pkts)
 
 let string_of_message m =
@@ -165,7 +165,7 @@ let procInt_wrapper_byz_double_vote =
     match ov with
     | Some v -> begin
       let open RBACP in
-      let fresh_st = coq_Init (!me_ip, !me_port) in
+      let fresh_st = initState (!me_ip, !me_port) in
       let votemsg = RBP.RBM.VoteMsg (fst ARP.arp, snd ARP.arp, Lazy.force v) in
       let msgcnt_with_one = Protocols.Misc.map_update RBP.RBM.coq_Message_eqdec votemsg [(!me_ip, !me_port)] (fun _ -> []) in
       st_ref := { fresh_st with st1 = { fresh_st.st1 with RBP.msgcnt = msgcnt_with_one } };
@@ -192,7 +192,7 @@ let procMsg_wrapper_byz st_ref sender msg =
 let run_nonbyz a =
   (* non-faulty *)
   Random.init !me_port;
-  let st = ref (RBACP.coq_Init a) in
+  let st = ref (RBACP.initState a) in
   let loop f = begin
     while true do
       ignore (procInt_wrapper st);
@@ -209,7 +209,7 @@ let run a = function
     end in loop
   | _ ->
     (* simpler byzantine, just double vote *)
-    let st = ref (RBACP.coq_Init a) in
+    let st = ref (RBACP.initState a) in
     let loop f = begin
       while true do
         ignore (procInt_wrapper_byz_double_vote st);

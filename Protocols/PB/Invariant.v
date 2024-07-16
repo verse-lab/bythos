@@ -10,7 +10,7 @@ From stdpp Require Import tactics. (* anyway *)
 
 Module PBInvariant (A : NetAddr) (R : Round) (Sn : Signable) (V : Value) (Pf : PBProof) (VBFT : ValueBFT A R V Pf) 
   (BTh : ClassicByzThreshold A) (BSett : RestrictedByzSetting A BTh)
-  (TSSPrim : ThresholdSignatureSchemePrim A Sn with Definition thres := A.N - BTh.t0)
+  (TSSPrim : ThresholdSignatureSchemePrim A Sn with Definition thres := A.N - BTh.f)
   (PBDT : PBDataTypes A R Sn V Pf).
 
 Import A R V Pf VBFT BTh BSett PBDT.
@@ -252,9 +252,9 @@ Proof with (try (now exists (MNTnil _))).
   inversion_step' Hstep; clear Hstep; intros...
   - unfold upd.
     destruct (Address_eqdec _ _) as [ <- | Hneq ]...
-    destruct (procMsg _ _ _) as [ (st', ms) | ] eqn:E in Ef; simplify_eq...
+    destruct (procMsgPre _ _ _) as [ (st', ms) | ] eqn:E in Ef; simplify_eq...
     destruct (w @ dst) as [ dst' sent echoed cnt output ].
-    unfold procMsg in E.
+    unfold procMsgPre in E.
     destruct msg as [ r v pf | r lsig ].
     + destruct (echoed (src, r)) eqn:EE, (ex_validate r v pf) eqn:Eex; try discriminate. simplify_eq.
       state_analyze.
@@ -508,7 +508,7 @@ Proof with (try solve [ simplify_eq; psent_analyze ]).
     now rewrite (surjective_pairing (value_bft _ _)).
   - (* the case analysis is slightly different; the None case needs to be discussed now *)
     destruct_localState w dst as_ [ dst' sent echoed cnt output ].
-    unfold procMsg in Ef.
+    unfold procMsgPre in Ef.
     destruct msg as [ r v pf | r lsig ].
     + destruct (echoed (src, r)) eqn:EE, (ex_validate r v pf) eqn:Eex; simplify_eq.
       all: psent_analyze.

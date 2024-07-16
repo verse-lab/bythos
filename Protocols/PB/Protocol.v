@@ -8,7 +8,7 @@ From RecordUpdate Require Import RecordUpdate.
 
 Module Type PBProtocol (A : NetAddr) (R : Round) (Sn : Signable) (V : Value) (Pf : PBProof) (VBFT : ValueBFT A R V Pf) 
   (BTh : ClassicByzThreshold A)
-  (TSSPrim : ThresholdSignatureSchemePrim A Sn with Definition thres := A.N - BTh.t0) (* ! *)
+  (TSSPrim : ThresholdSignatureSchemePrim A Sn with Definition thres := A.N - BTh.f) (* ! *)
   (PBDT : PBDataTypes A R Sn V Pf) (M : PBMessage A R Sn V Pf TSSPrim)
   (P0 : SimplePacket A M) <: Protocol A M P0 BTh.
 
@@ -32,12 +32,11 @@ Record State_ :=
     output : Round -> option CombinedSignature;
   }.
 
-(* try something new *)
 #[export] Instance eta : Settable _ := settable! Node <id; sent; echoed; counter; output>.
 
 Definition State := State_.
 
-Definition Init (n : Address) : State :=
+Definition initState (n : Address) : State :=
   Node n (fun _ => false) (fun _ => None) (fun _ => nil) (fun _ => None).
 
 Definition procInt (st : State) (tr : InternalTransition) : State * list Packet :=
@@ -55,7 +54,7 @@ Definition procInt (st : State) (tr : InternalTransition) : State * list Packet 
       (st', pkts)
   end.
 
-Definition procMsg (st : State) (src : Address) (msg : Message) : option (State * list Packet) :=
+Definition procMsgPre (st : State) (src : Address) (msg : Message) : option (State * list Packet) :=
   let: Node n smap emap cnt omap := st in
   match msg with
   | InitMsg r v pf =>
@@ -94,10 +93,10 @@ Definition procMsg (st : State) (src : Address) (msg : Message) : option (State 
   end.
 
 (* TODO repeating from RB *)
-Definition th_output := N - t0.
+Definition th_output := N - f.
 
 Fact th_output_gt_0 : 0 < th_output.
-Proof. unfold th_output. pose proof N_minus_2t0_gt_0. lia. Qed.
+Proof. unfold th_output. pose proof N_minus_2f_gt_0. lia. Qed.
 
 Definition delivery_cert r st := lightsig_combine (map snd (st.(counter) r)).
 
@@ -109,8 +108,8 @@ Definition routine_check (st : State) (r : Round) : State :=
     st <| output := map_update Round_eqdec r (Some cs) st.(output) |>
   else st.
 
-Definition procMsgWithCheck (st : State) (src : Address) (msg : Message) : State * list Packet :=
-  match procMsg st src msg with
+Definition procMsg (st : State) (src : Address) (msg : Message) : State * list Packet :=
+  match procMsgPre st src msg with
   | Some (st', pkts) =>
     match msg with
     | EchoMsg r _ => let: st'' := routine_check st' r in (st'', pkts)
@@ -123,7 +122,7 @@ End PBProtocol.
 
 Module PBProtocolImpl (A : NetAddr) (R : Round) (Sn : Signable) (V : Value) (Pf : PBProof) (VBFT : ValueBFT A R V Pf) 
   (BTh : ClassicByzThreshold A)
-  (TSSPrim : ThresholdSignatureSchemePrim A Sn with Definition thres := A.N - BTh.t0) (* ! *)
+  (TSSPrim : ThresholdSignatureSchemePrim A Sn with Definition thres := A.N - BTh.f) (* ! *)
   (PBDT : PBDataTypes A R Sn V Pf) (M : PBMessage A R Sn V Pf TSSPrim)
   (P0 : SimplePacket A M) <: Protocol A M P0 BTh <: PBProtocol A R Sn V Pf VBFT BTh TSSPrim PBDT M P0.
 

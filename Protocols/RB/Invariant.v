@@ -293,9 +293,9 @@ Proof with (try (now exists (MNTnil _))).
   inversion_step' Hstep; clear Hstep; intros...
   - unfold upd.
     destruct (Address_eqdec _ _) as [ <- | Hneq ]...
-    destruct (procMsg _ _ _) as [ (st', ms) | ] eqn:E in Ef; simplify_eq...
+    destruct (procMsgPre _ _ _) as [ (st', ms) | ] eqn:E in Ef; simplify_eq...
     destruct (w @ dst) as [ dst' sent echoed voted cnt output ].
-    unfold procMsg in E.
+    unfold procMsgPre in E.
     destruct (is_InitialMsg msg) eqn:Edecide.
     + destruct msg as [ r v | | ]; try discriminate.
       destruct (echoed (src, r)) eqn:EE; try discriminate. simplify_eq.
@@ -540,7 +540,7 @@ Proof with (try solve [ simplify_eq; psent_analyze ]).
     all: psent_analyze.
   - (* the case analysis is slightly different; the None case needs to be discussed now *)
     destruct_localState w dst as_ [ dst' sent echoed voted cnt output ].
-    unfold procMsg in Ef.
+    unfold procMsgPre in Ef.
     destruct (is_InitialMsg msg) eqn:Edecide.
     + destruct msg as [ r v | | ]; try discriminate.
       destruct (echoed (src, r)) eqn:EE; simplify_eq.
@@ -668,9 +668,9 @@ End Backward.
 
 (* this is nonsense ... *)
 Fact procMsgWithCheck_fresh st src m :
-  Forall (fun p => p.(received) = false) (snd (procMsgWithCheck st src m)).
+  Forall (fun p => p.(received) = false) (snd (procMsg st src m)).
 Proof.
-  unfold procMsgWithCheck.
+  unfold procMsg.
   destruct st as [ n sent echoed voted msgcnt output ], m as [ r v | q r v | q r v ]; simpl.
   1: destruct (echoed (src, r)); simpl; auto using broadcast_all_fresh.
   all: destruct (in_dec _ _ _) in |- *; auto.
@@ -720,11 +720,11 @@ Proof with saturate_assumptions.
   hnf. intros qq ?? (_ & _ & _ & Hh2ls_back & _) (Hcoh & Hst & Hl2h & Hh2ls & Hh2lr) IH Hstep.
   hnf. intros src Hnonbyz. hnf. intros q r v Hr.
   pick voted_some as_ Hr2 by_ (pose proof (Hst src) as []). saturate_assumptions!.
-  unfold th_echo4vote, th_vote4vote in Hr2. pose proof t0_lt_N_minus_2t0 as Ht0.
+  unfold th_echo4vote, th_vote4vote in Hr2. pose proof f_lt_N_minus_2f as Hf.
   pick msgcnt_nodup as_ Hnodup by_ (pose proof (Hst src) as []).
   destruct Hr2 as [ Hr2 | Hr2 ].
   (* there must be a non-faulty sender in both cases *)
-  all: match type of Hr2 with _ <= ?ll => assert (t0 < ll) as (n & Hnonbyz' & Hin')%at_least_one_nonfaulty by lia end;
+  all: match type of Hr2 with _ <= ?ll => assert (f < ll) as (n & Hnonbyz' & Hin')%at_least_one_nonfaulty by lia end;
     try solve [ eapply (Hnodup (EchoMsg _ _ _)) | eapply (Hnodup (VoteMsg _ _ _)) ].
   all: pick msgcnt_recv_l2h as_ Hr3 by_ (pose proof (Hl2h _ Hnonbyz) as []); specialize (Hr3 _ _ Hin'); rewrite Hcoh in Hr3.
   - (* easy, base case *)
@@ -774,9 +774,9 @@ Proof.
         then by inverting the message, we know that it must have voted 
         in the previous state, which leads to contradiction *)
       (* TODO the following steps are still repeating ... *)
-      unfold th_vote4vote in E'. pose proof t0_lt_N_minus_2t0 as Ht0.
+      unfold th_vote4vote in E'. pose proof f_lt_N_minus_2f as Hf.
       pick msgcnt_nodup as_ Hnodup by_ (pose proof (Hst n') as []). 
-      match type of E' with _ <= ?ll => assert (t0 < ll) as (n & Hnonbyz_n & Hin')%at_least_one_nonfaulty by lia end.
+      match type of E' with _ <= ?ll => assert (f < ll) as (n & Hnonbyz_n & Hin')%at_least_one_nonfaulty by lia end.
       2: eapply (Hnodup (VoteMsg _ _ _)).
       pick msgcnt_recv_l2h as_ Hr3 by_ (pose proof (Hl2h _ Hnonbyz_n') as []). specialize (Hr3 _ _ Hin'). rewrite Hcoh in Hr3.
       eapply system_step_received_inversion_full in Hr3; try eassumption; auto using procMsgWithCheck_fresh, procInt_fresh.
@@ -865,8 +865,8 @@ Proof.
       - pick msgcnt_nodup as_ Hnodup_ by_ (pose proof (Hst_back n') as []). apply (Hnodup_ (EchoMsg _ _ _)).
       - pick msgcnt_persistent as_ Htmp by_ (pose proof (persistent_invariants Hstep n') as []). hnf. apply (Htmp (EchoMsg _ _ _)). }
     (* the basic idea is to find a non-faulty node in the quorum intersection that equivocate, and then prove False *)
-    pose proof (quorum_intersection Hnodup1 Hnodup2 Hle He) as Hq. pose proof t0_lt_N_minus_2t0 as Ht0.
-    match type of Hq with _ <= ?ll => assert (t0 < ll) as (n & Hnonbyz_n & (Hin2' & Hin1'%sumbool_is_left)%filter_In)%at_least_one_nonfaulty by lia end.
+    pose proof (quorum_intersection Hnodup1 Hnodup2 Hle He) as Hq. pose proof f_lt_N_minus_2f as Hf.
+    match type of Hq with _ <= ?ll => assert (f < ll) as (n & Hnonbyz_n & (Hin2' & Hin1'%sumbool_is_left)%filter_In)%at_least_one_nonfaulty by lia end.
     2: now apply List.NoDup_filter.
     (* TODO the following step has some overlap with a previous proof *)
     pick msgcnt_recv_l2h as_ Hsent1 by_ (pose proof (Hl2h _ Hnonbyz_dst1) as []). specialize (Hsent1 _ _ Hin1'). 
@@ -878,9 +878,9 @@ Proof.
   - (* inductive case *)
     (* HMM again, exploiting the network model ... but still cumbersome *)
     (* TODO the following steps are still repeating ... *)
-    unfold th_vote4vote in Hle. pose proof t0_lt_N_minus_2t0 as Ht0.
+    unfold th_vote4vote in Hle. pose proof f_lt_N_minus_2f as Hf.
     pick msgcnt_nodup as_ Hnodup by_ (pose proof (Hst dst1) as []). 
-    match type of Hle with _ <= ?ll => assert (t0 < ll) as (n & Hnonbyz_n & Hin')%at_least_one_nonfaulty by lia end.
+    match type of Hle with _ <= ?ll => assert (f < ll) as (n & Hnonbyz_n & Hin')%at_least_one_nonfaulty by lia end.
     2: eapply (Hnodup (VoteMsg _ _ _)).
     pick msgcnt_recv_l2h as_ Hr3 by_ (pose proof (Hl2h _ Hnonbyz_dst1) as []). specialize (Hr3 _ _ Hin'). rewrite Hcoh in Hr3.
     eapply system_step_received_inversion_full in Hr3; try eassumption; auto using procMsgWithCheck_fresh, procInt_fresh.

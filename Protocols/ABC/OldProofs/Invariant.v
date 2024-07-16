@@ -6,7 +6,7 @@ From Bythos.Protocols.ABC.OldProofs Require Export Network.
 
 Module ACInvariant (A : NetAddr) (Sn : Signable) (V : SignableValue Sn) (VBFT : ValueBFT A Sn V) 
   (BTh : ByzThreshold A) (BSett : ByzSetting A)
-  (P : PKI A Sn) (TSS0 : ThresholdSignatureSchemePrim A Sn with Definition thres := BTh.t0) (* ! *)
+  (P : PKI A Sn) (TSS0 : ThresholdSignatureSchemePrim A Sn with Definition thres := BTh.f) (* ! *)
   (TSS : ThresholdSignatureScheme A Sn with Module TSSPrim := TSS0).
 
 Import A V VBFT BTh BSett P TSS.
@@ -16,24 +16,24 @@ Module Export ACN := ACNetwork A Sn V VBFT BTh BSett P TSS0 TSS.
 
 (* this is somewhat "pure" property (not related to psent) *)
 (* HMM why there is not something like "if confirmed, then submitted"?
-    it is a direct result of t0 < N, but is it good doing so? *)
+    it is a direct result of f < N, but is it good doing so? *)
 Record node_coh (st : State) : Prop := mkNodeCoh {
   inv_set_size: 
     length st.(from_set) = length st.(collected_lightsigs) /\
     length st.(from_set) = length st.(collected_sigs);
   inv_conf_correct:
     if st.(conf)
-    then length st.(from_set) = N - t0
-    else length st.(from_set) < N - t0;
+    then length st.(from_set) = N - f
+    else length st.(from_set) < N - f;
   inv_from_nodup: NoDup st.(from_set);
-  (* "NoDup nsigs" and "N - t0 <= (length nsigs)" should also hold 
+  (* "NoDup nsigs" and "N - f <= (length nsigs)" should also hold 
     even if the certificate is sent by a Byzantine node *)
   inv_rlcerts: forall v cs, In (v, cs) st.(received_lightcerts) -> 
     combined_verify v cs;
   inv_rcerts_mixin: forall v nsigs, In (v, nsigs) st.(received_certs) -> 
     certificate_valid v nsigs /\
     (NoDup nsigs) /\ 
-    N - t0 <= (length nsigs);
+    N - f <= (length nsigs);
   (* mixin of before and after submission *)
   inv_submit_mixin: 
     match st.(submitted_value) with
@@ -57,7 +57,7 @@ Proof.
   rewrite E in H1.
   destruct (submitted_value st); auto.
   rewrite H2 in H1.
-  pose proof t0_lt_N.
+  pose proof f_lt_N.
   simpl in H1.
   lia.
 Qed.
@@ -186,7 +186,7 @@ Definition _inv_submitmsg_receive (stmap : StateMap) src dst v lsig sig (receive
   | Some ov => 
     (* the length condition may be more natural, but it would be hard to reason about 
       without invariant 1; so replace it with the condition on conf *)
-    (* length (stmap dst).(from_set) < N - t0 -> *)
+    (* length (stmap dst).(from_set) < N - f -> *)
     (stmap dst).(conf) = false ->
     v = ov -> verify v sig src -> light_verify v lsig src ->
       In src (stmap dst).(from_set) (* ths should be enough *)
@@ -201,7 +201,7 @@ Definition _inv_lightconfirmmsg_receive (stmap : StateMap) dst v cs (received : 
 
 Definition _inv_confirmmsg_receive (stmap : StateMap) dst v nsigs (received : bool) : Prop := 
   received -> is_byz dst = false ->
-  certificate_valid v nsigs -> NoDup nsigs -> (N - t0 <= (length nsigs)) ->
+  certificate_valid v nsigs -> NoDup nsigs -> (N - f <= (length nsigs)) ->
     In (v, nsigs) (received_certs (stmap dst))
 .
 
@@ -298,8 +298,8 @@ Tactic Notation "simpl_state" :=
 
 Tactic Notation "destruct_procMsg" "as_" ident(st') ident(ms) "eqn_" ident(E) :=
   match goal with 
-  | H : context[let: (_, _) := procMsg ?st ?nsrc ?msg in _] |- _ => 
-    destruct (procMsg st nsrc msg) as (st', ms) eqn:E
+  | H : context[let: (_, _) := procMsgPre ?st ?nsrc ?msg in _] |- _ => 
+    destruct (procMsgPre st nsrc msg) as (st', ms) eqn:E
   end.
 
 Tactic Notation "destruct_procInt" "as_" ident(st') ident(ms) "eqn_" ident(E) :=
@@ -394,7 +394,7 @@ Inductive state_mnt : bool -> State -> State -> Prop :=
     (let: (tmp, sigs) := List.split bundled_content in
     let: (from, lsigs) := List.split tmp in 
     node_upd_collect_submit st 
-      (st.(conf) || (Nat.leb (N - t0) (length bundled_content))) 
+      (st.(conf) || (Nat.leb (N - f) (length bundled_content))) 
       from lsigs sigs)
   *)
   | StateCertMnt (st : State) from lsigs sigs
@@ -410,7 +410,7 @@ Inductive state_mnt : bool -> State -> State -> Prop :=
     state_mnt true st
     (* this is too ... *)
     (node_upd_collect_submit st 
-      (st.(conf) || (Nat.leb (N - t0) (length from))) 
+      (st.(conf) || (Nat.leb (N - f) (length from))) 
       from lsigs sigs)
   | StateRLCertsMnt (st : State) rlcerts
     (Hmnt : incl st.(received_lightcerts) rlcerts) : 
@@ -874,7 +874,7 @@ Proof with basic_solver.
     simpl.
     unfold initState.
     constructor; simpl...
-    pose proof t0_lt_N.
+    pose proof f_lt_N.
     constructor; simpl; auto; try lia; try constructor.
   - constructor; simpl...
 Qed.
@@ -882,13 +882,13 @@ Qed.
 (* FIXME: it seems at least we need such pure properties somewhere. is there any systematic way? *)
 
 Fact procMsg_SubmitMsg_mixin st src v lsig sig :
-  let: (st', _) := (procMsg st src (SubmitMsg v lsig sig)) in
+  let: (st', _) := (procMsgPre st src (SubmitMsg v lsig sig)) in
   st'.(received_lightcerts) = st.(received_lightcerts) /\
   st'.(id) = st.(id) /\
   (st.(conf) -> st'.(conf)) /\
   st'.(submitted_value) = st.(submitted_value).
 Proof with (try eqsolve; try (inversion E; subst; simpl in *; eqsolve)).
-  destruct (procMsg st src (SubmitMsg v lsig sig)) as (st', ms) eqn:E.
+  destruct (procMsgPre st src (SubmitMsg v lsig sig)) as (st', ms) eqn:E.
   destruct st as (n, conf, ov, from, lsigs, sigs, rlcerts, rcerts, buffer).
   simpl in E |- *.
   destruct ov as [ vthis | ]...
@@ -933,7 +933,7 @@ Qed.
 Lemma inv_deliver_step_submit_pre w (H : invariant w)
   (* FIXME: add more conditions to make this easier? *)
   p v lsig sig (Emsg : msg p = SubmitMsg v lsig sig)
-  w_ (E : let: (st', ms) := procMsg (localState w (dst p)) (src p) (msg p) in
+  w_ (E : let: (st', ms) := procMsgPre (localState w (dst p)) (src p) (msg p) in
       (* retract trick *)
       w_ = mkW (upd (dst p) (node_upd_rlcerts st' nil) (localState w))
                (sendout ms (consume p (sentMsgs w)))) (H_ : invariant w_)
@@ -947,9 +947,9 @@ Proof with basic_solver.
   simpl_pkt.
   rewrite <- Ep in *.
   subst msg.
-  unfold procMsgWithCheck in Heq.
+  unfold procMsg in Heq.
   destruct_procMsg as_ st' ms eqn_ Epm.
-  (* TODO Coh is tedious! since we do not know that procMsg does not change id, which requires proof *)
+  (* TODO Coh is tedious! since we do not know that procMsgPre does not change id, which requires proof *)
   pose proof (coh _ H_) as Hcoh.
   rewrite_w_expand w_ in_ Hcoh.
   eapply upd_id_intact_preserve_Coh with (n:=dst) (st':=st') in Hcoh...
@@ -1094,7 +1094,7 @@ Lemma inv_deliver_step_lightconfirm_pre w (H : invariant w)
   (Edecide3 : combined_verify v cs)
   (Hcheck : lightcert_conflict_check (localState w (dst p)).(received_lightcerts) = false)
   (Hcheck' : lightcert_conflict_check ((v, cs) :: (localState w (dst p)).(received_lightcerts)) = true)
-  w_ (E : let: (st', ms) := procMsg (localState w (dst p)) (src p) (msg p) in
+  w_ (E : let: (st', ms) := procMsgPre (localState w (dst p)) (src p) (msg p) in
       (* retract trick *)
       w_ = mkW (upd (dst p) (node_upd_rlcerts st' (localState w (dst p)).(received_lightcerts)) (localState w))
                (sendout ms (consume p (sentMsgs w)))) (H_ : invariant w_)
@@ -1109,7 +1109,7 @@ Proof with basic_solver.
   simpl_pkt.
   rewrite <- Ep in *.
   subst msg.
-  unfold procMsgWithCheck in Heq.
+  unfold procMsg in Heq.
   destruct_procMsg as_ st' ms eqn_ Epm.
   destruct_localState w dst as_ conf_dst ov_dst from_dst lsigs_dst sigs_dst 
     rlcerts_dst rcerts_dst buffer_dst eqn_ Es.
@@ -1223,7 +1223,7 @@ Qed.
 Lemma inv_deliver_step_pre w p (H : invariant w)
   (Hpin : In p (sentMsgs w)) (Hnonbyz : is_byz (dst p) = false)
   w' (E : let: st := localState w (dst p) in
-    let: (st', ms) := procMsg (localState w (dst p)) (src p) (msg p) in
+    let: (st', ms) := procMsgPre (localState w (dst p)) (src p) (msg p) in
       w' = mkW (upd (dst p) 
         (match msg p with SubmitMsg _ _ _ =>
           (match st'.(submitted_value) with Some _ =>
@@ -1680,12 +1680,12 @@ Proof with basic_solver.
   - simpl in Epm.
     destruct c as (v, nsigs).
     destruct (if ListDec.NoDup_dec AddrSigPair_eqdec nsigs
-      then (if Nat.leb (N - t0) (length nsigs)
+      then (if Nat.leb (N - f) (length nsigs)
             then is_left (verify_certificate v nsigs)
             else false)
       else false) eqn:Edecide.
     + destruct (ListDec.NoDup_dec AddrSigPair_eqdec nsigs) as [ Hnodup | ],
-        (Nat.leb (N - t0) (length nsigs)) eqn:Hlnsigs, 
+        (Nat.leb (N - f) (length nsigs)) eqn:Hlnsigs, 
         (verify_certificate v nsigs) eqn:Everic...
       injection_pair Epm.
       rewrite sendout0.
@@ -1731,7 +1731,7 @@ Proof with basic_solver.
         now rewrite_w_expand w in_ H.
     + assert ((localState w dst, nil) = (st', ms)) as Epm'
         by (destruct (ListDec.NoDup_dec AddrSigPair_eqdec nsigs),
-          (Nat.leb (N - t0) (length nsigs)), (verify_certificate v nsigs); eqsolve).
+          (Nat.leb (N - f) (length nsigs)), (verify_certificate v nsigs); eqsolve).
       (* essentially no change *)
       injection_pair Epm'.
       rewrite sendout0.
@@ -1753,7 +1753,7 @@ Proof with basic_solver.
   destruct p as (src, dst, msg, used) eqn:Ep.
   simpl_pkt.
   rewrite <- Ep in *.
-  unfold procMsgWithCheck in Heq.
+  unfold procMsg in Heq.
   destruct_procMsg as_ st' ms eqn_ Epm.
   destruct_localState w dst as_ conf_dst ov_dst from_dst lsigs_dst sigs_dst 
     rlcerts_dst rcerts_dst buffer_dst eqn_ Edst.
@@ -1938,7 +1938,7 @@ Proof with basic_solver.
       Hsize1, Hsize2, Hconf, Hrlcerts, Hrcerts, Hcoll_valid, Hbuffer.
     subst from.
     destruct sigs, lsigs...
-    pose proof t0_lt_N as Htmp.
+    pose proof f_lt_N as Htmp.
     simpl in Hconf.
     destruct conf...
     clear Htmp Hsize1 Hsize2.
@@ -2056,7 +2056,7 @@ Proof with basic_solver.
       destruct nmsg as (src, [ v ls s | lc | c ]).
       all: simpl in Hbuffer; try contradiction.
       simpl in Efr, Hbuffer_recv.
-      destruct (procMsgWithCheck st_' src (SubmitMsg v ls s)) as (res1, res2) eqn:Eproc.
+      destruct (procMsg st_' src (SubmitMsg v ls s)) as (res1, res2) eqn:Eproc.
       injection_pair Efr.
       eapply inv_deliver_step with (p:=mkP src n (SubmitMsg v ls s) true) in IH.
       2:{
@@ -2144,10 +2144,10 @@ Qed.
 (* pure facts; should not require any invariant *)
 
 Fact procMsg_sent_packets_are_fresh st src msg :
-  forall p (Hin : In p (snd (procMsg st src msg))), received p = false.
+  forall p (Hin : In p (snd (procMsgPre st src msg))), received p = false.
 Proof with basic_solver.
   intros.
-  destruct (procMsg st src msg) as (st', ms) eqn:Epm.
+  destruct (procMsgPre st src msg) as (st', ms) eqn:Epm.
   simpl in Hin.
   destruct st as (n, conf, ov, from, lsigs, sigs, rlcerts, rcerts, buffer) eqn:Est.
   destruct msg as [ v' ls s | (v, cs) | (v, nsigs) ]; simpl in Epm.
@@ -2167,28 +2167,28 @@ Proof with basic_solver.
       now destruct Hin as (? & ->).
     }
     destruct (in_dec Address_eqdec src from); simpl in Epm.
-    + destruct (Nat.leb (N - t0) (length from)); injection_pair Epm.
+    + destruct (Nat.leb (N - f) (length from)); injection_pair Epm.
       * apply In_broadcast in Hin.
         now destruct Hin as (? & ->).
       * simpl in Hin...
-    + destruct (Nat.leb (N - t0) (S (length from))); injection_pair Epm.
+    + destruct (Nat.leb (N - f) (S (length from))); injection_pair Epm.
       * apply In_broadcast in Hin.
         now destruct Hin as (? & ->).
       * simpl in Hin...
   - destruct (combined_verify v cs).
     all: now injection_pair Epm.
   - destruct (ListDec.NoDup_dec AddrSigPair_eqdec nsigs),
-      (Nat.leb (N - t0) (length nsigs)), (verify_certificate v nsigs).
+      (Nat.leb (N - f) (length nsigs)), (verify_certificate v nsigs).
     all: now injection_pair Epm.
 Qed.
 
 Fact procMsgWithCheck_sent_packets_are_fresh st src msg :
-  forall p (Hin : In p (snd (procMsgWithCheck st src msg))), received p = false.
+  forall p (Hin : In p (snd (procMsg st src msg))), received p = false.
 Proof with basic_solver.
   intros.
   pose proof (procMsg_sent_packets_are_fresh st src msg p) as Htmp.
-  unfold procMsgWithCheck, routine_check in Hin.
-  destruct (procMsg st src msg) as (st', ms) eqn:Epm.
+  unfold procMsg, routine_check in Hin.
+  destruct (procMsgPre st src msg) as (st', ms) eqn:Epm.
   destruct st' as (n, conf, ov, from, lsigs, sigs, rlcerts, rcerts, buffer) eqn:Est.
   all: destruct msg; simpl in *...
   all: destruct ov, conf, (lightcert_conflict_check rlcerts)...
@@ -2216,7 +2216,7 @@ Proof with basic_solver.
       * destruct (fold_right _ _ _) as (st_, ps_) eqn:Estps' in Estps.
         specialize (IH st_ ps_ Estps').
         simpl in Estps.
-        destruct (procMsgWithCheck st_ src msg) as (st__, ps__) eqn:Epm'.
+        destruct (procMsg st_ src msg) as (st__, ps__) eqn:Epm'.
         injection_pair Estps.
         rewrite in_app_iff in Hin.
         destruct Hin as [ Hin | Hin ]...
@@ -2236,7 +2236,7 @@ Qed.
 Lemma inv_2_deliver_step_pre w p (Hinv2 : invariant_2 w) (Hcoh : Coh w) 
   (Hpin : In p (sentMsgs w)) (Hnonbyz : is_byz (dst p) = false)
   w' (E : let: st := localState w (dst p) in
-    let: (st', ms) := procMsg (localState w (dst p)) (src p) (msg p) in
+    let: (st', ms) := procMsgPre (localState w (dst p)) (src p) (msg p) in
       w' = mkW (upd (dst p) st' (localState w))
       (sendout ms (consume p (sentMsgs w)))) : invariant_2 w' /\ Coh w'. (* there is inevitably repetition for Coh proof *)
 Proof with basic_solver.
@@ -2263,7 +2263,7 @@ Proof with basic_solver.
       (* TODO possibly optimize this exhaustive case analysis? *)
       1: destruct (Value_eqdec v v_dst), (verify v s src), (light_verify v ls src), 
         conf_dst eqn:E, (In_dec Address_eqdec src from_dst) as [ Ensig_in | Ensig_in ], 
-        (Nat.leb (N - t0) (length from_dst)) eqn:Ele.
+        (Nat.leb (N - f) (length from_dst)) eqn:Ele.
       all: simpl in Epm.
       all: try rewrite Ele in Epm.
       all: injection_pair Epm...
@@ -2292,7 +2292,7 @@ Proof with basic_solver.
                       then (if (negb conf_dst) 
                             then (negb (is_left (In_dec Address_eqdec src from_dst)))
                                 (* (if (negb (is_left (In_dec Address_eqdec src from_dst)))
-                                  then negb (Nat.leb (N - t0) (S (length from_dst)))
+                                  then negb (Nat.leb (N - f) (S (length from_dst)))
                                   else false)  *)
                             else false) 
                       else false)
@@ -2409,7 +2409,7 @@ Proof with basic_solver.
     destruct c as (v, nsigs).
     assert (ms = nil /\ id st' = dst) as (-> & Hid_intact)
       by (destruct (ListDec.NoDup_dec AddrSigPair_eqdec nsigs),
-        (Nat.leb (N - t0) (length nsigs)), (verify_certificate v nsigs); injection_pair Epm; eqsolve).
+        (Nat.leb (N - f) (length nsigs)), (verify_certificate v nsigs); injection_pair Epm; eqsolve).
     rewrite sendout0.
     split.
     2:{
@@ -2429,7 +2429,7 @@ Proof with basic_solver.
       unfold upd.
       rewrite eqdec_refl.
       destruct (ListDec.NoDup_dec AddrSigPair_eqdec nsigs) as [ Hnodup | ],
-        (Nat.leb (N - t0) (length nsigs)) eqn:Hlnsigs, 
+        (Nat.leb (N - f) (length nsigs)) eqn:Hlnsigs, 
         (verify_certificate v nsigs) eqn:Everic...
       all: injection Epm as <-.
       * simpl. 
@@ -2447,7 +2447,7 @@ Proof with basic_solver.
       destruct msg0 as [ | (?, ?) | (v0, nsigs0) ]...
       simpl in Hin |- *.
       all: destruct (ListDec.NoDup_dec AddrSigPair_eqdec nsigs) as [ Hnodup | ],
-        (Nat.leb (N - t0) (length nsigs)) eqn:Hlnsigs, 
+        (Nat.leb (N - f) (length nsigs)) eqn:Hlnsigs, 
         (verify_certificate v nsigs) eqn:Everic.
       all: injection Epm as <-...
       simpl.
@@ -2466,7 +2466,7 @@ Proof.
   destruct p as (src, dst, msg, used) eqn:Ep.
   simpl_pkt.
   rewrite <- Ep in *.
-  unfold procMsgWithCheck in Heq.
+  unfold procMsg in Heq.
   destruct_procMsg as_ st' ms eqn_ Epm.
   specialize (H_ _ eq_refl).
   assert (sentMsgs w' = sendout ms (consume p (sentMsgs w)) \/
@@ -2619,7 +2619,7 @@ Proof with basic_solver.
         destruct nmsg as (src, [ v ls s | lc | c ]).
         all: simpl in Hbuffer2; try contradiction.
         simpl in Efr, Hbuffer_recv |- *.
-        destruct (procMsgWithCheck st_' src (SubmitMsg v ls s)) as (res1, res2) eqn:Eproc.
+        destruct (procMsg st_' src (SubmitMsg v ls s)) as (res1, res2) eqn:Eproc.
         injection_pair Efr.
         (* trick: add one undelivered message *)
         pose (psent':=sendout ((mkP src n (SubmitMsg v ls s) false) :: pkts ++ ps_') (sentMsgs w')).
@@ -2872,7 +2872,7 @@ Section Proof_of_Agreement.
   (* proof by reducing to absurd, using "if a node behaves like a Byzantine node then it is"
      still, that message is possibly not sent by itself, due to key sharing *)
 
-  Lemma agreement w (Hinv : invariant w) (H_byz_minor : num_byz < N - (t0 + t0)) :
+  Lemma agreement w (Hinv : invariant w) (H_byz_minor : num_byz < N - (f + f)) :
     consensus_broken (localState w) -> False.
   Proof.
     intros (n1 & n2 & v1 & v2 & Hnneq & H_n1_nonbyz & H_n2_nonbyz &
@@ -2897,7 +2897,7 @@ Section Proof_of_Agreement.
     destruct Hcoll_valid1 as (Ev1 & _ & Hcert_valid1), Hcoll_valid2 as (Ev2 & _ & Hcert_valid2).
     unfold zip_from_sigs in Hcert_valid1, Hcert_valid2.
     simpl_state.
-    assert ((N - (t0 + t0)) <= length (filter (fun n' : Address => in_dec Address_eqdec n' from1) from2)) as Hsize
+    assert ((N - (f + f)) <= length (filter (fun n' : Address => in_dec Address_eqdec n' from1) from2)) as Hsize
       by (apply quorum_intersection; auto; try lia).
     assert (Forall is_byz (filter (fun n' => in_dec Address_eqdec n' from1) from2)) as Hbyz.
     {
@@ -2937,7 +2937,7 @@ End Proof_of_Agreement.
 (*
 Section Proof_of_Phase_Distinction.
 
-  Hypothesis (H_byz_minor : num_byz < N - (t0 + t0)).
+  Hypothesis (H_byz_minor : num_byz < N - (f + f)).
 
   (* FIXME: this check should be not defined again! now just for convenience *)
   Definition ready_to_broadcast_fullcerts (st : State) : bool :=
@@ -2980,7 +2980,7 @@ Section Proof_of_Phase_Distinction.
     pose proof Hlcc1 as (ns1 & Hnoudp1 & Hvalid1 & Hlen1 & E1)%combine_correct.
     pose proof (Hrlcerts _ _ Hin2) as Hlcc2.
     pose proof Hlcc2 as (ns2 & Hnoudp2 & Hvalid2 & Hlen2 & E2)%combine_correct.
-    assert ((N - (t0 + t0)) <= length (filter (fun n' : Address => in_dec Address_eqdec n' ns1) ns2)) as Hsize
+    assert ((N - (f + f)) <= length (filter (fun n' : Address => in_dec Address_eqdec n' ns1) ns2)) as Hsize
       by (apply quorum_intersection; auto; try lia).
     
 
@@ -3055,7 +3055,7 @@ Proof.
   - destruct p as (src, dst, msg, used) eqn:Ep.
     simpl_pkt.
     rewrite <- Ep in *.
-    unfold procMsgWithCheck in Heq.
+    unfold procMsg in Heq.
     destruct_procMsg as_ st' ms eqn_ Epm.
     assert (localState w' = upd dst st' (localState w_)) as -> by (destruct msg; now subst w').
     clear Heq.
@@ -3071,7 +3071,7 @@ Proof.
       destruct (combined_verify v0 cs).
       all: now injection_pair Epm.
     + simpl in Epm.
-      destruct (ListDec.NoDup_dec AddrSigPair_eqdec nsigs), (Nat.leb (N - t0) (length nsigs)), 
+      destruct (ListDec.NoDup_dec AddrSigPair_eqdec nsigs), (Nat.leb (N - f) (length nsigs)), 
         (verify_certificate v0 nsigs).
       all: now injection_pair Epm.
   - destruct t.
@@ -3132,7 +3132,7 @@ Proof.
   - destruct p as (src, dst, msg, used) eqn:Ep.
     simpl_pkt.
     rewrite <- Ep in *.
-    unfold procMsgWithCheck in Heq.
+    unfold procMsg in Heq.
     destruct_procMsg as_ st' ms eqn_ Epm.
     assert (localState w' = upd dst st' (localState w_)) as -> by (destruct msg; now subst w').
     clear Heq.
@@ -3148,7 +3148,7 @@ Proof.
       destruct (combined_verify v0 cs).
       all: now injection_pair Epm.
     + simpl in Epm.
-      destruct (ListDec.NoDup_dec AddrSigPair_eqdec nsigs), (Nat.leb (N - t0) (length nsigs)), 
+      destruct (ListDec.NoDup_dec AddrSigPair_eqdec nsigs), (Nat.leb (N - f) (length nsigs)), 
         (verify_certificate v0 nsigs).
       all: now injection_pair Epm.
   - destruct t.
@@ -3246,7 +3246,7 @@ Section Proof_of_Terminating_Convergence.
   Definition all_honest_nodes_confirmed w' :=
     forall n, is_byz n = false -> (localState w' n).(conf).
 
-  Hypothesis (H_byz_minor : num_byz <= t0).
+  Hypothesis (H_byz_minor : num_byz <= f).
 
   Lemma terminating_convergence : all_honest_nodes_confirmed w0.
   Proof.
@@ -3324,7 +3324,7 @@ Section Proof_of_Terminating_Convergence.
     pose proof (Permutation_split_combine is_byz valid_nodes) as Hperm%Permutation_length.
     rewrite app_length in Hperm.
     unfold num_byz in H_byz_minor.
-    pose proof t0_lt_N.
+    pose proof f_lt_N.
     unfold N in *.
     lia.
   Qed.
@@ -3596,7 +3596,7 @@ Section Proof_of_Accountability.
   Definition accountability w' :=
     exists byzs : list Address, 
       NoDup byzs /\
-      N - (t0 + t0) <= length byzs /\
+      N - (f + f) <= length byzs /\
       Forall is_byz byzs /\
       (forall n, is_byz n = false -> incl byzs (genproof (localState w' n).(received_certs))).
 

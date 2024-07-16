@@ -84,7 +84,7 @@ let procInt_simpler st itr =
   (st', List.map packet_simplify pkts)
 
 let procMsg_simpler st src msg = 
-  let (st', pkts) = PBP.procMsgWithCheck st src msg in
+  let (st', pkts) = PBP.procMsg st src msg in
   (st', List.map packet_simplify pkts)
 
 let string_of_round (r, itr) = "[" ^ string_of_int r ^ ", " ^ string_of_int itr ^ "]"
@@ -178,7 +178,7 @@ let run a = function
   | 0 ->
     (* non-faulty *)
     Random.init !me_port;
-    let st = ref (PBP.coq_Init a) in
+    let st = ref (PBP.initState a) in
     let loop f = begin
       while true do
         ignore (procInt_wrapper st);

@@ -10,7 +10,7 @@ From stdpp Require Import tactics. (* anyway *)
 Module ACSafety (A : NetAddr) (Sn : Signable) (V : SignableValue Sn) (* (VBFT : ValueBFT A Sn V) *)
   (BTh : ByzThreshold A) (BSett : ByzSetting A)
   (PPrim : PKIPrim A Sn)
-  (TSSPrim : ThresholdSignatureSchemePrim A Sn with Definition thres := A.N - BTh.t0).
+  (TSSPrim : ThresholdSignatureSchemePrim A Sn with Definition thres := A.N - BTh.f).
 
 Import A V (* VBFT *) BTh BSett.
 Import ssrbool. (* anyway *)
@@ -158,7 +158,7 @@ Qed.
 
 (* proof by reducing to absurd, using "if a node behaves like a Byzantine node then it is"
     still, that message is possibly not sent by itself, due to key sharing *)
-Lemma agreement_always_holds (H_byz_minor : num_byz < N - (t0 + t0)) : always_holds agreement. 
+Lemma agreement_always_holds (H_byz_minor : num_byz < N - (f + f)) : always_holds agreement. 
 Proof.
   hnf. intros w Hr. saturate.
   hnf. intros n1 n2 Hnonbyz_n1 Hnonbyz_n2 Hconf_n1 Hconf_n2.
@@ -183,7 +183,7 @@ Proof.
   pick inv_from_nodup as_ Hnodup2 by_ (destruct Hst_n2). simpl_state.
   remember (List.filter (fun n' : Address => in_dec Address_eqdec n' from1) from2) as l eqn:El.
   (* FIXME: is the following overlapped with conflicting_cert_quorum_in_proof? *)
-  assert ((N - (t0 + t0)) <= length l) as Hsize by (subst l; apply quorum_intersection; auto; lia).
+  assert ((N - (f + f)) <= length l) as Hsize by (subst l; apply quorum_intersection; auto; lia).
   assert (Forall (fun x => is_byz x = true) l) as Hbyz.
   { (* trace back *)
     subst l. apply Forall_forall. intros n (Hin2 & Hin1%sumbool_is_left)%filter_In.

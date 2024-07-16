@@ -4,7 +4,7 @@ Import (coercions) ssrbool.
 Import ssreflect.SsrSyntax.
 From Bythos.Protocols.PB Require Export Liveness_tla.
 
-Module Type PBProofB (A : NetAddr) (Sn : Signable) (BTh : ClassicByzThreshold A) (TSSPrim : ThresholdSignatureSchemePrim A Sn with Definition thres := A.N - BTh.t0)
+Module Type PBProofB (A : NetAddr) (Sn : Signable) (BTh : ClassicByzThreshold A) (TSSPrim : ThresholdSignatureSchemePrim A Sn with Definition thres := A.N - BTh.f)
   <: PBProof. (* Proof type of B *)
 
 Import TSSPrim.
@@ -18,7 +18,7 @@ Module PB2 (Ad : NetAddr) (R : Round) (Sn : Signable) (V : Value) (Pf : PBProof)
   (BTh : ClassicByzThreshold Ad)
   (BSettA : RestrictedByzSetting Ad BTh)
   (BSettB : RestrictedByzSetting Ad BTh)
-  (TSSPrim : ThresholdSignatureSchemePrim Ad Sn with Definition thres := Ad.N - BTh.t0)
+  (TSSPrim : ThresholdSignatureSchemePrim Ad Sn with Definition thres := Ad.N - BTh.f)
   (PfB : PBProofB Ad Sn BTh TSSPrim) 
   (VBFTB : ValueBFT Ad R V PfB)
   (PBDT : PBDataTypes Ad R Sn V Pf)
@@ -52,7 +52,7 @@ Definition unique_lock_availability (wb : B.Ns.World) : Prop :=
     let: v := fst (VBFT.value_bft n r) in
     combined_verify (r, v) csa /\
     (exists l : list Address, 
-      List.NoDup l /\ t0 < length l /\ 
+      List.NoDup l /\ f < length l /\ 
       (forall n0, In n0 l -> BSettB.is_byz n0 = false /\ (B.Ns.localState wb n0).(B.PBP.echoed) (n, r) = Some (VBFTB.value_bft n r))).
 
 Lemma unique_lock_availability_always_holds : B.always_holds unique_lock_availability.

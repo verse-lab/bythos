@@ -32,12 +32,12 @@ Definition world_proj2 (w : World) : Ns2.World :=
 Local Set Implicit Arguments.
 
 Fact procMsgWithCheck_proj1 [st src m1] : forall st' pkts,
-  procMsgWithCheck st src (inl m1) = (st', pkts) ->
-  let: res := Pt1.procMsgWithCheck st.(st1) src m1 in
+  procMsg st src (inl m1) = (st', pkts) ->
+  let: res := Pt1.procMsg st.(st1) src m1 in
   st'.(st1) = fst res /\ pkts_filter_proj1 pkts = snd res.
 Proof.
   intros st' pkts E. simpl in E.
-  rewrite -> (surjective_pairing (Pt1.procMsgWithCheck _ _ _)) in E.
+  rewrite -> (surjective_pairing (Pt1.procMsg _ _ _)) in E.
   destruct (trigger_procMsg _ _) in E.
   1: rewrite -> (surjective_pairing (Pt2.procInt _ _)) in E.
   all: revert E; intros [= <- <-].
@@ -58,12 +58,12 @@ Proof.
 Qed.
 
 Fact procMsgWithCheck_proj2 [st src m2] : forall st' pkts,
-  procMsgWithCheck st src (inr m2) = (st', pkts) ->
-  let: res := Pt2.procMsgWithCheck st.(st2) src m2 in
+  procMsg st src (inr m2) = (st', pkts) ->
+  let: res := Pt2.procMsg st.(st2) src m2 in
   st'.(st2) = fst res /\ pkts_filter_proj2 pkts = snd res.
 Proof.
   intros st' pkts E. simpl in E.
-  rewrite -> (surjective_pairing (Pt2.procMsgWithCheck _ _ _)) in E.
+  rewrite -> (surjective_pairing (Pt2.procMsg _ _ _)) in E.
   revert E; intros [= <- <-].
   simpl; now autorewrite with pkts_filter.
 Qed.

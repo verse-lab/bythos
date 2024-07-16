@@ -39,7 +39,7 @@ Global Instance eta : Settable _ := settable! Node <st1; st2>.
 
 Definition State := State_.
 
-Definition Init := fun n => Node (Pt1.Init n) (Pt2.Init n).
+Definition initState := fun n => Node (Pt1.initState n) (Pt2.initState n).
 
 Definition procInt st tr :=
   let: (st1', pkts1) := Pt1.procInt st.(st1) tr in
@@ -52,10 +52,10 @@ Definition procInt st tr :=
   | None => (st', pkts)
   end.
 
-Definition procMsgWithCheck st src msg :=
+Definition procMsg st src msg :=
   match msg with
   | inl m1 =>
-    let: (st1', pkts1) := Pt1.procMsgWithCheck st.(st1) src m1 in
+    let: (st1', pkts1) := Pt1.procMsg st.(st1) src m1 in
     let: st' := st <| st1 := st1' |> in
     let: pkts := map pkt_inl pkts1 in
     match trigger_procMsg st.(st1) st1' with
@@ -65,7 +65,7 @@ Definition procMsgWithCheck st src msg :=
     | None => (st', pkts)
     end
   | inr m2 =>
-    let: (st2', pkts2) := Pt2.procMsgWithCheck st.(st2) src m2 in
+    let: (st2', pkts2) := Pt2.procMsg st.(st2) src m2 in
     let: pkts := map pkt_inr pkts2 in
     (st <| st2 := st2' |>, pkts)
   end.

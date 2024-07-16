@@ -9,7 +9,7 @@ From RecordUpdate Require Import RecordUpdate.
 Module Type ACProtocol (A : NetAddr) (Sn : Signable) (V : SignableValue Sn) (* (VBFT : ValueBFT A Sn V) *)
   (BTh : ByzThreshold A)
   (PPrim : PKIPrim A Sn)
-  (TSSPrim : ThresholdSignatureSchemePrim A Sn with Definition thres := A.N - BTh.t0)
+  (TSSPrim : ThresholdSignatureSchemePrim A Sn with Definition thres := A.N - BTh.f)
   (ACDT : SimpleACDataTypes A Sn V PPrim TSSPrim) (M : ACMessage A Sn V PPrim TSSPrim ACDT)
   (P0 : SimplePacket A M) <: Protocol A M P0 BTh.
 
@@ -24,7 +24,7 @@ Definition InternalTransition := InternalTransition_.
     then possibly the "eventual Byzantine detection" cannot be expressed easily. 
 
     However, in order to trigger the check, the conf must be true (which is due to the delivery
-    of the (N-t0)-th submit message) and there must be two conflicting light certificates
+    of the (N-f)-th submit message) and there must be two conflicting light certificates
     (which is due to the delivery of some LightConfirmMsg).  
 
     They are not synchronized, so we should append "monitors" to the above
@@ -74,7 +74,7 @@ Definition State_eqdec : forall (s1 s2 : State), {s1 = s2} + {s1 <> s2}.
   - apply Address_eqdec.
 Qed.
 *)
-Definition Init (n : Address) : State :=
+Definition initState (n : Address) : State :=
   Node n false None nil nil nil nil nil nil.
 
 Definition certificate_valid v nsigs : Prop :=
@@ -128,7 +128,7 @@ Definition routine_check (st : State) : list Packet :=
   end
 .
 
-Definition procMsg (st : State) (src : Address) (msg : Message) : option (State * list Packet) :=
+Definition procMsgPre (st : State) (src : Address) (msg : Message) : option (State * list Packet) :=
   let: Node n cf ov from lsigs sigs rlcerts rcerts buffer := st in
   match msg with
   | SubmitMsg v lsig sig =>
@@ -144,7 +144,7 @@ Definition procMsg (st : State) (src : Address) (msg : Message) : option (State 
         let: from' := if cond then from else src :: from in
         let: lsigs' := if cond then lsigs else lsig :: lsigs in
         let: sigs' := if cond then sigs else sig :: sigs in
-        let: cf' := cf || ((N - t0) <=? (length from')) in
+        let: cf' := cf || ((N - f) <=? (length from')) in
         let: ps := (if cf'
           then broadcast n (LightConfirmMsg (v, lightsig_combine lsigs'))
           else nil) in
@@ -159,7 +159,7 @@ Definition procMsg (st : State) (src : Address) (msg : Message) : option (State 
           if in_dec Address_eqdec src from
           then None
           else
-            let: cf' := (N - t0 <=? S (length from)) in
+            let: cf' := (N - f <=? S (length from)) in
             let: ps' := if cf' then broadcast n (LightConfirmMsg (v, lightsig_combine (lsig :: lsigs))) else nil in
             let: st' := st <| conf := cf' |> <| from_set := src :: from |>
               <| collected_lightsigs := lsig :: lsigs |> <| collected_sigs := sig :: sigs |> in
@@ -180,9 +180,9 @@ Definition procMsg (st : State) (src : Address) (msg : Message) : option (State 
   | ConfirmMsg c => 
     let: (v, nsigs) := c in
     (* check whether this is a valid full certificate or not *)
-    (* in the paper this condition is ">= N-t0 distinct senders", 
+    (* in the paper this condition is ">= N-f distinct senders", 
         which is stronger than this *)
-    if (ListDec.NoDup_dec AddrSigPair_eqdec nsigs) && ((N - t0) <=? (length nsigs)) && (verify_certificate v nsigs)
+    if (ListDec.NoDup_dec AddrSigPair_eqdec nsigs) && ((N - f) <=? (length nsigs)) && (verify_certificate v nsigs)
     then
       let: st' := st <| received_certs := c :: rcerts |> in
       Some (st', nil)
@@ -191,8 +191,8 @@ Definition procMsg (st : State) (src : Address) (msg : Message) : option (State 
 
 (* a simple wrapper *)
 
-Definition procMsgWithCheck (st : State) (src : Address) (msg : Message) : State * list Packet :=
-  match procMsg st src msg with
+Definition procMsg (st : State) (src : Address) (msg : Message) : State * list Packet :=
+  match procMsgPre st src msg with
   | Some (st', ps) =>
     match msg with
     | SubmitMsg _ _ _ | LightConfirmMsg _ => (st', routine_check st' ++ ps)
@@ -216,7 +216,7 @@ Definition procInt (st : State) (tr : InternalTransition) :=
       (* not putting ps into the initial value of fold should be easier? *)
       let: (st', ps') := 
         fold_right
-          (fun nmsg stps => let: (res1, res2) := procMsgWithCheck (fst stps) (fst nmsg) (snd nmsg) in
+          (fun nmsg stps => let: (res1, res2) := procMsg (fst stps) (fst nmsg) (snd nmsg) in
             (res1, res2 ++ snd stps)) (st_start, nil) buffer in
       (st', ps' ++ ps)
     | Some _ => (st, nil)
@@ -228,7 +228,7 @@ End ACProtocol.
 Module ACProtocolImpl (A : NetAddr) (Sn : Signable) (V : SignableValue Sn) (* (VBFT : ValueBFT A Sn V) *)
   (BTh : ByzThreshold A)
   (PPrim : PKIPrim A Sn)
-  (TSSPrim : ThresholdSignatureSchemePrim A Sn with Definition thres := A.N - BTh.t0)
+  (TSSPrim : ThresholdSignatureSchemePrim A Sn with Definition thres := A.N - BTh.f)
   (ACDT : SimpleACDataTypes A Sn V PPrim TSSPrim) (M : ACMessage A Sn V PPrim TSSPrim ACDT)
   (P0 : SimplePacket A M) <: Protocol A M P0 BTh <: ACProtocol A Sn V (* VBFT *) BTh PPrim TSSPrim ACDT M P0.
 

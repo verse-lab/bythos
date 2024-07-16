@@ -103,10 +103,10 @@ Proof.
   - split; [ constructor | ]; reflexivity.
   - destruct msg as [ mRB | mAC ]; simpl.
     + unfold stmap_proj1.
-      rewrite -> (surjective_pairing (Pt1.procMsgWithCheck _ _ _)).
+      rewrite -> (surjective_pairing (Pt1.procMsg _ _ _)).
       split; [ eapply N1.DeliverStep; try reflexivity; simpl; auto | ].
       * apply option_map_list_In. eexists. split. apply Hpin. reflexivity.
-      * rewrite -> (surjective_pairing (Pt1.procMsgWithCheck _ _ _)). reflexivity.
+      * rewrite -> (surjective_pairing (Pt1.procMsg _ _ _)). reflexivity.
       * pose proof (procMsgWithCheck_proj1 Ef) as (E1 & E2). rewrite <- E1, <- E2.
         hnf; simpl. split; [ intros ?; unfold upd, Ns1.upd; now destruct_eqdec as_ -> | ].
         hnf. intros p. unfold pkts_filter_proj1. autorewrite with psent.
@@ -126,7 +126,7 @@ Proof.
             destruct a as [ ? ? [] ? ]; cbn in Hpj |- *; try discriminate.
             congruence.
     + split; [ eapply N1.IdleStep; try reflexivity; simpl; auto | ].
-      rewrite -> (surjective_pairing (Pt2.procMsgWithCheck _ _ _)) in Ef.
+      rewrite -> (surjective_pairing (Pt2.procMsg _ _ _)) in Ef.
       revert Ef. intros [= <- <-]. 
       hnf; simpl. split; [ intros ?; unfold stmap_proj1, upd, Ns1.upd; now destruct_eqdec as_ -> | ].
       hnf. intros p. unfold pkts_filter_proj1. autorewrite with psent.
@@ -194,7 +194,7 @@ Proof.
   - destruct msg as [ mRB | mAC ]; simpl.
     + unfold stmap_proj1.
       pose proof (procMsgWithCheck_proj1 Ef) as (E1 & _).
-      rewrite -> (surjective_pairing (Pt1.procMsgWithCheck _ _ _)) in Ef |- *.
+      rewrite -> (surjective_pairing (Pt1.procMsg _ _ _)) in Ef |- *.
       rewrite Ef. simpl. rewrite upd_refl, E1. 
       destruct (trigger_procMsg _ _) in Ef |- *.
       * split; [ eapply N2.InternStep; try reflexivity; simpl; auto | ].
@@ -222,10 +222,10 @@ Proof.
         --intros (a & Hin & Hpj). autorewrite with psent in Hin. 
           destruct Hin as [ (a' & <- & Hin')%in_map_iff | [ <- | (Hin & Hneq) ] ]; eauto.
     + unfold stmap_proj2.
-      rewrite -> (surjective_pairing (Pt2.procMsgWithCheck _ _ _)).
+      rewrite -> (surjective_pairing (Pt2.procMsg _ _ _)).
       split; [ eapply N2.DeliverStep; try reflexivity; simpl; auto | ].
       * apply option_map_list_In. eexists. split. apply Hpin. reflexivity.
-      * rewrite -> (surjective_pairing (Pt2.procMsgWithCheck _ _ _)). reflexivity.
+      * rewrite -> (surjective_pairing (Pt2.procMsg _ _ _)). reflexivity.
       * pose proof (procMsgWithCheck_proj2 Ef) as (E1 & E2). rewrite <- E1, <- E2.
         hnf; simpl. split; [ intros ?; unfold stmap_proj2, upd, Ns2.upd; now destruct_eqdec as_ -> | ].
         hnf. intros p. unfold pkts_filter_proj2. autorewrite with psent.

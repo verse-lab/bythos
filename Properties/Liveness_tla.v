@@ -102,7 +102,7 @@ Proof.
   eexists.
   intros HH.
   eapply DeliverStep with (p:=p); try assumption; try reflexivity.
-  rewrite (surjective_pairing (procMsgWithCheck _ _ _)).
+  rewrite (surjective_pairing (procMsg _ _ _)).
   reflexivity.
 Qed.
 
@@ -115,7 +115,7 @@ Fact consumed_is_changed_by_delivery_pre :
     w' = next_world (Deliver p) w → system_step (Deliver p) w w'.
 Proof.
   intros. hnf in * |-. subst w'. eapply DeliverStep; try solve [ reflexivity | assumption | tauto ].
-  simpl. rewrite (surjective_pairing (procMsgWithCheck _ _ _)). reflexivity.
+  simpl. rewrite (surjective_pairing (procMsg _ _ _)). reflexivity.
 Qed.
 *)
 Definition reliable_condition (e : exec World) :=
@@ -155,7 +155,7 @@ Proof.
   3-4: rewrite Heq /= ?In_sendout ?In_sendout1 in Hnotin.
   3-4: now apply Decidable.not_or in Hnotin.
   - now rewrite H0 in Hin'. (* TODO congruence no longer works now? *)
-  - destruct (procMsgWithCheck _ _ _) as (st', ms) in Heq.
+  - destruct (procMsg _ _ _) as (st', ms) in Heq.
     rewrite Heq in Hnotin |- *.
     simpl in Hnotin.
     rewrite In_sendout In_consume in Hnotin.
@@ -174,7 +174,7 @@ Proof.
   - exists k. now apply next_world_sound.
   - 
     assert (¬ In p (e (S (k + n))).(sentMsgs)) as Htmp.
-    { rewrite H /= (surjective_pairing (procMsgWithCheck _ _ _)) /= In_sendout In_consume. 
+    { rewrite H /= (surjective_pairing (procMsg _ _ _)) /= In_sendout In_consume. 
       intuition.
     apply consumed_is_changed_by_delivery in H
     apply consumed_is_changed_by_delivery_pre in H.
@@ -200,7 +200,7 @@ Proof.
       rewrite drop_drop drop_n /= in H0.
       assert (¬ In p (e (k + n)).(sentMsgs)) as Htmp.
       { intros Htmp. apply H0. eexists. eapply DeliverStep; try reflexivity; try auto. 1: hnf in *; tauto. 
-        rewrite (surjective_pairing (procMsgWithCheck _ _ _)). reflexivity. }
+        rewrite (surjective_pairing (procMsg _ _ _)). reflexivity. }
       apply consumed_is_changed_by_delivery in Htmp; auto.
       destruct Htmp as (? & ? & ?).
       eauto.
@@ -280,7 +280,7 @@ Proof.
     1,3-4: left; simpl; auto.
     1: destruct (procInt _ _) in *; subst; simpl; rewrite In_sendout; tauto.
     1: rewrite In_sendout1; tauto.
-    destruct (procMsgWithCheck _ _ _) in *.
+    destruct (procMsg _ _ _) in *.
     subst; simpl.
     rewrite ?In_sendout ?In_consume.
     destruct (Packet_eqdec p p0) as [ <- | Hneq ]; intuition.
@@ -291,7 +291,7 @@ Proof.
       clear q Hstep'.
       inversion Hstep; try discriminate.
       injection H as <-.
-      destruct (procMsgWithCheck _ _ _) in *.
+      destruct (procMsg _ _ _) in *.
       subst; simpl.
       rewrite ?In_sendout ?In_consume /=.
       tauto.

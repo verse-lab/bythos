@@ -141,9 +141,9 @@ Proof.
   hnf. intros dst src r v Hnonbyz_dst Hnonbyz_src Hin.
   pick output_vote_size as_ H1 by_ (pose proof (Hst dst) as []). specialize (H1 _ _ _ Hin). 
   (* TODO the following two steps have some overlap with a previous proof *)
-  unfold th_vote4output in H1. pose proof t0_lt_N_minus_2t0 as Ht0.
+  unfold th_vote4output in H1. pose proof f_lt_N_minus_2f as Hf.
   pick msgcnt_nodup as_ Hnodup by_ (pose proof (Hst dst) as []). 
-  match type of H1 with _ <= ?ll => assert (t0 < ll) as (n & Hnonbyz_n & Hin')%at_least_one_nonfaulty by lia end.
+  match type of H1 with _ <= ?ll => assert (f < ll) as (n & Hnonbyz_n & Hin')%at_least_one_nonfaulty by lia end.
   2: eapply (Hnodup (VoteMsg _ _ _)).
   pick msgcnt_recv_l2h as_ H2 by_ (pose proof (Hl2h _ Hnonbyz_dst) as []). specialize (H2 _ _ Hin'). rewrite Hcoh in H2.
   pick votemsg_sent_h2l as_ H4 by_ (pose proof (Hh2ls _ H2) as []). saturate_assumptions.
@@ -164,8 +164,8 @@ Proof.
   pick msgcnt_nodup as_ Hnodup2 by_ (pose proof (Hst dst2) as []). specialize (Hnodup2 (VoteMsg src r v2)).
   simpl in Hnodup1, Hnodup2.
   (* the basic idea is to find a non-faulty node in the quorum intersection that equivocate, and then prove False *)
-  pose proof (quorum_intersection Hnodup1 Hnodup2 Hle1 Hle2) as Hq. pose proof t0_lt_N_minus_2t0 as Ht0.
-  match type of Hq with _ <= ?ll => assert (t0 < ll) as (n & Hnonbyz_n & (Hin2' & Hin1'%sumbool_is_left)%filter_In)%at_least_one_nonfaulty by lia end.
+  pose proof (quorum_intersection Hnodup1 Hnodup2 Hle1 Hle2) as Hq. pose proof f_lt_N_minus_2f as Hf.
+  match type of Hq with _ <= ?ll => assert (f < ll) as (n & Hnonbyz_n & (Hin2' & Hin1'%sumbool_is_left)%filter_In)%at_least_one_nonfaulty by lia end.
   2: now apply List.NoDup_filter.
   (* TODO the following step has some overlap with a previous proof *)
   pick msgcnt_recv_l2h as_ Hsent1 by_ (pose proof (Hl2h _ Hnonbyz_dst1) as []). specialize (Hsent1 _ _ Hin1'). 

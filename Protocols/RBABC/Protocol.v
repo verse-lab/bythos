@@ -9,7 +9,7 @@ From Bythos.Protocols.RB Require Import Protocol.
 Module RBACTrigger (A : NetAddr) (R : Round) (ARP : AddrRoundPair A R) (Sn : Signable) (V : SignableValue Sn) (VBFT : ValueBFT A R V) 
   (BTh : ClassicByzThreshold A) (RBM : RBMessage A R V)
   (PPrim : PKIPrim A Sn)
-  (TSSPrim : ThresholdSignatureSchemePrim A Sn with Definition thres := A.N - BTh.t0)
+  (TSSPrim : ThresholdSignatureSchemePrim A Sn with Definition thres := A.N - BTh.f)
   (ACDT : SimpleACDataTypes A Sn V PPrim TSSPrim) (ACM : ACMessage A Sn V PPrim TSSPrim ACDT)
   (M : CompMessage RBM ACM)
   (RBPk : SimplePacket A RBM) (ACPk : SimplePacket A ACM) 

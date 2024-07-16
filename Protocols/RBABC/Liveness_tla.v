@@ -10,7 +10,7 @@ From Bythos.Protocols.RB Require Import Liveness_tla.
 Module RBACLiveness2 (A : NetAddr) (R : Round) (ARP : AddrRoundPair A R) (Sn : Signable) (V : SignableValue Sn) (VBFT : ValueBFT A R V) 
   (BTh : ClassicByzThreshold A) (BSett : RestrictedByzSetting A BTh)
   (PPrim : PKIPrim A Sn)
-  (TSSPrim : ThresholdSignatureSchemePrim A Sn with Definition thres := A.N - BTh.t0).
+  (TSSPrim : ThresholdSignatureSchemePrim A Sn with Definition thres := A.N - BTh.f).
 
 Import A R ARP V VBFT BTh BSett.
 Import ssrbool. (* anyway *)
@@ -31,14 +31,14 @@ Include CompLiveness2 A RBN.M ACN.M BTh RBN.P ACN.P0 RBN.RBP ACN.ACP SCPT RBN.Ns
 Definition all_receives_RB src r v w : Prop :=
   RBLiveTLA.RBLive.all_receives src r v (world_proj1 w).
 
-Lemma go1 : forall src r f (Hnonbyz_src : is_byz src = false),
-  ⌜ init ⌝ ∧ nextf f ∧ fairness ∧ disambiguation f ⊢
+Lemma go1 : forall src r f0 (Hnonbyz_src : is_byz src = false),
+  ⌜ init ⌝ ∧ nextf f0 ∧ fairness ∧ disambiguation f0 ⊢
   ⌜ λ w, (w @ src).(st1).(sent) r ⌝ ~~> ⌜ all_receives_RB src r (value_bft src r) ⌝.
 Proof.
   intros. hnf. intros e (Hini & Hf & Hfair & Hdg).
-  pose proof (exec_norm1_sound_next ltac:(intros; hnf; auto) e f Hf) as (Hrel & Hf').
-  pose proof (exec_norm1_sound_init e f Hini) as Hini'.
-  set (e' := exec_norm1 f e) in Hrel, Hf', Hini'.
+  pose proof (exec_norm1_sound_next ltac:(intros; hnf; auto) e f0 Hf) as (Hrel & Hf').
+  pose proof (exec_norm1_sound_init e f0 Hini) as Hini'.
+  set (e' := exec_norm1 f0 e) in Hrel, Hf', Hini'.
   eapply exec_norm1_sound_fairness in Hfair; eauto.
   pose proof (conj Hini' (conj (RBLiveTLA.nextf_impl_next _ _ Hf') Hfair)) as HH%(RBLiveTLA.validity_in_tla _ r Hnonbyz_src).
   apply RBLiveTLA.leads_to_exec_rel with (e':=exec_proj1 e) in HH; auto.
@@ -52,16 +52,16 @@ Definition all_honest_nodes_submitted_AC v w : Prop :=
 Definition all_honest_nodes_confirmed_AC v w : Prop :=
   ACLiveTLA.ACLive.Terminating_Convergence.all_honest_nodes_confirmed v (world_proj2 w).
 
-Lemma go2 : forall f v,
-  ⌜ init ⌝ ∧ nextf f ∧ fairness ∧ disambiguation f ⊢
+Lemma go2 : forall f0 v,
+  ⌜ init ⌝ ∧ nextf f0 ∧ fairness ∧ disambiguation f0 ⊢
   ⌜ all_honest_nodes_submitted_AC v ⌝ ~~> ⌜ all_honest_nodes_confirmed_AC v ⌝.
 Proof.
   intros. hnf. intros e (Hini & Hf & Hfair & Hdg).
-  pose proof (exec_norm2_sound_next ACAdv.byz_constraints_World_rel e f Hf) as (Hrel & Hf').
-  pose proof (exec_norm2_sound_init e f Hini) as Hini'.
-  set (e' := exec_norm2 f e) in Hrel, Hf', Hini'.
+  pose proof (exec_norm2_sound_next ACAdv.byz_constraints_World_rel e f0 Hf) as (Hrel & Hf').
+  pose proof (exec_norm2_sound_init e f0 Hini) as Hini'.
+  set (e' := exec_norm2 f0 e) in Hrel, Hf', Hini'.
   eapply exec_norm2_sound_fairness in Hfair; eauto.
-  pose proof (conj Hini' (conj (ACLiveTLA.nextf_impl_next _ _ Hf') Hfair)) as HH%(ACLiveTLA.terminating_convergence_in_tla v num_byz_le_t0).
+  pose proof (conj Hini' (conj (ACLiveTLA.nextf_impl_next _ _ Hf') Hfair)) as HH%(ACLiveTLA.terminating_convergence_in_tla v num_byz_le_f).
   apply ACLiveTLA.leads_to_exec_rel with (e':=exec_proj2 e) in HH; auto.
   all: apply ACN.Ns.stmap_peq_cong_implies_World_rel_cong; 
     auto using ACLiveTLA.ACLive.Terminating_Convergence.all_honest_nodes_submitted_stmap_peq_cong, 
@@ -93,7 +93,7 @@ Proof.
     all: unfold upd; destruct_eqdec as_ ->; auto.
     all: rewrite upd_refl in Ho.
     + destruct msg as [ mRB | mAC ].
-      * rewrite (surjective_pairing (RBN.RBP.procMsgWithCheck _ _ _)) in Ef.
+      * rewrite (surjective_pairing (RBN.RBP.procMsg _ _ _)) in Ef.
         destruct (trigger_procMsg _ _) as [ [ v ] | ] eqn:Etr in Ef.
         --(* prepare for the indirectly ... *)
           (* TODO streamline this? *)
@@ -103,7 +103,7 @@ Proof.
           rewrite -> (surjective_pairing (ACN.ACP.procInt _ _)) in Htmp. 
           (* another way around *)
           eapply ssd_proj2_sound in Hstep. cbn in Hstep. unfold world_proj2, stmap_proj2 in Hstep. simpl in Hstep.
-          rewrite (surjective_pairing (RBN.RBP.procMsgWithCheck _ _ _)) Etr in Hstep.
+          rewrite (surjective_pairing (RBN.RBP.procMsg _ _ _)) Etr in Hstep.
           rewrite -> (surjective_pairing (ACN.ACP.procInt _ _)) in Ef, Hstep. simplify_eq. simpl in Hstep |- *.
           unfold world_proj1, stmap_proj1, world_proj2, stmap_proj2 in Hstep. rewrite !upd_refl /= Etr in Hstep.
           (* TODO why keep rewriting ... *)
@@ -132,10 +132,10 @@ Proof.
             **match type of Etr with (match ?qq with _ => _ end = _) => now destruct qq end.
             **split; intros H; try discriminate. specialize (Ho _ (or_introl eq_refl)). simpl in Ho. now rewrite H in Ho.
           ++intros v H. pose proof (proj2 IH v H) as H0. apply Ho in H0. now simpl in H0.
-      * rewrite (surjective_pairing (ACN.ACP.procMsgWithCheck _ _ _)) in Ef. simplify_eq. simpl.
+      * rewrite (surjective_pairing (ACN.ACP.procMsg _ _ _)) in Ef. simplify_eq. simpl.
         (* indirectly *)
         eapply ssd_proj2_sound in Hstep. cbn in Hstep. unfold world_proj2, stmap_proj2 in Hstep. simpl in Hstep.
-        rewrite (surjective_pairing (ACN.ACP.procMsgWithCheck _ _ _)) in Hstep. simpl in Hstep.
+        rewrite (surjective_pairing (ACN.ACP.procMsg _ _ _)) in Hstep. simpl in Hstep.
         destruct Hstep as (Hstep & Hrel). apply inv_buffer_received_only_pre with (nn:=n) in Hstep; auto. simpl in Hstep.
         apply proj2 in Hstep. rewrite ACN.Ns.upd_refl in Hstep. now rewrite Hstep.
     + (* this part of brute force is not difficult *)

@@ -8,7 +8,7 @@ From Bythos.Properties Require Export Liveness_tla.
 
 Module PBLiveness2 (A : NetAddr) (R : Round) (Sn : Signable) (V : Value) (Pf : PBProof) (VBFT : ValueBFT A R V Pf) 
   (BTh : ClassicByzThreshold A) (BSett : RestrictedByzSetting A BTh)
-  (TSSPrim : ThresholdSignatureSchemePrim A Sn with Definition thres := A.N - BTh.t0)
+  (TSSPrim : ThresholdSignatureSchemePrim A Sn with Definition thres := A.N - BTh.f)
   (PBDT : PBDataTypes A R Sn V Pf).
 
 Import A R V Pf VBFT BTh BSett PBDT.
