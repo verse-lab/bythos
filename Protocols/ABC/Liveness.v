@@ -210,7 +210,7 @@ Section Proof_of_Accountability.
     (f true n1 n1 b1 :: f true n1 n2 b2 :: f false n2 n1 b3 :: f false n2 n2 b4 :: nil). 
 
   Definition pkts_needed_in_round_1 pkts :=
-    incl pkts (packetSoup w) /\ Forall good_packet pkts /\
+    incl pkts (packetSoup w) /\ Forall goodPkt pkts /\
     exists v1 v2 b1 b2 b3 b4, 
       (w @ n1).(submitted_value) = Some v1 /\
       (w @ n2).(submitted_value) = Some v2 /\

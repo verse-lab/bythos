@@ -216,7 +216,7 @@ Section Proof_of_Validity.
 
   Definition pkts_needed_in_round_1 pkts : Prop :=
     incl pkts (packetSoup w) /\
-    Forall good_packet pkts /\ (* since pkts is under-specified *)
+    Forall goodPkt pkts /\ (* since pkts is under-specified *)
     (forall n, isByz n = false ->
       exists used, In (mkP src n (InitialMsg r (value_bft src r)) used) pkts).
 

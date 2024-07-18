@@ -81,20 +81,20 @@ Qed.
 Section Fairness.
 
 (* FIXME: do we really need to make this action into an implication? *)
-Definition good_deliver_action_p p w w' :=
+Definition WFPkt p w w' :=
   if received p 
   then True 
   else In p (packetSoup w) → system_step (Delivery p) w w'.
 
-Definition fairness : predicate SystemState :=
-  (∀ p : Packet, ⌞ good_packet p ⌟ → weak_fairness (good_deliver_action_p p))%L.
+Definition WFDelivery : predicate SystemState :=
+  (∀ p : Packet, ⌞ goodPkt p ⌟ → weak_fairness (WFPkt p))%L.
 
-#[local] Hint Unfold good_deliver_action_p fairness : tla.
+#[local] Hint Unfold WFPkt WFDelivery : tla.
 
 (* like in IronFleet, always-enabled action would simplify the proof *)
 
-Fact fairness_is_always_enabled [p] (Hg : good_packet p) :
-  ⊢ □ tla_enabled (good_deliver_action_p p).
+Fact WFPkt_is_always_enabled [p] (Hg : goodPkt p) :
+  ⊢ □ tla_enabled (WFPkt p).
 Proof.
   unseal.
   hnf.
@@ -107,32 +107,29 @@ Proof.
   reflexivity.
 Qed.
 
-(* certainly, we would like to check whether this is actually what we want! *)
-(* semantically, what we want is ...? *)
-
 (*
-Fact consumed_is_changed_by_delivery_pre :
-  ∀ p, good_packet p → received p = false → ∀ w w', In p (packetSoup w) →
+Fact received_is_changed_by_delivery_pre :
+  ∀ p, goodPkt p → received p = false → ∀ w w', In p (packetSoup w) →
     w' = next_sysstate (Delivery p) w → system_step (Delivery p) w w'.
 Proof.
   intros. hnf in * |-. subst w'. eapply DeliveryStep; try solve [ reflexivity | assumption | tauto ].
   simpl. rewrite (surjective_pairing (procMsg _ _ _)). reflexivity.
 Qed.
 *)
-Definition reliable_condition (e : exec SystemState) :=
-  ∀ p, good_packet p → received p = false → ∀ n, In p (packetSoup (e n)) →
+Definition eventualDelivery (e : exec SystemState) :=
+  ∀ p, goodPkt p → received p = false → ∀ n, In p (packetSoup (e n)) →
     ∃ k, system_step (Delivery p) (e (k + n)) (e (S (k + n))).
 
 (*
-Definition reliable_condition_ (e : exec SystemState) :=
-  ∀ p, good_packet p → received p = false → ∀ n, In p (packetSoup (e n)) →
+Definition eventualDelivery_ (e : exec SystemState) :=
+  ∀ p, goodPkt p → received p = false → ∀ n, In p (packetSoup (e n)) →
     ∃ k, e (S (k + n)) = next_sysstate (Delivery p) (e (k + n)).
 *)
 (* a lemma which will be used below, stating that the existence of
     an undelivered message will only be changed by an delivery action
   hope this would work for different network models ... *)
 
-Fact consumed_is_changed_by_delivery [e : exec SystemState] (Hrc : e ⊨ □ ⟨ next ⟩) 
+Fact received_is_changed_by_delivery [e : exec SystemState] (Hrc : e ⊨ □ ⟨ next ⟩) 
   [p n] (E : received p = false) (Hin : In p (e n).(packetSoup)) 
   k (Hnotin : ¬ In p (e (k + n)).(packetSoup)) :
   ∃ k' : nat, k' < k ∧ system_step (Delivery p) (e (k' + n)) (e (S (k' + n))).
@@ -155,7 +152,7 @@ Proof.
   3: rewrite (surjective_pairing (procInt _ _)) in Heq.
   3-4: rewrite Heq /= ?In_sendout ?In_sendout1 in Hnotin.
   3-4: now apply Decidable.not_or in Hnotin.
-  - now rewrite H0 in Hin'. (* TODO congruence no longer works now? *)
+  - now rewrite H0 in Hin'.
   - destruct (procMsg _ _ _) as (st', ms) in Heq.
     rewrite Heq in Hnotin |- *.
     simpl in Hnotin.
@@ -167,26 +164,13 @@ Proof.
     exists k.
     split; [ constructor | assumption ].
 Qed.
-(*
-Fact reliable_condition_change [e : exec SystemState] (Hrc : e ⊨ □ ⟨ next ⟩) :
-  reliable_condition e ↔ reliable_condition_ e.
-Proof.
-  split; intros H; hnf in H |- *; intros; saturate_assumptions!; destruct H as (k & H).
-  - exists k. now apply next_sysstate_sound.
-  - 
-    assert (¬ In p (e (S (k + n))).(packetSoup)) as Htmp.
-    { rewrite H /= (surjective_pairing (procMsg _ _ _)) /= In_sendout In_consume. 
-      intuition.
-    apply consumed_is_changed_by_delivery in H
-    apply consumed_is_changed_by_delivery_pre in H.
-*)
 
 (* what if things go too strong *)
 (*
 Fact fairness_strictly_stronger [e : exec SystemState] (Hrc : e ⊨ □ ⟨ next ⟩) :
-  (e ⊨ (∀ p : Packet, ⌞ good_packet p ⌟ → weak_fairness (system_step (Delivery p)))%L)%L ↔ reliable_condition e.
+  (e ⊨ (∀ p : Packet, ⌞ goodPkt p ⌟ → weak_fairness (system_step (Delivery p)))%L)%L ↔ eventualDelivery e.
 Proof.
-  unfold reliable_condition.
+  unfold eventualDelivery.
   autounfold with tla in *.
   split; intros H.
   - intros p Hg E n Hin.
@@ -202,7 +186,7 @@ Proof.
       assert (¬ In p (e (k + n)).(packetSoup)) as Htmp.
       { intros Htmp. apply H0. eexists. eapply DeliveryStep; try reflexivity; try auto. 1: hnf in *; tauto. 
         rewrite (surjective_pairing (procMsg _ _ _)). reflexivity. }
-      apply consumed_is_changed_by_delivery in Htmp; auto.
+      apply received_is_changed_by_delivery in Htmp; auto.
       destruct Htmp as (? & ? & ?).
       eauto.
   - intros p Hg k ?.
@@ -210,20 +194,20 @@ Proof.
 Abort.
 *)
 
-Fact fairness_adequate [e : exec SystemState] (Hrc : e ⊨ □ ⟨ next ⟩) :
-  (e ⊨ fairness)%L ↔ reliable_condition e.
+Fact WFDelivery_adequate [e : exec SystemState] (Hrc : e ⊨ □ ⟨ next ⟩) :
+  (e ⊨ WFDelivery)%L ↔ eventualDelivery e.
 Proof.
-  unfold reliable_condition.
+  unfold eventualDelivery.
   autounfold with tla in *.
   split; intros H.
   - intros p Hg E n Hin.
-    specialize (H _ Hg n (fairness_is_always_enabled Hg _)).
+    specialize (H _ Hg n (WFPkt_is_always_enabled Hg _)).
     rewrite E in H.
     destruct H as (k & H).
     rewrite ! drop_drop ! drop_n /= in H.
     destruct (in_dec Packet_eqdec p (packetSoup (e (k + n)))) as [ Hin' | Hnotin' ].
     1: exists k; intuition.
-    apply consumed_is_changed_by_delivery in Hnotin'; auto.
+    apply received_is_changed_by_delivery in Hnotin'; auto.
     destruct Hnotin' as (? & ? & ?).
     eauto.
   - intros p Hg k _.
@@ -248,8 +232,8 @@ Proof.
       now intros.
 Qed.
 
-Lemma eventual_delivery_single [p] (Hgood : good_packet p) :
-  □ ⟨ next ⟩ ∧ fairness ⊢
+Lemma eventual_delivery_single [p] (Hgood : goodPkt p) :
+  □ ⟨ next ⟩ ∧ WFDelivery ⊢
   ⌜λ w, In p (packetSoup w)⌝ ~~> ⌜λ w, In (markRcv p) (packetSoup w)⌝.
 Proof.
   destruct p as [ ? ? ? [] ]; simpl markRcv.
@@ -258,7 +242,7 @@ Proof.
   autounfold with tla.
   intros e (Hnext & Hfair) k Hin.
   rewrite drop_n /= in Hin.
-  apply fairness_adequate in Hfair; try assumption.
+  apply WFDelivery_adequate in Hfair; try assumption.
   apply Hfair in Hin; auto.
   destruct Hin as (k0 & (_ & _ & (? & ? & _ & E))%DeliverStep_inv).
   exists (S k0).
@@ -266,7 +250,7 @@ Proof.
   tauto.
   (* NOTE: another proof is based on WF1, which is longer *)
   (*
-  unfold next, fairness, good_deliver_action_p.
+  unfold next, WFDelivery, WFPkt.
   evar (bb : predicate SystemState).
   (* manual manipulation *)
   match goal with |- pred_impl (tla_and ?aa _) _ =>
@@ -298,16 +282,16 @@ Proof.
       rewrite ?In_sendout ?In_consume /=.
       tauto.
   - intros.
-    apply (fairness_is_always_enabled _ Hgood (fun _ => s) 0). (* trick *)
+    apply (WFPkt_is_always_enabled _ Hgood (fun _ => s) 0). (* trick *)
   *)
 Qed.
 
-Corollary eventual_delivery [pkts] (Hgood : Forall good_packet pkts) :
-  □ ⟨ next ⟩ ∧ fairness ⊢
+Corollary eventual_delivery [pkts] (Hgood : Forall goodPkt pkts) :
+  □ ⟨ next ⟩ ∧ WFDelivery ⊢
   ⌜λ w, incl pkts (packetSoup w)⌝ ~~> 
   ⌜λ w, ∀ p, In p pkts → In (markRcv p) (packetSoup w)⌝. (* need some detour if not to write in this way *)
 Proof.
-  apply leads_to_combine_batch' with (valid:=good_packet); try assumption.
+  apply leads_to_combine_batch' with (valid:=goodPkt); try assumption.
   - intros; now apply eventual_delivery_single.
   - intros p _.
     apply is_invariant_in_tla, psent_norevert_is_invariant.
@@ -317,10 +301,10 @@ Qed.
 Lemma leads_to_by_eventual_delivery (P Q : SystemState → Prop)
   (H : ∀ w (Hw : reachable w),
     (* message-driven *)
-    P w → ∃ pkts, Forall good_packet pkts ∧ incl pkts (packetSoup w) ∧
+    P w → ∃ pkts, Forall goodPkt pkts ∧ incl pkts (packetSoup w) ∧
       (∀ w0 l0 (Htrace : system_trace w l0) (Ew0 : w0 = final_sysstate w l0),
         incl (map markRcv pkts) (packetSoup w0) → Q w0)) :
-  ⌜ init ⌝ ∧ □ ⟨ next ⟩ ∧ fairness ⊢ ⌜ P ⌝ ~~> ⌜ Q ⌝.
+  ⌜ init ⌝ ∧ □ ⟨ next ⟩ ∧ WFDelivery ⊢ ⌜ P ⌝ ~~> ⌜ Q ⌝.
 Proof.
   tla_pose reachable_in_tla.
   (* can only prove by unfolding? *)

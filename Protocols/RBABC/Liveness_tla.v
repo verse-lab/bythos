@@ -31,14 +31,14 @@ Definition all_receives_RB src r v w : Prop :=
   RBLiveTLA.RBLive.all_receives src r v (sysstate_proj1 w).
 
 Lemma go1 : forall src r f0 (Hnonbyz_src : isByz src = false),
-  ⌜ init ⌝ ∧ nextf f0 ∧ fairness ∧ disambiguation f0 ⊢
+  ⌜ init ⌝ ∧ nextf f0 ∧ WFDelivery ∧ disambiguation f0 ⊢
   ⌜ λ w, (w @ src).(st1).(sent) r ⌝ ~~> ⌜ all_receives_RB src r (value_bft src r) ⌝.
 Proof.
   intros. hnf. intros e (Hini & Hf & Hfair & Hdg).
   pose proof (exec_norm1_sound_next ltac:(intros; hnf; auto) e f0 Hf) as (Hrel & Hf').
   pose proof (exec_norm1_sound_init e f0 Hini) as Hini'.
   set (e' := exec_norm1 f0 e) in Hrel, Hf', Hini'.
-  eapply exec_norm1_sound_fairness in Hfair; eauto.
+  eapply exec_norm1_sound_WFDelivery in Hfair; eauto.
   pose proof (conj Hini' (conj (RBLiveTLA.nextf_impl_next _ _ Hf') Hfair)) as HH%(RBLiveTLA.validity_in_tla _ r Hnonbyz_src).
   apply RBLiveTLA.leads_to_exec_rel with (e':=exec_proj1 e) in HH; auto.
   - hnf; intros ?? (HHH & ?); now rewrite HHH.
@@ -52,14 +52,14 @@ Definition all_honest_nodes_confirmed_AC v w : Prop :=
   ACLiveTLA.ACLive.Terminating_Convergence.all_honest_nodes_confirmed v (sysstate_proj2 w).
 
 Lemma go2 : forall f0 v,
-  ⌜ init ⌝ ∧ nextf f0 ∧ fairness ∧ disambiguation f0 ⊢
+  ⌜ init ⌝ ∧ nextf f0 ∧ WFDelivery ∧ disambiguation f0 ⊢
   ⌜ all_honest_nodes_submitted_AC v ⌝ ~~> ⌜ all_honest_nodes_confirmed_AC v ⌝.
 Proof.
   intros. hnf. intros e (Hini & Hf & Hfair & Hdg).
   pose proof (exec_norm2_sound_next ACAdv.byz_constraints_SystemState_rel e f0 Hf) as (Hrel & Hf').
   pose proof (exec_norm2_sound_init e f0 Hini) as Hini'.
   set (e' := exec_norm2 f0 e) in Hrel, Hf', Hini'.
-  eapply exec_norm2_sound_fairness in Hfair; eauto.
+  eapply exec_norm2_sound_WFDelivery in Hfair; eauto.
   pose proof (conj Hini' (conj (ACLiveTLA.nextf_impl_next _ _ Hf') Hfair)) as HH%(ACLiveTLA.terminating_convergence_in_tla v num_byz_le_f).
   apply ACLiveTLA.leads_to_exec_rel with (e':=exec_proj2 e) in HH; auto.
   all: apply ACN.Ns.stmap_peq_cong_implies_SystemState_rel_cong; 
@@ -171,7 +171,7 @@ Proof.
 Qed.
 
 Lemma validity_overall f (Hnonbyz : isByz arp.1 = false) :
-  ⌜ init ⌝ ∧ nextf f ∧ fairness ∧ disambiguation f ⊢
+  ⌜ init ⌝ ∧ nextf f ∧ WFDelivery ∧ disambiguation f ⊢
   ⌜ λ w, (w @ arp.1).(st1).(sent) arp.2 ⌝ ~~> ⌜ all_honest_nodes_confirmed_AC (value_bft arp.1 arp.2) ⌝.
 Proof.
   tla_apply (leads_to_trans _ (⌜ all_honest_nodes_submitted_AC (value_bft arp.1 arp.2) ⌝)); tla_split.

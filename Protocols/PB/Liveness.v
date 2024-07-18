@@ -39,7 +39,7 @@ Section Proof_of_Termination.
 
   Definition pkts_needed_in_round_1 pkts : Prop := Eval unfold initmsg_in in
     incl pkts (packetSoup w) /\
-    Forall good_packet pkts /\ (* since pkts is under-specified *)
+    Forall goodPkt pkts /\ (* since pkts is under-specified *)
     (forall n, isByz n = false ->
       exists used, initmsg_in n used pkts).
 
@@ -94,7 +94,7 @@ Section Proof_of_Termination.
 
   Definition pkts_needed_in_round_2 pkts : Prop := Eval unfold echomsg_in in
     incl pkts (packetSoup w) /\
-    Forall good_packet pkts /\ (* since pkts is under-specified *)
+    Forall goodPkt pkts /\ (* since pkts is under-specified *)
     (forall n, isByz n = false ->
       exists used, echomsg_in n used pkts).
 

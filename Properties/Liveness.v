@@ -14,7 +14,7 @@ Definition pkts_multi_to_all size w nonbyz_senders pkts (m : Address -> Message)
   List.NoDup nonbyz_senders /\
   size <= length nonbyz_senders /\
   incl pkts (packetSoup w) /\
-  Forall good_packet pkts /\ (* since pkts is under-specified *)
+  Forall goodPkt pkts /\ (* since pkts is under-specified *)
   (forall n1,
     In n1 nonbyz_senders -> 
     isByz n1 = false /\

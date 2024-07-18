@@ -20,14 +20,14 @@ Section A.
 Import Global_Liveness.
 
 Lemma global_liveness_pre_in_tla src r v :
-  ⌜ init ⌝ ∧ □ ⟨ next ⟩ ∧ fairness ⊢
+  ⌜ init ⌝ ∧ □ ⟨ next ⟩ ∧ WFDelivery ⊢
   ⌜ round_2_start src r v ⌝ ~~> ⌜ all_receives src r v ⌝.
 Proof.
   delivering round_2_pkts which ends at round_2_end_suffcond is sufficient because all_receives_suffcond.
 Qed.
 
 Lemma global_liveness_in_tla src r v :
-  ⌜ init ⌝ ∧ □ ⟨ next ⟩ ∧ fairness ⊢
+  ⌜ init ⌝ ∧ □ ⟨ next ⟩ ∧ WFDelivery ⊢
   ⌜ some_receives src r v ⌝ ~~> ⌜ all_receives src r v ⌝.
 Proof.
   tla_apply (leads_to_trans _ (⌜ round_2_start src r v ⌝)). tla_split.
@@ -42,7 +42,7 @@ Section A.
 Import Validity.
 
 Lemma validity_in_tla src r (Hnonbyz_src : isByz src = false) :
-  ⌜ init ⌝ ∧ □ ⟨ next ⟩ ∧ fairness ⊢
+  ⌜ init ⌝ ∧ □ ⟨ next ⟩ ∧ WFDelivery ⊢
   ⌜ λ w, (w @ src).(sent) r ⌝ ~~> ⌜ all_receives src r (value_bft src r) ⌝.
 Proof.
   tla_apply (leads_to_trans _ (⌜ round_2_start src r ⌝)). tla_split.

@@ -26,21 +26,21 @@ Section A.
   Hypothesis (Hnonbyz_src : isByz src = false) (Hex : ex_validate r (value_bft src r).1 (value_bft src r).2).
 
   Lemma termination_1_in_tla :
-    ⌜ init ⌝ ∧ □ ⟨ next ⟩ ∧ fairness ⊢
+    ⌜ init ⌝ ∧ □ ⟨ next ⟩ ∧ WFDelivery ⊢
     ⌜ λ w, (w @ src).(sent) r ⌝ ~~> ⌜ all_echoes src r ⌝.
   Proof using Hex Hnonbyz_src r src.
     delivering round_1_pkts which ends at round_1_end_suffcond is sufficient because round_2_start_suffcond.
   Qed.
 
   Lemma termination_2_in_tla :
-    ⌜ init ⌝ ∧ □ ⟨ next ⟩ ∧ fairness ⊢
+    ⌜ init ⌝ ∧ □ ⟨ next ⟩ ∧ WFDelivery ⊢
     ⌜ all_echoes src r ⌝ ~~> ⌜ λ w, (w @ src).(output) r ⌝.
   Proof using Hex Hnonbyz_src r src.
     delivering round_2_pkts which ends at round_2_end_suffcond is sufficient because src_outputs_suffcond.
   Qed.
 
   Lemma termination_in_tla :
-    ⌜ init ⌝ ∧ □ ⟨ next ⟩ ∧ fairness ⊢
+    ⌜ init ⌝ ∧ □ ⟨ next ⟩ ∧ WFDelivery ⊢
     ⌜ λ w, (w @ src).(sent) r ⌝ ~~> ⌜ λ w, (w @ src).(output) r ⌝.
   Proof using Hex Hnonbyz_src r src.
     tla_apply (leads_to_trans _ (⌜ all_echoes src r ⌝)). tla_split.

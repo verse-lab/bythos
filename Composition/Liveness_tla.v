@@ -103,15 +103,15 @@ Proof.
       subst e'. rewrite N1.final_sysstate_n_add_1. eapply N1.step_mirrors_SystemState_rel. *)
 Qed.
 
-Fact exec_norm1_sound_fairness (e : exec SystemState) f (H : e ⊨ nextf f) (Hdg : disambiguation f e)
+Fact exec_norm1_sound_WFDelivery (e : exec SystemState) f (H : e ⊨ nextf f) (Hdg : disambiguation f e)
   (e' : exec Ns1.SystemState) (Hrel : _LiveTLA1.exec_rel e' (exec_proj1 e))
   (* (H' : e' ⊨ □ ⟨ _LiveTLA1.next ⟩) : *)
   (H' : e' ⊨ _LiveTLA1.nextf (tagseq_proj1 f)) :
-  (e ⊨ fairness) → (e' ⊨ _LiveTLA1.fairness).
+  (e ⊨ WFDelivery) → (e' ⊨ _LiveTLA1.WFDelivery).
 Proof.
   (* change view, get k *)
-  intros Hfair%fairness_adequate; auto. 2: eapply nextf_impl_next, H. 
-  apply _LiveTLA1.fairness_adequate; auto. 1: eapply _LiveTLA1.nextf_impl_next, H'. 
+  intros Hfair%WFDelivery_adequate; auto. 2: eapply nextf_impl_next, H. 
+  apply _LiveTLA1.WFDelivery_adequate; auto. 1: eapply _LiveTLA1.nextf_impl_next, H'. 
   hnf in Hfair |- *. intros [ src dst msg ? ] (Hs & Hd). simpl in *. intros -> n Hin.
   specialize (Hfair (mkP src dst (inl msg) false) (conj Hs Hd) eq_refl n).
   apply (proj2 (Hrel n)) in Hin. unfold exec_proj1, sysstate_proj1 in Hin. simpl in Hin.
@@ -152,14 +152,14 @@ Proof.
       specialize (Hrel (S k)). rewrite N2.final_sysstate_n_add_1 in Hrel. rewrite Hb Hrel. reflexivity. 
 Qed.
 
-Fact exec_norm2_sound_fairness (e : exec SystemState) f (H : e ⊨ nextf f) (Hdg : disambiguation f e)
+Fact exec_norm2_sound_WFDelivery (e : exec SystemState) f (H : e ⊨ nextf f) (Hdg : disambiguation f e)
   (e' : exec Ns2.SystemState) (Hrel : _LiveTLA2.exec_rel e' (exec_proj2 e))
   (H' : e' ⊨ _LiveTLA2.nextf (tagseq_proj2 f e)) :
-  (e ⊨ fairness) → (e' ⊨ _LiveTLA2.fairness).
+  (e ⊨ WFDelivery) → (e' ⊨ _LiveTLA2.WFDelivery).
 Proof.
   (* change view, get k *)
-  intros Hfair%fairness_adequate; auto. 2: eapply nextf_impl_next, H. 
-  apply _LiveTLA2.fairness_adequate; auto. 1: eapply _LiveTLA2.nextf_impl_next, H'. 
+  intros Hfair%WFDelivery_adequate; auto. 2: eapply nextf_impl_next, H. 
+  apply _LiveTLA2.WFDelivery_adequate; auto. 1: eapply _LiveTLA2.nextf_impl_next, H'. 
   hnf in Hfair |- *. intros [ src dst msg ? ] (Hs & Hd). simpl in *. intros -> n Hin.
   specialize (Hfair (mkP src dst (inr msg) false) (conj Hs Hd) eq_refl n).
   apply (proj2 (Hrel n)) in Hin. unfold exec_proj2, sysstate_proj2 in Hin. simpl in Hin.

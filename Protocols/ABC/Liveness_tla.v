@@ -24,7 +24,7 @@ Import Terminating_Convergence.
 
 (* HMM put premises into TLA level? *)
 Lemma terminating_convergence_in_tla v (H_byz_minor : num_byz ≤ f) :
-  ⌜ init ⌝ ∧ □ ⟨ next ⟩ ∧ fairness ⊢
+  ⌜ init ⌝ ∧ □ ⟨ next ⟩ ∧ WFDelivery ⊢
   ⌜ all_honest_nodes_submitted v ⌝ ~~> ⌜ all_honest_nodes_confirmed v ⌝.
 Proof.
   delivering round_1_pkts which ends at round_1_end_suffcond is sufficient because all_honest_nodes_confirmed_suffcond.
@@ -37,7 +37,7 @@ Section A.
 Import Accountability.
 
 Lemma accountability_in_tla :
-  ⌜ init ⌝ ∧ □ ⟨ next ⟩ ∧ fairness ⊢
+  ⌜ init ⌝ ∧ □ ⟨ next ⟩ ∧ WFDelivery ⊢
   ⌜ λ w, ∃ n1 : Address, ∃ n2 : Address, confirmed_different_values n1 n2 w ⌝ ~~> ⌜ accountability ⌝.
 Proof.
   (* intro first *)

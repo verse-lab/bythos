@@ -526,17 +526,17 @@ Global Ltac always_holds_decompose lemma :=
 
 (* good packet and angelic trace *)
 
-Definition good_packet p :=
+Definition goodPkt p :=
   isByz (src p) = false /\ isByz (dst p) = false.
 
-Fact good_packet_dec p : {good_packet p} + {~ good_packet p}.
+Fact goodPkt_dec p : {goodPkt p} + {~ goodPkt p}.
 Proof.
-  unfold good_packet.
+  unfold goodPkt.
   destruct (isByz (src p)), (isByz (dst p)); auto.
   all: now right.
 Qed.
 
-Fact pkt_le_good_packet [p p'] : pkt_le p p' -> good_packet p <-> good_packet p'.
+Fact pkt_le_goodPkt [p p'] : pkt_le p p' -> goodPkt p <-> goodPkt p'.
 Proof. intros [ -> | -> ]. all: destruct p; intuition. Qed.
 
 (* simple existence condition; avoiding some vacuous cases *)
@@ -544,7 +544,7 @@ Proof. intros [ -> | -> ]. all: destruct p; intuition. Qed.
 (* this should be generalizable to any system with the same model *)
 
 Fact list_packets_deliverable [pkts w]
-  (Hgood : Forall good_packet pkts) (Hincl : incl pkts (packetSoup w)) :
+  (Hgood : Forall goodPkt pkts) (Hincl : incl pkts (packetSoup w)) :
   exists l, system_trace w l /\
     incl (map markRcv pkts) (packetSoup (final_sysstate w l)).
 Proof.
