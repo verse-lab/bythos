@@ -31,17 +31,17 @@ Definition exec_proj1 (e : exec SystemState) : exec Ns1.SystemState := fun n => 
 
 Definition exec_proj2 (e : exec SystemState) : exec Ns2.SystemState := fun n => sysstate_proj2 (e n).
 
-Definition ssdexec_proj1 (f : exec system_step_descriptor) : exec N1.system_step_descriptor :=
-  fun n => (ssd_proj1 (f n)).
+Definition tagseq_proj1 (f : exec system_step_tag) : exec N1.system_step_tag :=
+  fun n => (tag_proj1 (f n)).
 
-Definition ssdexec_proj2 (f : exec system_step_descriptor) (e : exec SystemState) : exec N2.system_step_descriptor :=
-  fun n => (ssd_proj2 (f n) (sysstate_proj1 (e n)) (sysstate_proj1 (e (S n)))).
+Definition tagseq_proj2 (f : exec system_step_tag) (e : exec SystemState) : exec N2.system_step_tag :=
+  fun n => (tag_proj2 (f n) (sysstate_proj1 (e n)) (sysstate_proj1 (e (S n)))).
 
 Definition exec_norm1 f (e : exec SystemState) : exec Ns1.SystemState :=
-  N1.final_sysstate_n (ssdexec_proj1 f) (sysstate_proj1 (e 0)).
+  N1.final_sysstate_n (tagseq_proj1 f) (sysstate_proj1 (e 0)).
 
 Definition exec_norm2 f (e : exec SystemState) : exec Ns2.SystemState :=
-  N2.final_sysstate_n (ssdexec_proj2 f e) (sysstate_proj2 (e 0)).
+  N2.final_sysstate_n (tagseq_proj2 f e) (sysstate_proj2 (e 0)).
 
 Fact exec_norm1_0 e f : exec_norm1 f e 0 = exec_proj1 e 0.
 Proof eq_refl.
@@ -79,7 +79,7 @@ Fact exec_norm1_sound_next (Hbyz_rel : forall m, Ns1.SystemState_rel_cong (Adv1.
   let: e' := exec_norm1 f e in
     _LiveTLA1.exec_rel e' (exec_proj1 e) ∧
     (* (e' ⊨ □ ⟨ _LiveTLA1.next ⟩). *)
-    (e' ⊨ _LiveTLA1.nextf (ssdexec_proj1 f)).
+    (e' ⊨ _LiveTLA1.nextf (tagseq_proj1 f)).
 Proof.
   (*
   autounfold with tla in H. setoid_rewrite drop_n in H. simpl in H.
@@ -89,24 +89,24 @@ Proof.
   - hnf. intros n. unfold exec_proj1, exec_norm1.
     induction n as [ | n IH ]; try reflexivity.
     rewrite N1.final_sysstate_n_add_1.
-    pose proof (ssd_proj1_sound (Hf n)) as (_ & H).
+    pose proof (tag_proj1_sound (Hf n)) as (_ & H).
     rewrite -H. now apply N1.next_sysstate_preserves_SystemState_rel.
   - intros Hrel.
     split_and?; autounfold with tla.
-    + intros k. (* exists (ssd_proj1 (f k)). rewrite !drop_n /=. *)
-      pose proof (ssd_proj1_sound (Hf k)) as (Ha & Hb).
+    + intros k. (* exists (tag_proj1 (f k)). rewrite !drop_n /=. *)
+      pose proof (tag_proj1_sound (Hf k)) as (Ha & Hb).
       unfold exec_norm1 in *. rewrite N1.final_sysstate_n_add_1. eapply N1.step_mirrors_SystemState_rel.
       1: symmetry; apply Hrel. 1: apply Ha. 1: assumption.
       specialize (Hrel (S k)). rewrite N1.final_sysstate_n_add_1 in Hrel. rewrite Hb Hrel. reflexivity.
     (* + intros k. hnf. intros q w w' Hstep. rewrite !drop_n /=.
-      pose proof (ssd_proj1_sound _ _ _ Hstep) as (Ha & Hb).
+      pose proof (tag_proj1_sound _ _ _ Hstep) as (Ha & Hb).
       subst e'. rewrite N1.final_sysstate_n_add_1. eapply N1.step_mirrors_SystemState_rel. *)
 Qed.
 
 Fact exec_norm1_sound_fairness (e : exec SystemState) f (H : e ⊨ nextf f) (Hdg : disambiguation f e)
   (e' : exec Ns1.SystemState) (Hrel : _LiveTLA1.exec_rel e' (exec_proj1 e))
   (* (H' : e' ⊨ □ ⟨ _LiveTLA1.next ⟩) : *)
-  (H' : e' ⊨ _LiveTLA1.nextf (ssdexec_proj1 f)) :
+  (H' : e' ⊨ _LiveTLA1.nextf (tagseq_proj1 f)) :
   (e ⊨ fairness) → (e' ⊨ _LiveTLA1.fairness).
 Proof.
   (* change view, get k *)
@@ -121,7 +121,7 @@ Proof.
   (* key point: the correspondence between delivery steps *)
   exists k.
   apply Hdg in Hstep. hnf in H'. specialize (H' (k + n)). 
-  unfold ssdexec_proj1 in H'. rewrite Hstep in H'. now cbn in H'.
+  unfold tagseq_proj1 in H'. rewrite Hstep in H'. now cbn in H'.
 Qed.
 
 (* TODO basically repeating the proofs above ... this is too bad *)
@@ -134,18 +134,18 @@ Proof. hnf. rewrite exec_norm2_0. now apply exec_proj2_sound_init. Qed.
 Fact exec_norm2_sound_next (Hbyz_rel : forall m, Ns2.SystemState_rel_cong (Adv2.byzConstraints m)) (e : exec SystemState) f (Hf : e ⊨ nextf f) :
   let: e' := exec_norm2 f e in
     _LiveTLA2.exec_rel e' (exec_proj2 e) ∧
-    (e' ⊨ _LiveTLA2.nextf (ssdexec_proj2 f e)).
+    (e' ⊨ _LiveTLA2.nextf (tagseq_proj2 f e)).
 Proof.
   autounfold with tla in Hf. hnf in Hf. apply and_wlog_r.
   - hnf. intros n. unfold exec_proj2, exec_norm2.
     induction n as [ | n IH ]; try reflexivity.
     rewrite N2.final_sysstate_n_add_1.
-    pose proof (ssd_proj2_sound (Hf n)) as (_ & H).
+    pose proof (tag_proj2_sound (Hf n)) as (_ & H).
     rewrite -H. pose proof (Hf n) as EE%next_sysstate_sound. rewrite -!EE. now apply N2.next_sysstate_preserves_SystemState_rel.
   - intros Hrel.
     split_and?; autounfold with tla.
-    + intros k. (* exists (ssd_proj1 (f k)). rewrite !drop_n /=. *)
-      pose proof (ssd_proj2_sound (Hf k)) as (Ha & Hb).
+    + intros k. (* exists (tag_proj1 (f k)). rewrite !drop_n /=. *)
+      pose proof (tag_proj2_sound (Hf k)) as (Ha & Hb).
       pose proof (Hf k) as EE%next_sysstate_sound. rewrite -EE in Ha Hb. 
       unfold exec_norm2 in *. rewrite N2.final_sysstate_n_add_1. eapply N2.step_mirrors_SystemState_rel.
       1: symmetry; apply Hrel. 1: apply Ha. 1: assumption.
@@ -154,7 +154,7 @@ Qed.
 
 Fact exec_norm2_sound_fairness (e : exec SystemState) f (H : e ⊨ nextf f) (Hdg : disambiguation f e)
   (e' : exec Ns2.SystemState) (Hrel : _LiveTLA2.exec_rel e' (exec_proj2 e))
-  (H' : e' ⊨ _LiveTLA2.nextf (ssdexec_proj2 f e)) :
+  (H' : e' ⊨ _LiveTLA2.nextf (tagseq_proj2 f e)) :
   (e ⊨ fairness) → (e' ⊨ _LiveTLA2.fairness).
 Proof.
   (* change view, get k *)
@@ -169,7 +169,7 @@ Proof.
   (* key point: the correspondence between delivery steps *)
   exists k.
   apply Hdg in Hstep. hnf in H'. specialize (H' (k + n)). 
-  unfold ssdexec_proj2 in H'. rewrite Hstep in H'. now cbn in H'.
+  unfold tagseq_proj2 in H'. rewrite Hstep in H'. now cbn in H'.
 Qed.
 
 End CompLiveness2.

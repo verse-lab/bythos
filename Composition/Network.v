@@ -47,7 +47,7 @@ Import BTh SCPT.
 
 Include NetworkImpl A CM BTh BSett CPk CPt CNs CAdv.
 
-Definition ssd_proj1 (q : system_step_descriptor) : N1.system_step_descriptor :=
+Definition tag_proj1 (q : system_step_tag) : N1.system_step_tag :=
   match q with
   | Stuttering => N1.Stuttering
   | Delivery p =>
@@ -64,7 +64,7 @@ Definition ssd_proj1 (q : system_step_descriptor) : N1.system_step_descriptor :=
   end.
 
 (* depending on the previous protocol *)
-Definition ssd_proj2 (q : system_step_descriptor) (w w' : Ns1.SystemState) : N2.system_step_descriptor :=
+Definition tag_proj2 (q : system_step_tag) (w w' : Ns1.SystemState) : N2.system_step_tag :=
   match q with
   | Stuttering => N2.Stuttering
   | Delivery p =>
@@ -95,10 +95,10 @@ Local Hint Rewrite -> N1.PC.In_consume N2.PC.In_consume In_consume option_map_li
 
 (* the definitions should be sound *)
 
-Fact ssd_proj1_sound q w :
-  let: ww := N1.next_sysstate (ssd_proj1 q) (sysstate_proj1 w) in
+Fact tag_proj1_sound q w :
+  let: ww := N1.next_sysstate (tag_proj1 q) (sysstate_proj1 w) in
   forall w' (Hstep : system_step q w w'),
-    N1.system_step (ssd_proj1 q) (sysstate_proj1 w) ww /\
+    N1.system_step (tag_proj1 q) (sysstate_proj1 w) ww /\
     Ns1.SystemState_rel ww (sysstate_proj1 w').
 Proof.
   intros w' Hstep.
@@ -171,7 +171,7 @@ Corollary reachable_proj1 w (Hr : reachable w) (Hbyz_rel : forall m, Ns1.SystemS
 Proof.
   induction Hr as [ | q w w' Hstep Hr (ww & Hrel & Hr') ].
   - exists Ns1.initSystemState. split; [ | now constructor ]. split; auto; try reflexivity.
-  - pose proof (ssd_proj1_sound Hstep) as (Ha & Hb).
+  - pose proof (tag_proj1_sound Hstep) as (Ha & Hb).
     symmetry in Hrel. pose proof Hrel as Hrel_. eapply N1.step_mirrors_SystemState_rel in Hrel.
     2: apply Ha. 2: auto. 2: now apply N1.next_sysstate_preserves_SystemState_rel.
     eexists. split. 2: eapply N1.ReachableStep; try apply Hrel. all: auto.
@@ -184,8 +184,8 @@ Proof.
   pose proof (reachable_proj1 Hr Hbyz_rel) as (ww & Hrel & Hr'). apply Hinv in Hr'. apply HP in Hrel. tauto.
 Qed.
 
-Fact ssd_proj2_sound q w :
-  let: qq := ssd_proj2 q (sysstate_proj1 w) (sysstate_proj1 (next_sysstate q w)) in
+Fact tag_proj2_sound q w :
+  let: qq := tag_proj2 q (sysstate_proj1 w) (sysstate_proj1 (next_sysstate q w)) in
   let: ww := N2.next_sysstate qq (sysstate_proj2 w) in
   forall w' (Hstep : system_step q w w'),
     N2.system_step qq (sysstate_proj2 w) ww /\
@@ -305,7 +305,7 @@ Corollary reachable_proj2 w (Hr : reachable w) (Hbyz_rel : forall m, Ns2.SystemS
 Proof.
   induction Hr as [ | q w w' Hstep Hr (ww & Hrel & Hr') ].
   - exists Ns2.initSystemState. split; [ | now constructor ]. split; auto; try reflexivity.
-  - pose proof (ssd_proj2_sound Hstep) as (Ha & Hb).
+  - pose proof (tag_proj2_sound Hstep) as (Ha & Hb).
     symmetry in Hrel. pose proof Hrel as Hrel_. eapply N2.step_mirrors_SystemState_rel in Hrel.
     2: apply Ha. 2: auto. 2: now apply N2.next_sysstate_preserves_SystemState_rel.
     eexists. split. 2: eapply N2.ReachableStep; try apply Hrel. all: auto.

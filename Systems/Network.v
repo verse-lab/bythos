@@ -99,7 +99,7 @@ Module Export PSOp' := PacketSoupOperationsLemmas P PSOp.
 Module Export PC : (* hide implementation *) PacketConsumption A M P := PacketConsumptionImpl A M P.
 Module Export PC' := PacketConsumptionLemmas A M P PC.
 
-Inductive system_step_descriptor : Type :=
+Inductive system_step_tag : Type :=
   | Stuttering
   | Delivery (p : Packet) 
   | Internal (proc : Address) (t : InternalTransition) 
@@ -107,7 +107,7 @@ Inductive system_step_descriptor : Type :=
 .
 
 (* the next system state can be computed deterministically from q *)
-Definition next_sysstate (q : system_step_descriptor) (w : SystemState) : SystemState :=
+Definition next_sysstate (q : system_step_tag) (w : SystemState) : SystemState :=
   match q with
   | Stuttering => w
   | Delivery p => 
@@ -120,7 +120,7 @@ Definition next_sysstate (q : system_step_descriptor) (w : SystemState) : System
     mkW (localState w) (sendout1 (mkP src dst m false) (packetSoup w))
   end.
 
-Fixpoint final_sysstate_n (f : nat -> system_step_descriptor) (w : SystemState) (n : nat) : SystemState :=
+Fixpoint final_sysstate_n (f : nat -> system_step_tag) (w : SystemState) (n : nat) : SystemState :=
   match n with
   | O => w
   | S n' => final_sysstate_n (fun n => f (S n)) (next_sysstate (f O) w) n'
@@ -140,7 +140,7 @@ Proof.
   intros. rewrite <- Nat.add_1_r at 1. rewrite <- final_sysstate_n_add. simpl. now rewrite Nat.add_0_r. 
 Qed.
 
-Inductive system_step (q : system_step_descriptor) (w w' : SystemState) : Prop :=
+Inductive system_step (q : system_step_tag) (w w' : SystemState) : Prop :=
 | StutteringStep of q = Stuttering & w = w'
 
 | DeliveryStep (p : Packet) of
@@ -191,7 +191,7 @@ Local Ltac inversion_step_ H Heq :=
     | n t Hq Hnonbyz Heq 
     | n dst m Hq Hbyz Hc Heq ];
   match type of Hq with
-    @eq system_step_descriptor ?q _ => try (is_var q; subst q)
+    @eq system_step_tag ?q _ => try (is_var q; subst q)
   end.
 
 Global Tactic Notation "inversion_step" hyp(H) :=
@@ -363,13 +363,13 @@ Section Finite_System_Trace.
 
 (* two multistep propositions *)
 
-Fixpoint system_trace (w : SystemState) (l : list (system_step_descriptor * SystemState)) : Prop :=
+Fixpoint system_trace (w : SystemState) (l : list (system_step_tag * SystemState)) : Prop :=
   match l with
   | nil => True
   | (q, w') :: l' => system_step q w w' /\ system_trace w' l'
   end.
 
-Definition final_sysstate (w : SystemState) (l : list (system_step_descriptor * SystemState)) := (snd (last l (Stuttering, w))).
+Definition final_sysstate (w : SystemState) (l : list (system_step_tag * SystemState)) := (snd (last l (Stuttering, w))).
 
 Fact system_trace_app w l1 l2 :
   system_trace w (l1 ++ l2) <-> system_trace w l1 /\ system_trace (final_sysstate w l1) l2.

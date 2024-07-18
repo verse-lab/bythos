@@ -79,7 +79,7 @@ Proof.
   - now cbn.
   - (* preparation *)
     (* output persistence *)
-    pose proof (ssd_proj1_sound Hstep) as (Hstep' & Hrel).
+    pose proof (tag_proj1_sound Hstep) as (Hstep' & Hrel).
     pose proof (RBLiveTLA.RBLive.RBS.RBInv.persistent_invariants Hstep') as Htmp.
     apply (RBN.lift_state_pair_inv_mirrors_SystemState_rel (w1:=sysstate_proj1 w) ltac:(reflexivity) Hrel) in Htmp.
     pick output_persistent as_ Ho by_ (pose proof (Htmp n) as []). specialize (Ho arp.1 arp.2). rewrite -surjective_pairing in Ho.
@@ -101,7 +101,7 @@ Proof.
           cbn in Htmp. rewrite (proj1 Hrel_) in Htmp. unfold sysstate_proj2, stmap_proj2 in Htmp. simpl in Htmp.
           rewrite -> (surjective_pairing (ACN.ACP.procInt _ _)) in Htmp. 
           (* another way around *)
-          eapply ssd_proj2_sound in Hstep. cbn in Hstep. unfold sysstate_proj2, stmap_proj2 in Hstep. simpl in Hstep.
+          eapply tag_proj2_sound in Hstep. cbn in Hstep. unfold sysstate_proj2, stmap_proj2 in Hstep. simpl in Hstep.
           rewrite (surjective_pairing (RBN.RBP.procMsg _ _ _)) Etr in Hstep.
           rewrite -> (surjective_pairing (ACN.ACP.procInt _ _)) in Ef, Hstep. simplify_eq. simpl in Hstep |- *.
           unfold sysstate_proj1, stmap_proj1, sysstate_proj2, stmap_proj2 in Hstep. rewrite !upd_refl /= Etr in Hstep.
@@ -133,7 +133,7 @@ Proof.
           ++intros v H. pose proof (proj2 IH v H) as H0. apply Ho in H0. now simpl in H0.
       * rewrite (surjective_pairing (ACN.ACP.procMsg _ _ _)) in Ef. simplify_eq. simpl.
         (* indirectly *)
-        eapply ssd_proj2_sound in Hstep. cbn in Hstep. unfold sysstate_proj2, stmap_proj2 in Hstep. simpl in Hstep.
+        eapply tag_proj2_sound in Hstep. cbn in Hstep. unfold sysstate_proj2, stmap_proj2 in Hstep. simpl in Hstep.
         rewrite (surjective_pairing (ACN.ACP.procMsg _ _ _)) in Hstep. simpl in Hstep.
         destruct Hstep as (Hstep & Hrel). apply inv_buffer_received_only_pre with (nn:=n) in Hstep; auto. simpl in Hstep.
         apply proj2 in Hstep. rewrite ACN.Ns.upd_refl in Hstep. now rewrite Hstep.

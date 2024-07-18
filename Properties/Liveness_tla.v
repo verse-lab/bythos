@@ -23,10 +23,10 @@ Definition init w := w = initSystemState.
 
 Definition next w w' := ∃ q, system_step q w w'.
 
-(* use functions to eliminate ambiguity, which refers to the case where
-    multiple "q" may satisfy the "∃" above *)
+(* "next" hides the underlying sequence of system step tags.
+    although they can be recovered using choice-like axioms, we may not do that *)
 
-Definition nextf (f : exec system_step_descriptor) : predicate SystemState :=
+Definition nextf (f : exec system_step_tag) : predicate SystemState :=
   fun e => ∀ n, system_step (f n) (e n) (e (S n)).
 
 Fact nextf_impl_next f : (nextf f ⊢ □ ⟨next⟩).
@@ -80,6 +80,7 @@ Qed.
 
 Section Fairness.
 
+(* FIXME: do we really need to make this action into an implication? *)
 Definition good_deliver_action_p p w w' :=
   if received p 
   then True 
@@ -263,6 +264,7 @@ Proof.
   exists (S k0).
   rewrite drop_drop drop_n /= E /= In_sendout In_consume /=.
   tauto.
+  (* NOTE: another proof is based on WF1, which is longer *)
   (*
   unfold next, fairness, good_deliver_action_p.
   evar (bb : predicate SystemState).
