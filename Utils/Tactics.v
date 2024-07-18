@@ -56,7 +56,6 @@ Global Tactic Notation "hypothesis" :=
     end
   end.
 
-(* FIXME: later, combine the following two together *)
 Global Ltac isSome_rewrite :=
   repeat match goal with
   | H : ?a = _, H0 : context[ssrbool.isSome ?a] |- _ => rewrite H in H0; simpl in H0

@@ -82,9 +82,9 @@ Section Proof_Env.
 End Proof_Env.
 
 (* more notations *)
+(* FIXME: if coq-tla actually has them, use its *)
 
 Definition satisfies {Σ : Type} (p : predicate Σ) (e : exec Σ) := p e.
-(* TODO any pure predicate in the formalism of TLA? *)
 Definition pure_pred {Σ : Type} (P : Prop) : predicate Σ := ⌜ λ _, P ⌝.
 
 Notation "e ⊨ p" := (satisfies p%L e) (at level 100).
