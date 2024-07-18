@@ -338,7 +338,7 @@ Qed.
 Local Ltac aux Htmp :=
   match type of Htmp with
   | (exists (_ : list ?t), _) =>
-    tryif convert t Packet
+    tryif assert_succeeds (pose (eq_refl : eq t Packet))
     then 
       let pkts := fresh "pkts" in
       let Htmp0 := fresh "Htmp" in
