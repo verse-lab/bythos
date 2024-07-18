@@ -277,6 +277,7 @@ Proof with try solve [ reflexivity | assumption ].
 Qed.
 
 (* atomicity of node state change (i.e., at most one node changes its state in one step) *)
+(* a.k.a. step locality *)
 (* FIXME: the following n can be known from q! *)
 Fact localState_change_atomic [q w w'] (H : system_step q w w') :
   localState w' = localState w \/ exists n st, localState w' = upd n st (localState w).
@@ -317,6 +318,7 @@ Proof.
   destruct H as (_ & [ -> | -> ] & ?); eauto.
 Qed.
 
+(* a.k.a. soup growth monotonicity *)
 Corollary system_step_psent_norevert [p w w' q] : 
   In (markRcv p) (packetSoup w) -> system_step q w w' -> In (markRcv p) (packetSoup w').
 Proof.
