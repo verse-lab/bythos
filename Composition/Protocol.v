@@ -20,7 +20,7 @@ Parameter trigger_procInt : Pt1.State -> Pt1.State -> option Pt2.InternalTransit
 
 End SeqCompProtocolTrigger.
 
-Module SeqCompProtocol (Export A : NetAddr) (M1 M2 : MessageType) (BTh : ByzThreshold A)
+Module Type SeqCompProtocol (Export A : NetAddr) (M1 M2 : MessageType) (BTh : ByzThreshold A)
   (CM : CompMessage M1 M2) (Pk1 : SimplePacket A M1) (Pk2 : SimplePacket A M2)
   (CPk : CompSimplePacket A M1 M2 CM Pk1 Pk2)
   (Pt1 : Protocol.Protocol A M1 Pk1 BTh)

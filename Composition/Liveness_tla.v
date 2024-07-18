@@ -7,36 +7,41 @@ From Bythos.Properties Require Export Liveness_tla.
 From Bythos.Composition Require Export Network.
 
 Module CompLiveness2 (A : NetAddr) (M1 M2 : MessageType) (BTh : ByzThreshold A)
-  (Pk1 : SimplePacket A M1) (Pk2 : SimplePacket A M2)
+  (CM : CompMessage M1 M2) (Pk1 : SimplePacket A M1) (Pk2 : SimplePacket A M2)
   (Pt1 : Protocol.Protocol A M1 Pk1 BTh)
   (Pt2 : Protocol.Protocol A M2 Pk2 BTh)
   (SCPT : SeqCompProtocolTrigger A M1 M2 BTh Pk1 Pk2 Pt1 Pt2)
   (Ns1 : NetState A M1 Pk1 BTh Pt1) (Ns2 : NetState A M2 Pk2 BTh Pt2)
   (BSett : ByzSetting A)
-  (* TODO is using the Adv of each sub-protocol really good? *)
   (Adv1 : Adversary A M1 BTh BSett Pk1 Pt1 Ns1) (Adv2 : Adversary A M2 BTh BSett Pk2 Pt2 Ns2)
   (N1 : Network.Network A M1 BTh BSett Pk1 Pt1 Ns1 Adv1)
   (N2 : Network.Network A M2 BTh BSett Pk2 Pt2 Ns2 Adv2).
 
-Module Export CN := CompNetwork A M1 M2 BTh Pk1 Pk2 Pt1 Pt2 SCPT Ns1 Ns2 BSett Adv1 Adv2 N1 N2.
+(* since typically the liveness module will be included, it would be easier to instantiate things here *)
+(* do not instantiate CM here, which might be required by SCPT *)
+Module Export CPk := EmptyModule <+ CompSimplePacket A M1 M2 CM Pk1 Pk2.
+Module Export CPt := EmptyModule <+ SeqCompProtocol A M1 M2 BTh CM Pk1 Pk2 CPk Pt1 Pt2 SCPT.
+Module Export CNs := EmptyModule <+ CompNetState A M1 M2 BTh CM Pk1 Pk2 CPk Pt1 Pt2 SCPT Ns1 Ns2 CPt.
+Module Export CAdv := EmptyModule <+ SimpleCompAdv A M1 M2 BTh CM Pk1 Pk2 CPk Pt1 Pt2 SCPT CPt Ns1 Ns2 CNs BSett Adv1 Adv2.
+Module Export CN := EmptyModule <+ CompNetwork A M1 M2 BTh CM Pk1 Pk2 CPk Pt1 Pt2 SCPT CPt Ns1 Ns2 CNs BSett Adv1 Adv2 CAdv N1 N2.
 
 Include LivenessTLA A CM BTh BSett CPk CPt CNs CAdv CN.
 
-Definition exec_proj1 (e : exec SystemState) : exec Ns1.SystemState := fun n => world_proj1 (e n).
+Definition exec_proj1 (e : exec SystemState) : exec Ns1.SystemState := fun n => sysstate_proj1 (e n).
 
-Definition exec_proj2 (e : exec SystemState) : exec Ns2.SystemState := fun n => world_proj2 (e n).
+Definition exec_proj2 (e : exec SystemState) : exec Ns2.SystemState := fun n => sysstate_proj2 (e n).
 
 Definition ssdexec_proj1 (f : exec system_step_descriptor) : exec N1.system_step_descriptor :=
   fun n => (ssd_proj1 (f n)).
 
 Definition ssdexec_proj2 (f : exec system_step_descriptor) (e : exec SystemState) : exec N2.system_step_descriptor :=
-  fun n => (ssd_proj2 (f n) (world_proj1 (e n)) (world_proj1 (e (S n)))).
+  fun n => (ssd_proj2 (f n) (sysstate_proj1 (e n)) (sysstate_proj1 (e (S n)))).
 
 Definition exec_norm1 f (e : exec SystemState) : exec Ns1.SystemState :=
-  N1.final_sysstate_n (ssdexec_proj1 f) (world_proj1 (e 0)).
+  N1.final_sysstate_n (ssdexec_proj1 f) (sysstate_proj1 (e 0)).
 
 Definition exec_norm2 f (e : exec SystemState) : exec Ns2.SystemState :=
-  N2.final_sysstate_n (ssdexec_proj2 f e) (world_proj2 (e 0)).
+  N2.final_sysstate_n (ssdexec_proj2 f e) (sysstate_proj2 (e 0)).
 
 Fact exec_norm1_0 e f : exec_norm1 f e 0 = exec_proj1 e 0.
 Proof eq_refl.
@@ -45,11 +50,11 @@ Fact exec_norm2_0 e f : exec_norm2 f e 0 = exec_proj2 e 0.
 Proof eq_refl.
 
 Fact leads_to_inl e P Q (H : exec_proj1 e ⊨ ⌜ P ⌝ ~~> ⌜ Q ⌝) :
-  e ⊨ ⌜ λ w, P (world_proj1 w) ⌝ ~~> ⌜ λ w, Q (world_proj1 w) ⌝.
+  e ⊨ ⌜ λ w, P (sysstate_proj1 w) ⌝ ~~> ⌜ λ w, Q (sysstate_proj1 w) ⌝.
 Proof. revert H. unseal. (* ??? *) Qed.
 
 Fact leads_to_inr e P Q (H : exec_proj2 e ⊨ ⌜ P ⌝ ~~> ⌜ Q ⌝) :
-  e ⊨ ⌜ λ w, P (world_proj2 w) ⌝ ~~> ⌜ λ w, Q (world_proj2 w) ⌝.
+  e ⊨ ⌜ λ w, P (sysstate_proj2 w) ⌝ ~~> ⌜ λ w, Q (sysstate_proj2 w) ⌝.
 Proof. revert H. unseal. (* ??? *) Qed.
 
 (* TODO have no way to go ... this might be too strong, but I have no better idea
@@ -109,7 +114,7 @@ Proof.
   apply _LiveTLA1.fairness_adequate; auto. 1: eapply _LiveTLA1.nextf_impl_next, H'. 
   hnf in Hfair |- *. intros [ src dst msg ? ] (Hs & Hd). simpl in *. intros -> n Hin.
   specialize (Hfair (mkP src dst (inl msg) false) (conj Hs Hd) eq_refl n).
-  apply (proj2 (Hrel n)) in Hin. unfold exec_proj1, world_proj1 in Hin. simpl in Hin.
+  apply (proj2 (Hrel n)) in Hin. unfold exec_proj1, sysstate_proj1 in Hin. simpl in Hin.
   apply option_map_list_In in Hin. destruct Hin as ([ ? ? [] ? ] & Hin & Hpj); try discriminate.
   cbn in Hpj. revert Hpj. intros [= -> -> -> ->]. specialize (Hfair Hin).
   destruct Hfair as (k & Hstep). 
@@ -157,7 +162,7 @@ Proof.
   apply _LiveTLA2.fairness_adequate; auto. 1: eapply _LiveTLA2.nextf_impl_next, H'. 
   hnf in Hfair |- *. intros [ src dst msg ? ] (Hs & Hd). simpl in *. intros -> n Hin.
   specialize (Hfair (mkP src dst (inr msg) false) (conj Hs Hd) eq_refl n).
-  apply (proj2 (Hrel n)) in Hin. unfold exec_proj2, world_proj2 in Hin. simpl in Hin.
+  apply (proj2 (Hrel n)) in Hin. unfold exec_proj2, sysstate_proj2 in Hin. simpl in Hin.
   apply option_map_list_In in Hin. destruct Hin as ([ ? ? [] ? ] & Hin & Hpj); try discriminate.
   cbn in Hpj. revert Hpj. intros [= -> -> -> ->]. specialize (Hfair Hin).
   destruct Hfair as (k & Hstep). 

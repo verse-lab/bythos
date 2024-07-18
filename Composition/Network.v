@@ -5,37 +5,45 @@ Import ssreflect.SsrSyntax.
 From Bythos.Systems Require Export Network.
 From Bythos.Composition Require Export States.
 
-(* FIXME: without making it a module type, we cannot compose CompNetwork *)
-
-Module CompNetwork (A : NetAddr) (M1 M2 : MessageType) (BTh : ByzThreshold A)
-  (Pk1 : SimplePacket A M1) (Pk2 : SimplePacket A M2)
+(* FIXME: is using the Adv of each sub-protocol really good? may introduce some problems? *)
+Module Type SimpleCompAdv (A : NetAddr) (M1 M2 : MessageType) (BTh : ByzThreshold A)
+  (CM : CompMessage M1 M2) (Pk1 : SimplePacket A M1) (Pk2 : SimplePacket A M2)
+  (CPk : CompSimplePacket A M1 M2 CM Pk1 Pk2)
   (Pt1 : Protocol.Protocol A M1 Pk1 BTh)
   (Pt2 : Protocol.Protocol A M2 Pk2 BTh)
   (SCPT : SeqCompProtocolTrigger A M1 M2 BTh Pk1 Pk2 Pt1 Pt2)
+  (CPt : SeqCompProtocol A M1 M2 BTh CM Pk1 Pk2 CPk Pt1 Pt2 SCPT)
   (Ns1 : NetState A M1 Pk1 BTh Pt1) (Ns2 : NetState A M2 Pk2 BTh Pt2)
+  (CNs : CompNetState A M1 M2 BTh CM Pk1 Pk2 CPk Pt1 Pt2 SCPT Ns1 Ns2 CPt)
   (BSett : ByzSetting A)
-  (* TODO is using the Adv of each sub-protocol really good? *)
-  (Adv1 : Adversary A M1 BTh BSett Pk1 Pt1 Ns1) (Adv2 : Adversary A M2 BTh BSett Pk2 Pt2 Ns2)
-  (N1 : Network.Network A M1 BTh BSett Pk1 Pt1 Ns1 Adv1)
-  (N2 : Network.Network A M2 BTh BSett Pk2 Pt2 Ns2 Adv2).
+  (Adv1 : Adversary A M1 BTh BSett Pk1 Pt1 Ns1) (Adv2 : Adversary A M2 BTh BSett Pk2 Pt2 Ns2) <: Adversary A CM BTh BSett CPk CPt CNs.
 
-Import BTh SCPT.
-
-Module Export CM := EmptyModule <+ CompMessage M1 M2.
-
-Module Export CPk := EmptyModule <+ CompSimplePacket A M1 M2 CM Pk1 Pk2.
-
-Module Export CNs := CompNetState A M1 M2 BTh CM Pk1 Pk2 CPk Pt1 Pt2 SCPT Ns1 Ns2.
-
-Module Export CAdv <: Adversary A CM BTh BSett CPk CPt CNs.
+Import CNs.
 
 Definition byzConstraints m w :=
   match m with
-  | inl m1 => Adv1.byzConstraints m1 (world_proj1 w)
-  | inr m2 => Adv2.byzConstraints m2 (world_proj2 w)
+  | inl m1 => Adv1.byzConstraints m1 (sysstate_proj1 w)
+  | inr m2 => Adv2.byzConstraints m2 (sysstate_proj2 w)
   end.
 
-End CAdv.
+End SimpleCompAdv.
+
+Module Type CompNetwork (A : NetAddr) (M1 M2 : MessageType) (BTh : ByzThreshold A)
+  (CM : CompMessage M1 M2) (Pk1 : SimplePacket A M1) (Pk2 : SimplePacket A M2)
+  (CPk : CompSimplePacket A M1 M2 CM Pk1 Pk2)
+  (Pt1 : Protocol.Protocol A M1 Pk1 BTh)
+  (Pt2 : Protocol.Protocol A M2 Pk2 BTh)
+  (SCPT : SeqCompProtocolTrigger A M1 M2 BTh Pk1 Pk2 Pt1 Pt2)
+  (CPt : SeqCompProtocol A M1 M2 BTh CM Pk1 Pk2 CPk Pt1 Pt2 SCPT)
+  (Ns1 : NetState A M1 Pk1 BTh Pt1) (Ns2 : NetState A M2 Pk2 BTh Pt2)
+  (CNs : CompNetState A M1 M2 BTh CM Pk1 Pk2 CPk Pt1 Pt2 SCPT Ns1 Ns2 CPt)
+  (BSett : ByzSetting A)
+  (Adv1 : Adversary A M1 BTh BSett Pk1 Pt1 Ns1) (Adv2 : Adversary A M2 BTh BSett Pk2 Pt2 Ns2)
+  (CAdv : SimpleCompAdv A M1 M2 BTh CM Pk1 Pk2 CPk Pt1 Pt2 SCPT CPt Ns1 Ns2 CNs BSett Adv1 Adv2)
+  (N1 : Network.Network A M1 BTh BSett Pk1 Pt1 Ns1 Adv1)
+  (N2 : Network.Network A M2 BTh BSett Pk2 Pt2 Ns2 Adv2) <: Network.Network A CM BTh BSett CPk CPt CNs CAdv.
+
+Import BTh SCPT.
 
 Include NetworkImpl A CM BTh BSett CPk CPt CNs CAdv.
 
@@ -88,14 +96,14 @@ Local Hint Rewrite -> N1.PC.In_consume N2.PC.In_consume In_consume option_map_li
 (* the definitions should be sound *)
 
 Fact ssd_proj1_sound q w :
-  let: ww := N1.next_sysstate (ssd_proj1 q) (world_proj1 w) in
+  let: ww := N1.next_sysstate (ssd_proj1 q) (sysstate_proj1 w) in
   forall w' (Hstep : system_step q w w'),
-    N1.system_step (ssd_proj1 q) (world_proj1 w) ww /\
-    Ns1.SystemState_rel ww (world_proj1 w').
+    N1.system_step (ssd_proj1 q) (sysstate_proj1 w) ww /\
+    Ns1.SystemState_rel ww (sysstate_proj1 w').
 Proof.
   intros w' Hstep.
   inversion_step' Hstep; clear Hstep; simpl.
-  all: unfold world_proj1; simpl_sysstate.
+  all: unfold sysstate_proj1; simpl_sysstate.
   - split; [ constructor | ]; reflexivity.
   - destruct msg as [ mRB | mAC ]; simpl.
     + unfold stmap_proj1.
@@ -103,7 +111,7 @@ Proof.
       split; [ eapply N1.DeliveryStep; try reflexivity; simpl; auto | ].
       * apply option_map_list_In. eexists. split. apply Hpin. reflexivity.
       * rewrite -> (surjective_pairing (Pt1.procMsg _ _ _)). reflexivity.
-      * pose proof (procMsgWithCheck_proj1 Ef) as (E1 & E2). rewrite <- E1, <- E2.
+      * pose proof (procMsg_proj1 Ef) as (E1 & E2). rewrite <- E1, <- E2.
         hnf; simpl. split; [ intros ?; unfold upd, Ns1.upd; now destruct_eqdec as_ -> | ].
         hnf. intros p. unfold pkts_filter_proj1. autorewrite with psent.
         (* TODO cumbersome ... *)
@@ -159,7 +167,7 @@ Proof.
 Qed.
 
 Corollary reachable_proj1 w (Hr : reachable w) (Hbyz_rel : forall m, Ns1.SystemState_rel_cong (Adv1.byzConstraints m)) :
-  exists ww, Ns1.SystemState_rel ww (world_proj1 w) /\ N1.reachable ww.
+  exists ww, Ns1.SystemState_rel ww (sysstate_proj1 w) /\ N1.reachable ww.
 Proof.
   induction Hr as [ | q w w' Hstep Hr (ww & Hrel & Hr') ].
   - exists Ns1.initSystemState. split; [ | now constructor ]. split; auto; try reflexivity.
@@ -171,25 +179,25 @@ Proof.
 Qed.
 
 Corollary always_holds_proj1_apply w (Hr : reachable w) (Hbyz_rel : forall m, Ns1.SystemState_rel_cong (Adv1.byzConstraints m))
-  (P : Ns1.SystemState -> Prop) (HP : Ns1.SystemState_rel_cong P) (Hinv : N1.always_holds P) : P (world_proj1 w).
+  (P : Ns1.SystemState -> Prop) (HP : Ns1.SystemState_rel_cong P) (Hinv : N1.always_holds P) : P (sysstate_proj1 w).
 Proof.
   pose proof (reachable_proj1 Hr Hbyz_rel) as (ww & Hrel & Hr'). apply Hinv in Hr'. apply HP in Hrel. tauto.
 Qed.
 
 Fact ssd_proj2_sound q w :
-  let: qq := ssd_proj2 q (world_proj1 w) (world_proj1 (next_sysstate q w)) in
-  let: ww := N2.next_sysstate qq (world_proj2 w) in
+  let: qq := ssd_proj2 q (sysstate_proj1 w) (sysstate_proj1 (next_sysstate q w)) in
+  let: ww := N2.next_sysstate qq (sysstate_proj2 w) in
   forall w' (Hstep : system_step q w w'),
-    N2.system_step qq (world_proj2 w) ww /\
-    Ns2.SystemState_rel ww (world_proj2 w').
+    N2.system_step qq (sysstate_proj2 w) ww /\
+    Ns2.SystemState_rel ww (sysstate_proj2 w').
 Proof.
   intros w' Hstep.
   inversion_step' Hstep; clear Hstep; simpl.
-  all: unfold world_proj2; simpl_sysstate.
+  all: unfold sysstate_proj2; simpl_sysstate.
   - split; [ constructor | ]; reflexivity.
   - destruct msg as [ mRB | mAC ]; simpl.
     + unfold stmap_proj1.
-      pose proof (procMsgWithCheck_proj1 Ef) as (E1 & _).
+      pose proof (procMsg_proj1 Ef) as (E1 & _).
       rewrite -> (surjective_pairing (Pt1.procMsg _ _ _)) in Ef |- *.
       rewrite Ef. simpl. rewrite upd_refl, E1. 
       destruct (trigger_procMsg _ _) in Ef |- *.
@@ -222,7 +230,7 @@ Proof.
       split; [ eapply N2.DeliveryStep; try reflexivity; simpl; auto | ].
       * apply option_map_list_In. eexists. split. apply Hpin. reflexivity.
       * rewrite -> (surjective_pairing (Pt2.procMsg _ _ _)). reflexivity.
-      * pose proof (procMsgWithCheck_proj2 Ef) as (E1 & E2). rewrite <- E1, <- E2.
+      * pose proof (procMsg_proj2 Ef) as (E1 & E2). rewrite <- E1, <- E2.
         hnf; simpl. split; [ intros ?; unfold stmap_proj2, upd, Ns2.upd; now destruct_eqdec as_ -> | ].
         hnf. intros p. unfold pkts_filter_proj2. autorewrite with psent.
         (* TODO cumbersome ... *)
@@ -293,7 +301,7 @@ Qed.
 
 (* TODO simply repeating the proof above *)
 Corollary reachable_proj2 w (Hr : reachable w) (Hbyz_rel : forall m, Ns2.SystemState_rel_cong (Adv2.byzConstraints m)) :
-  exists ww, Ns2.SystemState_rel ww (world_proj2 w) /\ N2.reachable ww.
+  exists ww, Ns2.SystemState_rel ww (sysstate_proj2 w) /\ N2.reachable ww.
 Proof.
   induction Hr as [ | q w w' Hstep Hr (ww & Hrel & Hr') ].
   - exists Ns2.initSystemState. split; [ | now constructor ]. split; auto; try reflexivity.
@@ -305,7 +313,7 @@ Proof.
 Qed.
 
 Corollary always_holds_proj2_apply w (Hr : reachable w) (Hbyz_rel : forall m, Ns2.SystemState_rel_cong (Adv2.byzConstraints m))
-  (P : Ns2.SystemState -> Prop) (HP : Ns2.SystemState_rel_cong P) (Hinv : N2.always_holds P) : P (world_proj2 w).
+  (P : Ns2.SystemState -> Prop) (HP : Ns2.SystemState_rel_cong P) (Hinv : N2.always_holds P) : P (sysstate_proj2 w).
 Proof.
   pose proof (reachable_proj2 Hr Hbyz_rel) as (ww & Hrel & Hr'). apply Hinv in Hr'. apply HP in Hrel. tauto.
 Qed.

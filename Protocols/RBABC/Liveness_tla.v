@@ -15,7 +15,6 @@ Module RBACLiveness2 (A : NetAddr) (R : Round) (ARP : AddrRoundPair A R) (Sn : S
 Import A R ARP V VBFT BTh BSett.
 Import ssrbool. (* anyway *)
 
-(* TODO seems like there are some diamond issue, but skip for now *)
 Module RBLiveTLA := RBLiveness2 A R V VBFT BTh BSett.
 Module ACLiveTLA := ACLiveness2 A Sn V BTh BSett PPrim TSSPrim.
 
@@ -25,11 +24,11 @@ Module Export CM := EmptyModule <+ CompMessage RBN.M ACN.M.
 Module Export SCPT := RBACTrigger A R ARP Sn V VBFT BTh RBN.M PPrim TSSPrim ACN.ACDT ACN.M
   CM RBN.P ACN.P0 RBN.RBP ACN.ACP.
 
-Include CompLiveness2 A RBN.M ACN.M BTh RBN.P ACN.P0 RBN.RBP ACN.ACP SCPT RBN.Ns ACN.Ns
+Include CompLiveness2 A RBN.M ACN.M BTh CM RBN.P ACN.P0 RBN.RBP ACN.ACP SCPT RBN.Ns ACN.Ns
   BSett RBN.RBAdv ACN.ACAdv RBN ACN.
 
 Definition all_receives_RB src r v w : Prop :=
-  RBLiveTLA.RBLive.all_receives src r v (world_proj1 w).
+  RBLiveTLA.RBLive.all_receives src r v (sysstate_proj1 w).
 
 Lemma go1 : forall src r f0 (Hnonbyz_src : isByz src = false),
   ⌜ init ⌝ ∧ nextf f0 ∧ fairness ∧ disambiguation f0 ⊢
@@ -47,10 +46,10 @@ Proof.
 Qed.
 
 Definition all_honest_nodes_submitted_AC v w : Prop :=
-  ACLiveTLA.ACLive.Terminating_Convergence.all_honest_nodes_submitted v (world_proj2 w).
+  ACLiveTLA.ACLive.Terminating_Convergence.all_honest_nodes_submitted v (sysstate_proj2 w).
 
 Definition all_honest_nodes_confirmed_AC v w : Prop :=
-  ACLiveTLA.ACLive.Terminating_Convergence.all_honest_nodes_confirmed v (world_proj2 w).
+  ACLiveTLA.ACLive.Terminating_Convergence.all_honest_nodes_confirmed v (sysstate_proj2 w).
 
 Lemma go2 : forall f0 v,
   ⌜ init ⌝ ∧ nextf f0 ∧ fairness ∧ disambiguation f0 ⊢
@@ -71,10 +70,10 @@ Qed.
 Lemma inv1 : forall w, reachable w -> 
   forall n, isByz n = false ->
     (* this holds for any num_byz *)
-    ((ACN.Ns.localState (world_proj2 w) n).(submitted_value) = None <->
-      (RBN.Ns.localState (world_proj1 w) n).(output) arp = nil) /\
-    (forall v, (ACN.Ns.localState (world_proj2 w) n).(submitted_value) = Some v ->
-      In v ((RBN.Ns.localState (world_proj1 w) n).(output) arp)).
+    ((ACN.Ns.localState (sysstate_proj2 w) n).(submitted_value) = None <->
+      (RBN.Ns.localState (sysstate_proj1 w) n).(output) arp = nil) /\
+    (forall v, (ACN.Ns.localState (sysstate_proj2 w) n).(submitted_value) = Some v ->
+      In v ((RBN.Ns.localState (sysstate_proj1 w) n).(output) arp)).
 Proof.
   intros w Hr n Hnonbyz. induction Hr as [ | q w w' Hstep Hr IH ].
   - now cbn.
@@ -82,14 +81,14 @@ Proof.
     (* output persistence *)
     pose proof (ssd_proj1_sound Hstep) as (Hstep' & Hrel).
     pose proof (RBLiveTLA.RBLive.RBS.RBInv.persistent_invariants Hstep') as Htmp.
-    apply (RBN.lift_state_pair_inv_mirrors_SystemState_rel (w1:=world_proj1 w) ltac:(reflexivity) Hrel) in Htmp.
+    apply (RBN.lift_state_pair_inv_mirrors_SystemState_rel (w1:=sysstate_proj1 w) ltac:(reflexivity) Hrel) in Htmp.
     pick output_persistent as_ Ho by_ (pose proof (Htmp n) as []). specialize (Ho arp.1 arp.2). rewrite -surjective_pairing in Ho.
     clear Htmp Hstep' Hrel.
 
     (* brute-force discussion is inevitable? *)
     (* TODO need to reason about how handlers deal with some specific fields ... very cumbersome *)
     inversion_step' Hstep; auto.
-    all: unfold world_proj1, stmap_proj1, world_proj2, stmap_proj2 in Ho, IH |- *; simpl in Ho, IH |- *.
+    all: unfold sysstate_proj1, stmap_proj1, sysstate_proj2, stmap_proj2 in Ho, IH |- *; simpl in Ho, IH |- *.
     all: unfold upd; destruct_eqdec as_ ->; auto.
     all: rewrite upd_refl in Ho.
     + destruct msg as [ mRB | mAC ].
@@ -99,13 +98,13 @@ Proof.
           (* TODO streamline this? *)
           pose proof (reachable_proj2 Hr ACAdv.byz_constraints_SystemState_rel) as (w_ & Hrel_ & Hr_).
           pose proof Hrel_ as Htmp. apply ACN.next_sysstate_preserves_SystemState_rel with (q:=ACN.Internal n (SubmitIntTrans v)) in Htmp.
-          cbn in Htmp. rewrite (proj1 Hrel_) in Htmp. unfold world_proj2, stmap_proj2 in Htmp. simpl in Htmp.
+          cbn in Htmp. rewrite (proj1 Hrel_) in Htmp. unfold sysstate_proj2, stmap_proj2 in Htmp. simpl in Htmp.
           rewrite -> (surjective_pairing (ACN.ACP.procInt _ _)) in Htmp. 
           (* another way around *)
-          eapply ssd_proj2_sound in Hstep. cbn in Hstep. unfold world_proj2, stmap_proj2 in Hstep. simpl in Hstep.
+          eapply ssd_proj2_sound in Hstep. cbn in Hstep. unfold sysstate_proj2, stmap_proj2 in Hstep. simpl in Hstep.
           rewrite (surjective_pairing (RBN.RBP.procMsg _ _ _)) Etr in Hstep.
           rewrite -> (surjective_pairing (ACN.ACP.procInt _ _)) in Ef, Hstep. simplify_eq. simpl in Hstep |- *.
-          unfold world_proj1, stmap_proj1, world_proj2, stmap_proj2 in Hstep. rewrite !upd_refl /= Etr in Hstep.
+          unfold sysstate_proj1, stmap_proj1, sysstate_proj2, stmap_proj2 in Hstep. rewrite !upd_refl /= Etr in Hstep.
           (* TODO why keep rewriting ... *)
           cbn in Hstep. rewrite -> (surjective_pairing (ACN.ACP.procInt _ _)) in Hstep. simpl in Hstep. 
           (* step for the reachable one *)
@@ -134,7 +133,7 @@ Proof.
           ++intros v H. pose proof (proj2 IH v H) as H0. apply Ho in H0. now simpl in H0.
       * rewrite (surjective_pairing (ACN.ACP.procMsg _ _ _)) in Ef. simplify_eq. simpl.
         (* indirectly *)
-        eapply ssd_proj2_sound in Hstep. cbn in Hstep. unfold world_proj2, stmap_proj2 in Hstep. simpl in Hstep.
+        eapply ssd_proj2_sound in Hstep. cbn in Hstep. unfold sysstate_proj2, stmap_proj2 in Hstep. simpl in Hstep.
         rewrite (surjective_pairing (ACN.ACP.procMsg _ _ _)) in Hstep. simpl in Hstep.
         destruct Hstep as (Hstep & Hrel). apply inv_buffer_received_only_pre with (nn:=n) in Hstep; auto. simpl in Hstep.
         apply proj2 in Hstep. rewrite ACN.Ns.upd_refl in Hstep. now rewrite Hstep.
@@ -146,8 +145,8 @@ Qed.
 Lemma inv1' : forall w, reachable w -> 
   forall n, isByz n = false ->
     (* this holds for any num_byz *)
-    (forall v, In v ((RBN.Ns.localState (world_proj1 w) n).(output) arp) ->
-      (ACN.Ns.localState (world_proj2 w) n).(submitted_value) = Some v).
+    (forall v, In v ((RBN.Ns.localState (sysstate_proj1 w) n).(output) arp) ->
+      (ACN.Ns.localState (sysstate_proj2 w) n).(submitted_value) = Some v).
 Proof.
   intros w Hr n Hnonbyz v Hin. destruct (submitted_value _) as [ v0 | ] eqn:E.
   - apply inv1 in E; auto.
@@ -157,7 +156,7 @@ Proof.
     2: intros; hnf; auto.
     (* TODO move this subgoal somewhere else? *)
     2:{ intros ?? Hre. unfold RBLiveTLA.RBLive.RBS.output_uniqueness. now setoid_rewrite (proj1 Hre). }
-    unfold world_proj1, stmap_proj1 in Htmp2. hnf in Htmp2. cbn in Htmp2. 
+    unfold sysstate_proj1, stmap_proj1 in Htmp2. hnf in Htmp2. cbn in Htmp2. 
     specialize (Htmp2 n n arp.1 arp.2 v0 v Hnonbyz Hnonbyz). 
     rewrite -surjective_pairing in Htmp2. saturate_assumptions!. now subst.
   - apply inv1 in E; auto. rewrite E in Hin. contradiction.
