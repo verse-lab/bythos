@@ -10,6 +10,8 @@ Module Liveness (Export A : NetAddr) (Export M : MessageType)
   (Export Pr : Protocol A M P BTh) (Export Ns : NetState A M P BTh Pr)
   (Export Adv : Adversary A M BTh BSett P Pr Ns) (Export N : Network A M BTh BSett P Pr Ns Adv).
 
+(* some definitions that might be useful in liveness proofs *)
+
 Definition pkts_multi_to_all size w nonbyz_senders pkts (m : Address -> Message) (P : SystemState -> Address -> Prop) : Prop :=
   List.NoDup nonbyz_senders /\
   size <= length nonbyz_senders /\

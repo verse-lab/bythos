@@ -667,7 +667,7 @@ Qed.
 End Backward.
 
 (* this is nonsense ... *)
-Fact procMsgWithCheck_fresh st src m :
+Fact procMsg_fresh st src m :
   Forall (fun p => p.(received) = false) (snd (procMsg st src m)).
 Proof.
   unfold procMsg.
@@ -732,7 +732,7 @@ Proof with saturate_assumptions.
   - (* inductive case *)
     (* HMM exploiting the network model ... 
       there might be other ways to work around, but this is probably the easiest way for now *)
-    eapply system_step_received_inversion_full in Hr3; try eassumption; auto using procMsgWithCheck_fresh, procInt_fresh.
+    eapply system_step_received_inversion_full in Hr3; try eassumption; auto using procMsg_fresh, procInt_fresh.
     destruct Hr3 as (? & Hr3). 
     pick votemsg_sent_h2l as_ Hr4 by_ (pose proof (Hh2ls_back _ Hr3) as [])... apply IH in Hr4; auto.
     destruct Hr4 as (? & ? & ? & Hr4). eapply system_step_psent_norevert_full in Hr4; eauto.
@@ -779,7 +779,7 @@ Proof.
       match type of E' with _ <= ?ll => assert (f < ll) as (n & Hnonbyz_n & Hin')%at_least_one_nonfaulty by lia end.
       2: eapply (Hnodup (VoteMsg _ _ _)).
       pick msgcnt_recv_l2h as_ Hr3 by_ (pose proof (Hl2h _ Hnonbyz_n') as []). specialize (Hr3 _ _ Hin'). rewrite Hcoh in Hr3.
-      eapply system_step_received_inversion_full in Hr3; try eassumption; auto using procMsgWithCheck_fresh, procInt_fresh.
+      eapply system_step_received_inversion_full in Hr3; try eassumption; auto using procMsg_fresh, procInt_fresh.
       destruct Hr3 as (? & Hr3). 
       pick votemsg_sent_h2l as_ Hr4 by_ (pose proof (Hh2ls_back _ Hr3) as []). saturate_assumptions. 
       pose proof (in_nil (a:=n)) as Htmp1. pose proof (Address_is_finite n) as Htmp2.
@@ -883,7 +883,7 @@ Proof.
     match type of Hle with _ <= ?ll => assert (f < ll) as (n & Hnonbyz_n & Hin')%at_least_one_nonfaulty by lia end.
     2: eapply (Hnodup (VoteMsg _ _ _)).
     pick msgcnt_recv_l2h as_ Hr3 by_ (pose proof (Hl2h _ Hnonbyz_dst1) as []). specialize (Hr3 _ _ Hin'). rewrite Hcoh in Hr3.
-    eapply system_step_received_inversion_full in Hr3; try eassumption; auto using procMsgWithCheck_fresh, procInt_fresh.
+    eapply system_step_received_inversion_full in Hr3; try eassumption; auto using procMsg_fresh, procInt_fresh.
     destruct Hr3 as (? & Hr3). 
     pick votemsg_sent_h2l as_ Hr4 by_ (pose proof (Hh2ls_back _ Hr3) as []). saturate_assumptions. 
     eapply (H n dst2); eauto.

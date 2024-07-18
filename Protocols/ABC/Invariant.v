@@ -1010,7 +1010,7 @@ Qed.
 
 (* required below? *)
 
-Fact procMsgWithCheck_fresh st src m :
+Fact procMsg_fresh st src m :
   Forall (fun p => p.(received) = false) (snd (procMsg st src m)).
 Proof with (simpl; rewrite ?Forall_app; auto using broadcast_all_fresh).
   unfold procMsg, routine_check.
@@ -1080,7 +1080,7 @@ Proof.
         all: hnf in *; try is_true_rewrite; intuition.
         destruct (ACP.conf stb); saturate_assumptions; try discriminate. intuition. }
       split.
-      1:{ apply Forall_app. split; auto. epose proof (procMsgWithCheck_fresh _ _ _) as Htmp. now rewrite E0 in Htmp. }
+      1:{ apply Forall_app. split; auto. epose proof (procMsg_fresh _ _ _) as Htmp. now rewrite E0 in Htmp. }
       (* compose *)
       pose proof (psent_mnt_append _ _ _ Ha Ha0) as Hq.
       exists (l0 ++ l). split.
@@ -1130,7 +1130,7 @@ Fact psent_mnt_sound q w w' (Hstep : system_step q w w') (Hw : reachable w) :
 Proof.
   unfold psent_mnt_sound_goal. inversion_step' Hstep.
   - split; auto. now exists (PSKnonbyz (Pid _) nil).
-  - pose proof (procMsgWithCheck_fresh (w @ dst) src msg) as Hfresh. unfold procMsg in Hfresh. rewrite Ef in Hfresh. simpl in Hfresh.
+  - pose proof (procMsg_fresh (w @ dst) src msg) as Hfresh. unfold procMsg in Hfresh. rewrite Ef in Hfresh. simpl in Hfresh.
     pose proof (id_coh_always_holds Hw) as Hcoh.
     let pkt := constr:(mkP src dst msg used) in
       unshelve eapply psent_mnt_sound_pre_pre with (p:=markRcv pkt) (psent:=consume pkt (packetSoup w)) in Ef; try reflexivity; auto.
