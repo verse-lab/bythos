@@ -2,6 +2,8 @@
 
 Users can extract and run protocols. 
 
+**WARNING:** Extracted protocol implementations can only serve as simple reference implementations. Their performance and security are far from being suitable for production-level applications. 
+
 ## Requirements
 
 Apart from Coq:
