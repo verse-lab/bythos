@@ -17,6 +17,8 @@ RUN set -x \
   && opam install -y -v dune mirage-crypto=1.0.0 mirage-crypto-pk=1.0.0 mirage-crypto-rng=1.0.0 \
   && opam clean -a -c -s --logs \
   && opam config list && opam list \
+  && sudo apt update \
+  && sudo apt install -y procps \
   && make
 
 SHELL ["/bin/sh", "-c"]
