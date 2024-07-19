@@ -63,3 +63,49 @@ This process might take up to 5 minutes on a commodity laptop. It might take up 
 ## Check Whether the Compilation is Successful
 
 If you did not encounter any error while executing the above steps, you have successfully compiled all the Coq files. 
+
+To check if the OCaml files have been compiled successfully, `cd` into `Extraction/` and run `bash scripts/runPB.sh`. This will create 4 nodes running Provable Broadcast, redirecting their outputs to the files `0.log`, `1.log`, `2.log`, and `3.log` under `Extraction/` respectively. These nodes will run for 90 seconds and will stop when `scripts/runPB.sh` is completed. 
+
+Wait for 90 seconds and check the logs. If you can see long outputs like the one shown below, then the compilation was successful! 
+
+```
+Me IP: 127.0.0.1
+Me port: 9000
+Cluster:
+  127.0.0.1@9000
+  127.0.0.1@9006
+  127.0.0.1@9012
+  127.0.0.1@9018
+listening on port 9000
+check before spontaneous procInt ... 
+sending:
+  Init ([1, 1], 510692390, [some light sig]) to 127.0.0.1@9000
+  Init ([1, 1], 510692390, [some light sig]) to 127.0.0.1@9006
+  Init ([1, 1], 510692390, [some light sig]) to 127.0.0.1@9012
+  Init ([1, 1], 510692390, [some light sig]) to 127.0.0.1@9018
+new connection!
+done processing new connection from node 127.0.0.1@9000; received its public key
+new connection!
+done processing new connection from node 127.0.0.1@9006; received its public key
+new connection!
+done processing new connection from node 127.0.0.1@9012; received its public key
+new connection!
+done processing new connection from node 127.0.0.1@9018; received its public key
+receiving Echo ([1, 1], [some light sig]) from 127.0.0.1@9006
+receiving Echo ([1, 1], [some light sig]) from 127.0.0.1@9012
+receiving Echo ([1, 1], [some light sig]) from 127.0.0.1@9018
+sending:
+  Init ([1, 2], 510692390, [some combined sig]) to 127.0.0.1@9000
+  Init ([1, 2], 510692390, [some combined sig]) to 127.0.0.1@9006
+  Init ([1, 2], 510692390, [some combined sig]) to 127.0.0.1@9012
+  Init ([1, 2], 510692390, [some combined sig]) to 127.0.0.1@9018
+receiving Init ([1, 1], 510692390, [some light sig]) from 127.0.0.1@9000
+sending:
+  Echo ([1, 1], [some light sig]) to 127.0.0.1@9000
+receiving Init ([1, 2], 510692390, [some combined sig]) from 127.0.0.1@9000
+sending:
+  Echo ([1, 2], [some light sig]) to 127.0.0.1@9000
+(...)  
+check before spontaneous procInt ... found existing delivery certificate ... 
+(...)
+```
