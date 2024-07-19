@@ -24,7 +24,7 @@ clean_driver:
 
 extraction: clean_driver extraction_core
 
-extraction_core:
+extraction_core: Makefile.coq
 	$(MAKE) -f Makefile.coq Extraction/Driver.vo
 	cd Extraction/; dune build; cd ..
 
