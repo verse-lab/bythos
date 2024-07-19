@@ -7,39 +7,20 @@ From Bythos.Protocols.RB Require Export Types.
 From RecordUpdate Require Import RecordUpdate.
 
 Module Type RBProtocol (A : NetAddr) (R : Round) (V : Value) (VBFT : ValueBFT A R V) 
-  (* although the fraction 1/3 will not be used in the protocol, 
-      this protocol only makes sense with f being N/3 ...
-      use module type to tell this restriction *)
   (BTh : ClassicByzThreshold A) (M : RBMessage A R V)
   (P : SimplePacket A M) <: Protocol A M P BTh.
 
 Import A R V VBFT BTh M P.
-(*
-Inductive InternalTransition_ :=
-  | SendAction (r : Round).
 
-Definition InternalTransition := InternalTransition_.
-*)
 Definition InternalTransition := Round.
 
 Definition AddrRdPair_eqdec : forall (ar1 ar2 : Address * Round), {ar1 = ar2} + {ar1 <> ar2}
   := prod_eq_dec Address_eqdec Round_eqdec.
-(*
-Inductive Output : Set := ONone | OSome (v : Value) | OAmbig.
 
-Definition output_merge (o : Output) (v : Value) : Output :=
-  match o with
-  | ONone => OSome v
-  | OSome v' => if Value_eqdec v v' then o else OAmbig
-  | OAmbig => OAmbig
-  end.
-*)
 Record State_ :=
   Node {
     id : Address;
     (* for internal transition *)
-    (* TODO use some library for the following things? *)
-    (* TODO require the maps to be finite? *)
     sent : Round -> bool;
     (* having depth-1 maps should be more convenient, so use pair *)
     echoed : Address * Round -> option Value;
@@ -51,7 +32,6 @@ Record State_ :=
     output : Address * Round -> list Value;
   }.
 
-(* try something new *)
 #[export] Instance eta : Settable _ := settable! Node <id; sent; echoed; voted; msgcnt; output>.
 
 Definition State := State_.
@@ -69,11 +49,6 @@ Definition procInt (st : State) (r : InternalTransition) : State * list Packet :
     let: msg := InitialMsg r (value_bft n r) in
     let: pkts := broadcast n msg in
     (st', pkts).
-
-(* TODO do things still work if we consider short-circuiting?
-    it seems like the following heuristic will break when the triggering message is
-    Echo, but by short-circuiting the node collects enough Vote messages and thus 
-    the subsequent triggering message becomes Vote. *)
 
 Definition procMsgPre (st : State) (src : Address) (msg : Message) : option (State * list Packet) :=
   let: Node n smap emap vmap cnt omap := st in
@@ -170,7 +145,6 @@ Definition routine_check (st : State) (msg : Message) : State * list Packet :=
     if check_vote_condition st msg
     then update_voted_by_msg st msg
     else (st, nil) in
-  (* TODO this consequencing is ad-hoc ... maybe having some combinator would be better *)
   let: st'' := 
     if check_output_condition st' msg
     then st' <| output := update_output_by_msg msg st'.(output) |>

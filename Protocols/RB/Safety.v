@@ -109,6 +109,7 @@ Definition output_integrity w : Prop :=
     In v ((w @ dst).(output) (src, r)) ->
     (w @ src).(sent) r /\ value_bft src r = v.
 
+(* a.k.a. agreement *)
 Definition output_uniqueness w : Prop :=
   forall dst1 dst2 src r v1 v2, 
     isByz dst1 = false -> isByz dst2 = false ->

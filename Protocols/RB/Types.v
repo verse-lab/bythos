@@ -2,14 +2,6 @@ From Coq Require Import List.
 From Coq Require ssrbool.
 Import (coercions) ssrbool.
 From Bythos.Structures Require Export Types.
-(*
-Module Type Leadership (Export A : NetAddr) (Export V : Signable).
-
-Parameter leader : Address.
-Parameter inputval : Value. (* to be broadcast *)
-
-End Leadership.
-*)
 
 Module Type ValueBFT (Export A : NetAddr) (Export R : Round) (Export V : Value).
 
