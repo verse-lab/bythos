@@ -25,10 +25,20 @@ let procMsg_wrapper_wrapper f =
   end
 
 let main_loop () =
-  (* first class module! *)
-  let module RealP = Companions.RB.Lazymod (struct end) in (* change RB into PB/ABC/RBABC if you want to test PB/ABC/RBABC *)
-  let pr = RealP.run (!me_ip, !me_port) !behavior_mode in
-  pr procMsg_wrapper_wrapper
+  match !protocol_name with
+  | "RB" ->
+    let module RealP = Companions.RB.Lazymod (struct end) in
+    RealP.run (!me_ip, !me_port) !behavior_mode procMsg_wrapper_wrapper
+  | "PB" ->
+    let module RealP = Companions.PB.Lazymod (struct end) in
+    RealP.run (!me_ip, !me_port) !behavior_mode procMsg_wrapper_wrapper
+  | "ABC" ->
+    let module RealP = Companions.ABC.Lazymod (struct end) in
+    RealP.run (!me_ip, !me_port) !behavior_mode procMsg_wrapper_wrapper
+  | "RBABC" ->
+    let module RealP = Companions.RBABC.Lazymod (struct end) in
+    RealP.run (!me_ip, !me_port) !behavior_mode procMsg_wrapper_wrapper
+  | _ -> failwith "Cannot find the specified protocol!"
 
 let _ =
   Cli.parse_args ();

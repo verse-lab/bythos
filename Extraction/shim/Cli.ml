@@ -31,6 +31,9 @@ let speclist = [
   ("-extrainfo", 
     Arg.Set_string extrainfo,
     " Extra information that may be used by protocols");
+  ("-protocol", 
+    Arg.Set_string protocol_name,
+    " Specify which protocol to run");
   ("-help", 
     Arg.Unit (fun () -> show_help := true), 
     " Show the help message");
@@ -39,7 +42,7 @@ let speclist = [
     "") (* want to hide this *)
 ]
 
-let usage_msg = ("Usage: " ^ Sys.argv.(0) ^ " [-use_PKI] [-mode <mode_id>] [-extrainfo <info_string>] -me <IP> <port> -cluster [<IP> <port> ...]")
+let usage_msg = ("Usage: " ^ Sys.argv.(0) ^ " -protocol <protocol_name> [-use_PKI] [-mode <mode_id>] [-extrainfo <info_string>] -me <IP> <port> -cluster [<IP> <port> ...]")
 
 let print_help () =
   print_string (Arg.usage_string (Arg.align speclist) usage_msg);
