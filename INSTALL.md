@@ -12,7 +12,7 @@ To build the Docker image, in the toplevel directory of the artefact, run
 docker build -t bythos .
 ```
 
-This process might take up to 10 minutes on a commodity laptop. It might take around **8GB RAM** to build. 
+This process might take up to 10 minutes on a commodity laptop. It might take up to **8GB RAM** to build. 
 
 Once the image has been built, you can launch a container using the image:
 
@@ -54,7 +54,7 @@ cd Extraction/; dune build; cd ..
 (... possibly some Warnings; just ignore them)
 ```
 
-This process might take up to 5 minutes on a commodity laptop. It might take around **2GB RAM** to build. 
+This process might take up to 5 minutes on a commodity laptop. It might take up to **2GB RAM** to build. 
 
 **Note:** You can also use `make -j X` (*e.g.,* `make -j 4`) to build using more threads with shorter time (and, with more RAM consumption, though). 
 
