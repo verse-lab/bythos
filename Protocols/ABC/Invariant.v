@@ -194,7 +194,7 @@ Definition inv_submitmsg_receive_ p st : Prop :=
         (* length st.(from_set) < N - f -> *)
         st.(conf) = false ->
         v = ov -> verify v sig src -> light_verify v lsig src ->
-          In src st.(from_set) (* this should be enough; TODO why no need to write zip_from_sigs? *)
+          In src st.(from_set)
       end
     else True
   | _ => True
@@ -721,8 +721,6 @@ Proof.
   - destruct_and? H. split_and?; hnf; auto with core.
 Qed.
 
-(* FIXME: this is reusable? *)
-(* FIXME: this name is misleading ... since it contains two things *)
 Fact persistent_invariants_pre st st' (l : state_mnt_type_list st st') :
   node_persistent_invariants st st' /\ node_state_invariants_pre' st st'.
 Proof.

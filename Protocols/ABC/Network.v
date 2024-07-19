@@ -28,17 +28,12 @@ Definition cert_correct (psent : PacketSoup) (c : Certificate) :=
     verify v sig n -> (* this can be expressed in other way *)
     sig_seen_in_history n v sig psent. 
 
-(* TODO the lightsig can actually be obtained from full certificates?
-  guess this will not affect the following reasoning 
-  (since full certificates are assembled from the sent messages), 
-  so ignore it for now *)
 Definition lightsig_seen_in_history (src : Address) (v : Value) (ls : LightSignature) (pkts : PacketSoup) :=
   exists dst received s, In (mkP src dst (SubmitMsg v ls s) received) pkts.
 
 (* safety assumption about light certificates: 
-  if the number of Byzantine nodes is not sufficiently large, 
+  if the number of Byzantine nodes is not sufficiently large, (* TODO this is the assumption in the paper; is it necessary to have it? *)
   then the light signature is unforgeable *)
-(* TODO can we say that the light certificate is unforgeable instead (just like here)? *)
 Definition lcert_correct (psent : PacketSoup) (lc : LightCertificate) : Prop :=
   let: (v, cs) := lc in
   combined_verify v cs ->

@@ -202,7 +202,7 @@ Section Proof_of_Accountability.
     destruct (w @ n1).(submitted_value) as [ v1 | ] eqn:Hv1, (w @ n2).(submitted_value) as [ v2 | ] eqn:Hv2; try contradiction.
 
   (* well, using 4 packets instead of 2 is inevitable. *)
-  (* TODO self messaging is kind of weird *)
+  (* self messaging is kind of weird, but that's the consequence of protocol design *)
   Definition mutual_lightcerts v1 v2 b1 b2 b3 b4 := Eval cbn in
     let f (bb : bool) src dst b := 
       let: qq := if bb then v1 else v2 in (mkP src dst (LightConfirmMsg 
@@ -321,7 +321,7 @@ Section Proof_of_Accountability.
     exists (List.filter (fun p => 
       match p.(msg) with
       | ConfirmMsg _ =>
-        (Address_eqdec p.(src) n1 || Address_eqdec p.(src) n2) && (negb (isByz p.(dst))) (* TODO maybe too general? *)
+        (Address_eqdec p.(src) n1 || Address_eqdec p.(src) n2) && (negb (isByz p.(dst)))
       | _ => false
       end) (packetSoup w)).
     hnf. split_and?; auto using incl_filter, le_0_n.

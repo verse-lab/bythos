@@ -19,7 +19,7 @@ Inductive InternalTransition_ :=
   | SubmitIntTrans (v : Value).
 
 Definition InternalTransition := InternalTransition_.
-(* TODO 
+(* NOTE: 
     If the light certificate conflict check is modelled as an internal transition, 
     then possibly the "eventual Byzantine detection" cannot be expressed easily. 
 
@@ -36,12 +36,9 @@ Definition InternalTransition := InternalTransition_.
   Wait. This may be done with a new kind of transitions?
 *)
 
-(* TODO assume peers are already known? *)
-
 Record State_ :=
   Node {
     id : Address;
-    (* peers : peers_t; *)
     conf : bool;
     submitted_value : option Value;
     (* need to contain all addresses otherwise cannot perform operations like set *)
@@ -52,7 +49,6 @@ Record State_ :=
     received_lightcerts : list LightCertificate;
     received_certs : list Certificate;
     (* holding all pending submit messages *)
-    (* TODO add it here, or in a separate State type? *)
     msg_buffer : list (Address * Message)
   }.
 
@@ -60,20 +56,7 @@ Record State_ :=
   collected_sigs; received_lightcerts; received_certs; msg_buffer>.
 
 Definition State := State_.
-(*
-Definition State_eqdec : forall (s1 s2 : State), {s1 = s2} + {s1 <> s2}.
-  intros. decide equality.
-  - decide equality. apply prod_eq_dec; auto using Message_eqdec, Address_eqdec.
-  - decide equality. apply Certificate_eqdec.
-  - decide equality. apply LightCertificate_eqdec.
-  - decide equality. apply Signature_eqdec.
-  - decide equality. apply LightSignature_eqdec.
-  - decide equality. apply Address_eqdec.
-  - decide equality. apply Value_eqdec.
-  - decide equality.
-  - apply Address_eqdec.
-Qed.
-*)
+
 Definition initState (n : Address) : State :=
   Node n false None nil nil nil nil nil nil.
 
@@ -138,7 +121,6 @@ Definition procMsgPre (st : State) (src : Address) (msg : Message) : option (Sta
       then
         (* before prepending, add a check to avoid adding a duplicate node-signature pair *)
         (* checking In fst or In pair should be the same, due to the correctness of verify *)
-        (* prevent enlarging from_set after confirmation; TODO need to align this with paper? seems not ... *)
         (*
         let: cond := cf || (in_dec Address_eqdec src from) in
         let: from' := if cond then from else src :: from in
@@ -152,7 +134,6 @@ Definition procMsgPre (st : State) (src : Address) (msg : Message) : option (Sta
           <| collected_lightsigs := lsigs' |> <| collected_sigs := sigs' |> in
         Some (st', ps)
         *)
-        (* FIXME: the broadcast here can be implemented as a check, though *)
         if cf
         then Some (st, broadcast n (LightConfirmMsg (v, lightsig_combine lsigs)))
         else 

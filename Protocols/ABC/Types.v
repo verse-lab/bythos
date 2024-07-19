@@ -2,6 +2,7 @@ From Coq Require Import List.
 From Coq Require ssrbool.
 Import (coercions) ssrbool.
 From Bythos.Structures Require Export Types.
+(* to compose ABC with other protocols, it is not good to use ValueBFT *)
 (*
 Module Type ValueBFT (Export A : NetAddr) (Sn : Signable) (Export V : SignableValue Sn).
 
