@@ -28,7 +28,7 @@ The sub-directories:
 To make a protocol executable, a user need to: 
 1. Extract the protocol implementation (typically a functor of the `Protocol` module type) into OCaml code. This can be done by modifying the `Driver.v`. Both single file extraction (*i.e.,* extracting the protocol implementation into one `.ml` file) and separate extraction should work. 
 2. Write a *companion file* in OCaml to instantiate the implementation with concrete module arguments and control how the node executes. See `companion/RB.ml` for an example. 
-3. Modify the `main_loop` function in `main.ml` to put into use the companion file written in the last step. 
+3. Modify the `main_loop` function in `main.ml` to register the companion file written in the last step. 
 4. Build the project (here, by using `dune build`) to obtain an executable node program `main.exe`. The `promote` mode is set to be on, so the executable will be automatically copied to this directory after building, and can be deleted using `dune clean`. 
 
 ## Running the Protocol
@@ -37,7 +37,9 @@ Users can run multiple instances of `main.exe` on a single machine to test the p
 
 The sample scripts use `pkill "main.exe"` to terminate all nodes after a certain time period. 
 
-**Note:** Before executing a script for a specific protocol, the user needs to ensure that the compiled `main.exe` indeed runs that protocol; check the third step of the workflow above. 
+**Tip:** Run `./main.exe -help` to check the usage of `main.exe`. 
+
+**Note:** Before executing a script for a specific protocol, the user needs to make sure that the `-protocol` argument is set properly, and this specific protocol has been registered in the `main_loop` function in `main.ml`. 
 
 ## Acknowledgement
 
