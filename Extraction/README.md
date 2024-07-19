@@ -16,7 +16,7 @@ Files in this directory:
 - `main.ml`: Entry point of the executable
 - `Driver.v`: Coq code for extracting protocol implementations
 
-The sub-directories: 
+The subdirectories: 
 - `config/`: Configurations, including references to command-line inputs and some definitions
 - `companion/`: *Companion files* (explained below)
 - `extracted/`: Extracted protocol implementations (in OCaml)

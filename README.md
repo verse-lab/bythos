@@ -10,9 +10,9 @@ To get started, you will need to first compile the whole project, and then do a 
 
 ## Recommended Order of Artefact Evaluation
 
-We recommend starting by reviewing the implementations of the case study protocols, and then checking their safety and liveness specifications. During this process, sometimes it may help to refer to the code belonging to the Bythos framework.
+We recommend starting by reviewing the implementations of the case study protocols, and then checking their safety and liveness specifications. During this process, sometimes it may help to refer to the code belonging to the Bythos framework. For information on file organisation and the mapping between paper sections and code, please see the sections below. 
 
-For information on file organisation and the mapping between paper sections and code, please see below. 
+After reviewing the Coq formalisations, We recommend trying to run the extracted protocols and observing the nodes' behaviour in different scenarios. For details, please refer to the `Extraction/` directory and its `scripts/` subdirectory. 
 
 ## Organisation
 
