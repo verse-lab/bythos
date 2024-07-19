@@ -17,6 +17,9 @@ Import A R V Pf VBFT BTh BSett PBDT M P0 PBP PBP.TSS Ns.
 
 (* FIXME: what if Round, Value or Proof contains signatures? currently do not consider that *)
 
+(* NOTE: the byzConstraints is set to be True here, since what we want to constrain on are the delivery certificates
+    that a Byzantine node can produce, but delivery certificates will not appear in a message.
+  that constraint, in turn, appears as the premise of uniqueness property in Safety.v *)
 Definition byzConstraints (m : Message) (w : SystemState) : Prop := True.
 
 End PBAdversary.
