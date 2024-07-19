@@ -199,7 +199,7 @@ Proof.
   destruct (echoed _ _) as [ (?, ?) | ] eqn:E in HH; try contradiction. 
   destruct (echoed _ _) as [ (?, ?) | ] eqn:E' in HH'; try contradiction.
   rewrite E in E'. simplify_eq. rewrite <- HH' in HH.
-  (* TODO if we do not assume injectivity, this is the best we can have! 
+  (* NOTE: if we do not assume injectivity, this is the best we can have! 
       in other words, the best we can know is that the two light signatures will be equal, 
       but we do not know whether the corresponding values are equal *)
   apply Hinj in HH. now simplify_eq.

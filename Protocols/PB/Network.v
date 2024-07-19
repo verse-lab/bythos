@@ -15,9 +15,8 @@ Module PBAdversary (A : NetAddr) (R : Round) (Sn : Signable) (V : Value) (Pf : P
 
 Import A R V Pf VBFT BTh BSett PBDT M P0 PBP PBP.TSS Ns.
 
-(* TODO need to take care that Round, Value and Proof may contain signatures ... *)
+(* FIXME: what if Round, Value or Proof contains signatures? currently do not consider that *)
 
-(* well ... *)
 Definition byzConstraints (m : Message) (w : SystemState) : Prop := True.
 
 End PBAdversary.
