@@ -58,8 +58,6 @@ type ('st, 'msg, 'itr, 'node) minimal_protocol = {
 }
 *)
 
-(* a Signable module; actually t can be more low-level (like Cstruct.t), but anyway *)
-
 module StringSn =
   struct
 
@@ -99,8 +97,7 @@ module PPrim =
 
   let verify (s : string) (rs : Crypto.signature) (a : address) : bool =
     let pub = get_pub_key a in
-    let msg = Cstruct.of_string s in
-    let hmsg = Mirage_crypto.Hash.digest `SHA256 msg in
+    let hmsg = Crypto.hash_of_string s in
     let res = Mirage_crypto_pk.Dsa.verify ~key:pub rs hmsg in
     res
 
