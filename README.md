@@ -55,7 +55,7 @@ For reference, we indicate the source files along with the definitions in them r
        - [`Systems/Network.v`](Systems/Network.v): `system_step`
      - 2.2.2 Modelling Byzantine Faults
        - [`Protocols/PB/Network.v`](Protocols/PB/Network.v)
-       - [`Protocols/PB/Safety.v`](Protocols/PB/Safety.v)
+       - Fig 2: `producible_CombinedSignatures` in [`Protocols/PB/Safety.v`](Protocols/PB/Safety.v)
      - 2.2.3 Safety Properties
      - 2.2.4 Knowledge Lemmas as Incremental Invariants
      - 2.2.5 Knowledge-Driven Proof of Safety
