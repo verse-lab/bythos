@@ -253,7 +253,7 @@ Proof with (try (now exists (MNTnil _))).
   - unfold upd.
     destruct (Address_eqdec _ _) as [ <- | Hneq ]...
     destruct (procMsgPre _ _ _) as [ (st', ms) | ] eqn:E in Ef; simplify_eq...
-    destruct (w @ dst) as [ dst' sent echoed cnt output ].
+    destruct (w @ dst) as [ dst' sent cnt output echoed ].
     unfold procMsgPre in E.
     destruct msg as [ r v pf | r lsig ].
     + destruct (echoed (src, r)) eqn:EE, (ex_validate r v pf) eqn:Eex; try discriminate. simplify_eq.
@@ -274,7 +274,7 @@ Proof with (try (now exists (MNTnil _))).
   - unfold upd.
     destruct (Address_eqdec _ _) as [ <- | Hneq ]...
     destruct t as [ r ].
-    destruct (w @ n) as [ dst' sent echoed cnt output ].
+    destruct (w @ n) as [ dst' sent cnt output echoed ].
     simpl in E.
     destruct (sent r) eqn:?; simplify_eq...
     rewrite (surjective_pairing (value_bft _ _)) in E. simplify_eq.
@@ -500,15 +500,15 @@ Proof with (try solve [ simplify_eq; psent_analyze ]).
   3: exists (Puse _ (mkP src dst msg used) ltac:(hypothesis)).
   - psent_analyze.
   - destruct t as [ r ].
-    destruct_localState w n as_ [ n' sent echoed cnt output ].
+    destruct_localState w n as_ [ n' sent cnt output echoed ].
     simpl in E.
     rewrite (surjective_pairing (value_bft _ _)) in E.
     destruct (sent r) eqn:?; simplify_eq.
     all: psent_analyze.
     now rewrite (surjective_pairing (value_bft _ _)).
   - (* the case analysis is slightly different; the None case needs to be discussed now *)
-    destruct_localState w dst as_ [ dst' sent echoed cnt output ].
-    unfold procMsgPre in Ef.
+    destruct_localState w dst as_ [ dst' sent cnt output echoed ].
+    unfold procMsgPre, proposal in Ef.
     destruct msg as [ r v pf | r lsig ].
     + destruct (echoed (src, r)) eqn:EE, (ex_validate r v pf) eqn:Eex; simplify_eq.
       all: psent_analyze.

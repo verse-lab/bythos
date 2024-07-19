@@ -26,21 +26,23 @@ Definition AddrRdPair_eqdec : forall (ar1 ar2 : Address * Round), {ar1 = ar2} + 
 Record State_ :=
   Node {
     id : Address;
+    (* sender state *)
     sent : Round -> bool;
-    echoed : Address * Round -> option (Value * Proof);
     counter : Round -> list (Address * LightSignature);
     output : Round -> option CombinedSignature;
+    (* receiver state *)
+    echoed : Address * Round -> option (Value * Proof);
   }.
 
-#[export] Instance eta : Settable _ := settable! Node <id; sent; echoed; counter; output>.
+#[export] Instance eta : Settable _ := settable! Node <id; sent; counter; output; echoed>.
 
 Definition State := State_.
 
 Definition initState (n : Address) : State :=
-  Node n (fun _ => false) (fun _ => None) (fun _ => nil) (fun _ => None).
+  Node n (fun _ => false) (fun _ => nil) (fun _ => None) (fun _ => None).
 
 Definition procInt (st : State) (tr : InternalTransition) : State * list Packet :=
-  let: Node n smap emap cnt omap := st in
+  let: Node n smap cnt omap emap := st in
   match tr with
   | SendAction r =>
     if smap r 
@@ -54,8 +56,13 @@ Definition procInt (st : State) (tr : InternalTransition) : State * list Packet 
       (st', pkts)
   end.
 
+Definition proposal n r := fst (value_bft n r).
+
+(* NOTE: the procMsg shown in the paper can be regarded as the result of inlining 
+    routine_check and procMsgPre inside the procMsg defined here *)
+
 Definition procMsgPre (st : State) (src : Address) (msg : Message) : option (State * list Packet) :=
-  let: Node n smap emap cnt omap := st in
+  let: Node n smap cnt omap emap := st in
   match msg with
   | InitMsg r v pf =>
     (* TODO if r includes some identity information about the sender, should we check the consistency? *)
@@ -75,7 +82,7 @@ Definition procMsgPre (st : State) (src : Address) (msg : Message) : option (Sta
     (* early terminating, constraining the size *)
     match omap r with
     | None =>
-      if light_verify (r, fst (value_bft n r)) lsig src
+      if light_verify (r, proposal n r) lsig src
       then
         (* NOTE: there is a discrepancy from the pseudocode: 
           in the pseudocode, the sender is not recorded, but only signature is recorded
@@ -92,7 +99,6 @@ Definition procMsgPre (st : State) (src : Address) (msg : Message) : option (Sta
     end
   end.
 
-(* TODO repeating from RB *)
 Definition th_output := N - f.
 
 Fact th_output_gt_0 : 0 < th_output.
