@@ -26,7 +26,7 @@ docker run --rm -it bythos bash
 
 The version of Coq used in our development is **8.19.0**, where the version of underlying OCaml compiler is **4.14.1**. We recommend installing Coq and the required packages via OPAM. [The official page of OPAM](https://opam.ocaml.org/doc/Install.html) describes how to install and configure OPAM, and [the official page of Coq](https://coq.inria.fr/opam-using.html) describes how to install Coq and Coq packages with OPAM. 
 
-**Note:** We have not tested whether other versions of Coq or OCaml would also work. 
+**Note:** Using the OCaml compiler with version 4.13.1 also works, since the Docker-based installation provided above uses it. We have not tested whether other versions of Coq or OCaml compilers would also work. 
 
 The Coq development in Bythos only depends on `coq-tla`, which is present in the project directory, so no additional Coq package is required. 
 
