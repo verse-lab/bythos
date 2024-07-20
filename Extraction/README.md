@@ -41,6 +41,16 @@ The sample scripts use `pkill "main.exe"` to terminate all nodes after a certain
 
 **Note:** Before executing a script for a specific protocol, the user needs to make sure that the `-protocol` argument is set properly, and this specific protocol has been registered in the `main_loop` function in `main.ml`. 
 
+## Trying Verified Protocols in the Paper
+
+For the four protocols verified in the paper, we have implemented their corresponding companion files and provided scripts to run them. The format for executing a script for a given protocol is:
+
+```bash
+bash scripts/run<protocol_name>.sh [<scenario_number>]
+```
+
+Here, the scenario number defaults to 0 if not provided. In different scenarios, nodes may have different roles (as non-faulty nodes or Byzantine nodes) and different behaviour logic. For explanations of protocols' provided scenarios, please refer to the comments in their respective `.sh` files and their corresponding companion files.
+
 ## Acknowledgement
 
 - All definitions in `shim/Net.ml` and some definitions in `main.ml` are taken from [Toychain](https://github.com/verse-lab/toychain) and/or [DiSeL](https://github.com/DistributedComponents/disel/). 

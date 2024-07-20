@@ -186,7 +186,7 @@ let run a = function
       done
     end in loop
   | _ ->
-    (* dead node, but at least needs to check new connections; this is inevitable *)
+    (* dead node, but at least needs to check new connections to do key exchange *)
     let loop _ = begin
       while true do Shim.Net.check_for_new_connections () done
     end in loop
