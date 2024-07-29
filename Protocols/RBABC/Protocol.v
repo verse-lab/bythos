@@ -25,6 +25,6 @@ Definition trigger_procMsg (st st' : RBP.State) :=
   | nil, v :: _ => Some (ACP.SubmitIntTrans v)
   end.
 
-Definition trigger_procInt : RBP.State -> RBP.State -> option ACP.InternalTransition := fun _ _ => None.
+Definition trigger_procInt : RBP.State -> RBP.State -> option ACP.InternalEvent := fun _ _ => None.
 
 End RBACTrigger.

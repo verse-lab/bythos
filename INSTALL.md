@@ -33,7 +33,7 @@ The Coq development in Bythos only depends on `coq-tla`, which is present in the
 The shim layer (see [`Extraction/README.md`](Extraction/README.md) for details) depends on some OCaml packages, which can be installed with OPAM using the following command: 
 
 ```bash
-opam install dune mirage-crypto=1.0.0 mirage-crypto-pk=1.0.0 mirage-crypto-rng=1.0.0
+opam update && opam install dune mirage-crypto=1.0.0 mirage-crypto-pk=1.0.0 mirage-crypto-rng=1.0.0
 ```
 
 ### Building

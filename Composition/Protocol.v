@@ -15,8 +15,8 @@ Module Type SeqCompProtocolTrigger (A : NetAddr) (M1 M2 : MessageType) (BTh : By
 
 (* trigger: check whether Pt2.procInt should be triggered after Pt1.procInt/Pt1.procMsg, 
     based on the change of the local state for Pt1 *)
-Parameter trigger_procMsg : Pt1.State (* old local state *) -> Pt1.State (* new local state *) -> option Pt2.InternalTransition.
-Parameter trigger_procInt : Pt1.State -> Pt1.State -> option Pt2.InternalTransition.
+Parameter trigger_procMsg : Pt1.State (* old local state *) -> Pt1.State (* new local state *) -> option Pt2.InternalEvent.
+Parameter trigger_procInt : Pt1.State -> Pt1.State -> option Pt2.InternalEvent.
 
 End SeqCompProtocolTrigger.
 
@@ -29,7 +29,7 @@ Module Type SeqCompProtocol (Export A : NetAddr) (M1 M2 : MessageType) (BTh : By
 
 Import BTh CM CPk SCPT.
 
-Definition InternalTransition := Pt1.InternalTransition.
+Definition InternalEvent := Pt1.InternalEvent.
 
 Record State_ :=
   Node {

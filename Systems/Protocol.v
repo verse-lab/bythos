@@ -51,10 +51,10 @@ End ClassicByzThreshold.
 Module Type Protocol (Export A : NetAddr) (Export M : MessageType) (Export P : PacketType)
   (Export BTh : ByzThreshold A).
 
-Parameter InternalTransition : Type.
+Parameter InternalEvent : Type.
 Parameter State : Type.
 Parameter initState : Address -> State.
 Parameter procMsg : State -> Address (* sender *) -> Message -> State * list Packet.
-Parameter procInt : State -> InternalTransition -> State * list Packet.
+Parameter procInt : State -> InternalEvent -> State * list Packet.
 
 End Protocol.

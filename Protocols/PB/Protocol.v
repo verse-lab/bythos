@@ -15,10 +15,10 @@ Module Type PBProtocol (A : NetAddr) (R : Round) (Sn : Signable) (V : Value) (Pf
 Module Export TSS := ThresholdSignatureScheme A Sn TSSPrim.
 Import A R V Pf VBFT BTh PBDT M P0.
 
-Inductive InternalTransition_ :=
+Inductive InternalEvent_ :=
   | SendAction (r : Round).
 
-Definition InternalTransition := InternalTransition_.
+Definition InternalEvent := InternalEvent_.
 
 Definition AddrRdPair_eqdec : forall (ar1 ar2 : Address * Round), {ar1 = ar2} + {ar1 <> ar2}
   := prod_eq_dec Address_eqdec Round_eqdec.
@@ -41,7 +41,7 @@ Definition State := State_.
 Definition initState (n : Address) : State :=
   Node n (fun _ => false) (fun _ => nil) (fun _ => None) (fun _ => None).
 
-Definition procInt (st : State) (tr : InternalTransition) : State * list Packet :=
+Definition procInt (st : State) (tr : InternalEvent) : State * list Packet :=
   let: Node n smap cnt omap emap := st in
   match tr with
   | SendAction r =>

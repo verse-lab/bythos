@@ -102,7 +102,7 @@ Module Export PC' := PacketConsumptionLemmas A M P PC.
 Inductive system_step_tag : Type :=
   | Stuttering
   | Delivery (p : Packet) 
-  | Internal (proc : Address) (t : InternalTransition) 
+  | Internal (proc : Address) (t : InternalEvent) 
   | Byzantine (src dst : Address) (m : Message)
 .
 
@@ -155,7 +155,7 @@ Inductive system_step (q : system_step_tag) (w w' : SystemState) : Prop :=
       w' = mkW (upd (dst p) st' (localState w))
                (sendout ms (consume p (packetSoup w)))
 
-| InternalStep (proc : Address) (t : InternalTransition) of
+| InternalStep (proc : Address) (t : InternalEvent) of
       q = Internal proc t &
       isByz proc = false &
       let: (st', ms) := (procInt (w @ proc) t) in

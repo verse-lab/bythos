@@ -15,10 +15,10 @@ Module Type ACProtocol (A : NetAddr) (Sn : Signable) (V : SignableValue Sn) (* (
 
 Import A V (* VBFT *) BTh ACDT ACDT.P ACDT.TSS M P0.
 
-Inductive InternalTransition_ :=
+Inductive InternalEvent_ :=
   | SubmitIntTrans (v : Value).
 
-Definition InternalTransition := InternalTransition_.
+Definition InternalEvent := InternalEvent_.
 (* NOTE: 
     If the light certificate conflict check is modelled as an internal transition, 
     then possibly the "eventual Byzantine detection" cannot be expressed easily. 
@@ -182,7 +182,7 @@ Definition procMsg (st : State) (src : Address) (msg : Message) : State * list P
   | None => (st, nil) (* if the internal state does not change, then no need to do routine check *)
   end.
 
-Definition procInt (st : State) (tr : InternalTransition) :=
+Definition procInt (st : State) (tr : InternalEvent) :=
   let: Node n cf ov from lsigs sigs rlcerts rcerts buffer := st in
   match tr with
   | SubmitIntTrans vthis => 

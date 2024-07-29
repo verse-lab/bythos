@@ -12,7 +12,7 @@ Module Type RBProtocol (A : NetAddr) (R : Round) (V : Value) (VBFT : ValueBFT A 
 
 Import A R V VBFT BTh M P.
 
-Definition InternalTransition := Round.
+Definition InternalEvent := Round.
 
 Definition AddrRdPair_eqdec : forall (ar1 ar2 : Address * Round), {ar1 = ar2} + {ar1 <> ar2}
   := prod_eq_dec Address_eqdec Round_eqdec.
@@ -39,7 +39,7 @@ Definition State := State_.
 Definition initState (n : Address) : State :=
   Node n (fun _ => false) (fun _ => None) (fun _ => None) (fun _ => nil) (fun _ => nil).
 
-Definition procInt (st : State) (r : InternalTransition) : State * list Packet :=
+Definition procInt (st : State) (r : InternalEvent) : State * list Packet :=
   let: Node n smap emap vmap cnt omap := st in
   if smap r 
   then (st, nil) 
