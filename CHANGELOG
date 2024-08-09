@@ -11,5 +11,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Renamed `InternalTransition` into `InternalEvent`
 - Incorporated a comment from the Artefact Evaluation Committee
+- Simplified the definition of `lightsig_seen_in_history` in `Protocols/PB/Safety.v`
 
 ## [1.0.0] - 2024-07-20

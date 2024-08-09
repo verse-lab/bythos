@@ -70,8 +70,7 @@ Ltac saturate :=
     (2) the round number. 
     so need to put restriction on "dst" and "v" below *)
 Definition lightsig_seen_in_history (src dst : Address) (v : Round * Value) (ls : LightSignature) (pkts : PacketSoup) :=
-  Exists (fun p => P0.src p = src /\ P0.dst p = dst /\ 
-    (match p with mkP _ _ (EchoMsg r' ls') _ => r' = fst v /\ ls = ls' | _ => False end)) pkts.
+  Exists (fun p => P0.src p = src /\ P0.dst p = dst /\ P0.msg p = EchoMsg (fst v) ls) pkts.
 
 #[export] Instance producible_CombinedSignatures (* {A : Type} `{Sn.signable A} *) (dst : Address) (v : Round * Value) :
   @producible CombinedSignature (fun cs => combined_verify v cs) :=
@@ -191,8 +190,8 @@ Proof.
   specialize (H' n (light_sign (r, v') (lightkey_map n)) (in_map _ ns' n ltac:(auto))).
   rewrite <- !lightkey_correct in H, H'. saturate_assumptions!.
   hnf in H, H'. rewrite Exists_exists in H, H'. simpl in H, H'.
-  destruct H as ([ tmp tmp0 [] ? ] & Hpin & E & E0 & H), H' as ([ tmp' tmp0' [] ? ] & Hpin' & E' & E0' & H'); try contradiction.
-  simpl in E, E', E0, E0'. destruct H as (-> & <-), H' as (-> & <-). subst tmp tmp' tmp0 tmp0'.
+  destruct H as ([ tmp tmp0 tmp1 ? ] & Hpin & E & E0 & H), H' as ([ tmp' tmp0' tmp1' ? ] & Hpin' & E' & E0' & H'). 
+  simpl in E, E', E0, E0', H, H'. subst tmp tmp' tmp0 tmp0' tmp1 tmp1'.
   (* now, try getting contradiction *)
   pick echomsg_sent_h2l as_ HH by_ (pose proof (Hh2l _ Hpin) as []).
   pick echomsg_sent_h2l as_ HH' by_ (pose proof (Hh2l _ Hpin') as []). saturate_assumptions.
