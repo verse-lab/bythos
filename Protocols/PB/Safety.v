@@ -63,12 +63,24 @@ Ltac saturate :=
     (* pose proof (proj2 h2l_invariants _ H) as Hh2lbyz *)
   end.
 
-(* TODO the following definition of uniqueness is slightly awkward: 
+(* NOTE: the following definition of uniqueness is slightly awkward
+    (in the sense that it is not the usual Dolev-Yao style constraint), since
     the proof by quorum intersection only works for a single instance of PB, 
     where a single instance is determined by 
     (1) the broadcast initiator and 
     (2) the round number. 
-    so need to put restriction on "dst" and "v" below *)
+    so need to put restriction on "dst" and "v" below.
+
+    without such restriction, a Byzantine node can actually produce multiple
+    valid delivery certificates by intercepting packets in different instances of PB.
+    for example, if node 1 finishes PB for round 1 and value 1, and node 2 finishes
+    PB for round 1 and value 2, then a Byzantine node can produce delivery certificates
+    for round 1 and values 1 and 2. 
+
+    in a sense the root cause is that nodes only sign round-value triples. 
+    one way to work around this issue is to make nodes sign the 
+    sender-round-value triple.
+*)
 Definition lightsig_seen_in_history (src dst : Address) (v : Round * Value) (ls : LightSignature) (pkts : PacketSoup) :=
   Exists (fun p => P0.src p = src /\ P0.dst p = dst /\ P0.msg p = EchoMsg (fst v) ls) pkts.
 
