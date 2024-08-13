@@ -88,14 +88,14 @@ Definition procMsgPre (st : State) (src : Address) (msg : Message) : option (Sta
 (* some auxiliary definitions for the monitor *)
 
 Definition th_echo4vote := N - f.
-Definition th_vote4vote := N - (f + f).
+Definition th_vote4vote := f + 1.
 Definition th_vote4output := N - f.
 
 Fact th_echo4vote_gt_0 : 0 < th_echo4vote.
 Proof. unfold th_echo4vote. pose proof f_lt_N. lia. Qed.
 
 Fact th_vote4vote_gt_0 : 0 < th_vote4vote.
-Proof. unfold th_vote4vote. pose proof f_lt_N_minus_2f. lia. Qed.
+Proof. unfold th_vote4vote. (* pose proof f_lt_N_minus_2f. *) lia. Qed.
 
 Fact th_vote4output_gt_0 : 0 < th_vote4output.
 Proof th_echo4vote_gt_0.

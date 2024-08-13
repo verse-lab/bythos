@@ -140,7 +140,7 @@ Section Proof_of_Global_Liveness.
       assert (incl nonbyz_senders (msgcnt (w0 @ n) (VoteMsg src r v))) as Hincl.
       { hnf. intros nn Hin. specialize (Hw0 _ Hin n Hnonbyz_n).
         pick msgcnt_recv_h2l as_ Hr by_ (pose proof (Hh2lr _ Hw0) as []). saturate_assumptions. now simpl in Hr. }
-      apply NoDup_incl_length in Hincl; try assumption. unfold th_vote4vote in Ev'. destruct Ev'. lia.
+      apply NoDup_incl_length in Hincl; try assumption. unfold th_vote4vote in Ev'. pose proof f_lt_N_minus_2f. destruct Ev'. lia.
   Qed.
 
   End Round1.
