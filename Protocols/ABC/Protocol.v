@@ -104,6 +104,7 @@ Definition routine_check (st : State) : list Packet :=
   match ov with 
   | Some vthis => 
     (* actually confirmation implies submission; but we need to use vthis so anyway *)
+    (* NOTE: a more efficient way of checking is to just check the two heading lightcerts *)
     if conf && (lightcert_conflict_check rlcerts)
     then broadcast n (ConfirmMsg (vthis, zip_from_sigs st))
     else nil
