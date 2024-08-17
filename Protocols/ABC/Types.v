@@ -75,33 +75,18 @@ End CertCheckers.
 (* a naive instantiation of CertCheckers *)
 Module Export CertCheckersImpl : CertCheckers.
 
-Fixpoint lcc_simple_aux (v : Value) (certs : list LightCertificate) : bool :=
-  match certs with 
-  | nil => false 
-  | (v', _) :: certs' => if Value_eqdec v v' then lcc_simple_aux v certs' else true 
-  end.
-
+(* run in linear time *)
 Fixpoint lcc_simple (certs : list LightCertificate) : bool :=
   match certs with
   | nil => false
-  | (v, _) :: certs' => (lcc_simple_aux v certs') || (lcc_simple certs')
+  | (v, _) :: certs' =>
+    match certs' with
+    | cs' :: certs'' => if Value_eqdec v (fst cs') then lcc_simple certs' else true
+    | nil => false
+    end
   end.
 
 Definition lightcert_conflict_check := lcc_simple.
-
-Lemma lcc_simple_aux_can_detect v certs : 
-  lcc_simple_aux v certs <-> exists v' cs', v <> v' /\ In (v', cs') certs.
-Proof with (first [ intuition congruence; fail | firstorder; fail | idtac ]).
-  induction certs as [ | (v', cs') certs IH ]; simpl.
-  - split...
-  - destruct (Value_eqdec v v') as [ <- | Hvneq ]...
-    + rewrite IH.
-      firstorder.
-      congruence...
-    + split...
-      intros _.
-      eauto.
-Qed.
 
 Lemma lightcert_conflict_check_correct : 
   forall lcerts, lightcert_conflict_check lcerts <-> 
@@ -114,26 +99,32 @@ Proof with (first [ intuition congruence; fail | firstorder; fail | idtac ]).
   intros.
   induction lcerts as [ | (v, cs) lcerts IH ]; simpl.
   - split...
-  - destruct (lcc_simple_aux v lcerts) eqn:E.
-    + split...
-      intros _.
-      apply lcc_simple_aux_can_detect in E.
-      destruct E as (v' & cs' & Hvneq & Hin).
-      exists v, v', cs, cs'...
+  - destruct lcerts as [ | (v', cs') lcerts' ] eqn:E.
     + simpl.
-      pose proof (lcc_simple_aux_can_detect v lcerts) as HH.
-      unfold is_true in HH.
-      rewrite <- Bool.not_true_iff_false, -> HH in E.
-      rewrite IH.
-      split.
-      * intros (v1 & v2 & cs1 & cs2 & Hvneq & Hin1 & Hin2).
-        exists v1, v2, cs1, cs2...
-      * intros (v1 & v2 & cs1 & cs2 & Hvneq & [ E1 | Hin1 ] & [ E2 | Hin2 ]).
-        1: idtac...
-        1-2: try inversion E1; try inversion E2; subst.
-        1-2: exfalso; apply E; eauto.
-        exists v1, v2, cs1, cs2...
+      try firstorder; try congruence.
+    + rewrite <- E in IH |- *.
+      simpl fst.
+      destruct (Value_eqdec _ _) as [ <- | Hvneq ].
+      * rewrite IH.
+        split.
+        --intros (v1 & v2 & cs1 & cs2 & Hvneq & Hin1 & Hin2).
+          exists v1, v2, cs1, cs2...
+        --subst lcerts.
+          intros (v1 & v2 & cs1 & cs2 & Hvneq & [ E1 | Hin1 ] & [ E2 | Hin2 ]).
+          1: idtac...
+          3: exists v1, v2, cs1, cs2...
+          1: inversion E1.
+          2: inversion E2.
+          1-2: subst.
+          ++exists v1, v2, cs', cs2...
+          ++exists v1, v2, cs1, cs'...
+      * split; auto.
+        rewrite E.
+        exists v, v', cs, cs'...
 Qed.
+
+(* NOTE: genproof can also be done in linear time, but to get all possible culprits,
+    we use an O(n^3) algorithm here to extract all culprits detectable in some pair of conflicting certificates *)
 
 Definition genproof_simple_aux_aux (c : Certificate) (certs : list Certificate) :=
   (List.flat_map 

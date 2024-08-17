@@ -18,5 +18,6 @@ Other changes:
 - Incorporated a comment from the Artefact Evaluation Committee
 - Simplified the definition of `lightsig_seen_in_history` in `Protocols/PB/Safety.v`
 - Added more comments on the formalization of `uniqueness` in `Protocols/PB/Safety.v`
+- Changed `lightcert_conflict_check` to a more efficient one in `Protocols/ABC/Types.v`
 
 ## [1.0.0] - 2024-07-20
