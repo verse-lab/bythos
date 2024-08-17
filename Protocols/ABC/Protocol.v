@@ -135,7 +135,7 @@ Definition procMsgPre (st : State) (src : Address) (msg : Message) : option (Sta
         Some (st', ps)
         *)
         if cf
-        then Some (st, broadcast n (LightConfirmMsg (v, lightsig_combine lsigs)))
+        then None
         else 
           if in_dec Address_eqdec src from
           then None

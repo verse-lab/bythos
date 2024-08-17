@@ -9,10 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+Protocol-level changes:
+- Lowered `th_vote4vote` to be `f + 1` in `Protocols/RB/Protocol.v`
+- Allowed the node to send light certificates only when it confirms for the first time in `Protocols/ABC/Protocol.v`
+
+Other changes:
 - Renamed `InternalTransition` into `InternalEvent`
 - Incorporated a comment from the Artefact Evaluation Committee
 - Simplified the definition of `lightsig_seen_in_history` in `Protocols/PB/Safety.v`
-- Lowered `th_vote4vote` to be `f + 1` in `Protocols/RB/Protocol.v`
-- Elaborated the formalization of `uniqueness` in `Protocols/PB/Safety.v`
+- Added more comments on the formalization of `uniqueness` in `Protocols/PB/Safety.v`
 
 ## [1.0.0] - 2024-07-20

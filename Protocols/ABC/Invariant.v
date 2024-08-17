@@ -486,7 +486,7 @@ Proof with (intros; rewrite ?sendout0; try (rewrite In_sendout; right); eauto us
     + (* TODO why Est disappeared? seems the problem is in "destruct cf in E" or "conf". *)
       (* destruct (andb _ _) eqn:EE, conf in E; try discriminate. *)
       destruct (andb _ _) eqn:EE in E; try discriminate. destruct cf; try discriminate; simplify_eq; simpl. 
-      * split_and?; auto. intros H. specialize (H dst). rewrite Est in H. simpl_state. destruct_and? H; split_and?; auto...
+      (* * split_and?; auto. intros H. specialize (H dst). rewrite Est in H. simpl_state. destruct_and? H; split_and?; auto... *)
       * destruct (in_dec _ _ _) as [ | Hnotin ] in E; try discriminate. simplify_eq. simpl.
         split_and?; auto. intros H. specialize (H dst). rewrite Est in H. simpl_state. destruct_and? H; split_and?; auto...
     + simplify_eq. simpl. split_and?; auto.
@@ -586,10 +586,10 @@ Proof with (try (now exists (MNTnil _))).
   - destruct ov as [ vthis | ].
     + destruct (andb _ _) eqn:EE in E; try discriminate. 
       unfold is_left in EE. rewrite ! andb_true_iff, sumbool_is_left in EE. destruct EE as ((-> & Everi) & Elveri).
-      destruct conf.
-      * simplify_eq. unshelve eexists. 1: analyze_step Mconf ltac:(idtac); try apply MNTnil; try reflexivity. 
+      destruct conf; try discriminate.
+      (* * simplify_eq. unshelve eexists. 1: analyze_step Mconf ltac:(idtac); try apply MNTnil; try reflexivity. 
         simpl. destruct (lightcert_conflict_check _) in |- *; simpl.
-        all: local_solver.
+        all: local_solver. *)
       * destruct (in_dec _ _ _) as [ | Hnotin ] in E; try discriminate. simplify_eq.
         destruct (N - f <=? S (length from)) eqn:Eth; 
           [ apply Nat.leb_le in Eth | apply Nat.leb_nle in Eth ].
@@ -984,7 +984,7 @@ Proof.
       destruct EE as ((-> & Everi) & Elveri).
       destruct conf eqn:?.
       --simplify_eq. simpl. 
-        destruct (lightcert_conflict_check _) eqn:? in |- *; simpl.
+        (* destruct (lightcert_conflict_check _) eqn:? in |- *; simpl. *)
         all: psent_analyze. 
       --destruct (in_dec _ _ _) as [ Hin | Hnotin ] in Ef; simplify_eq.
         1: psent_analyze. 
@@ -1014,8 +1014,8 @@ Proof with (simpl; rewrite ?Forall_app; auto using broadcast_all_fresh).
   unfold procMsg, routine_check.
   destruct st as [ n conf ov from lsigs sigs rlcerts rcerts buffer ], m as [ v lsig sig | (v, cs) | (v, nsigs) ]; simpl.
   - destruct ov...
-    destruct (andb _ _)... destruct conf.
-    + destruct (andb _ _)...
+    destruct (andb _ _)... destruct conf; auto.
+    (* + destruct (andb _ _)... *)
     + destruct (in_dec _ _ _)...
       destruct (andb _ _). all: destruct (Nat.leb _ _)...
   - destruct (combined_verify _ _)...
