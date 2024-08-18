@@ -13,6 +13,10 @@ Protocol-level changes:
 - Lowered `th_vote4vote` to be `f + 1` in `Protocols/RB/Protocol.v`
 - Allowed the node to send light certificates only when it confirms for the first time in `Protocols/ABC/Protocol.v`
 
+Proof-level changes:
+- Improved the statement of `first_vote_due_to_echo` in `Protocols/RB/Invariant.v`
+- Optimized the proofs of `first_vote_due_to_echo_is_invariant` and `vote_uniqueness_is_invariant` in `Protocols/RB/Invariant.v`
+
 Other changes:
 - Renamed `InternalTransition` into `InternalEvent`
 - Incorporated a comment from the Artefact Evaluation Committee

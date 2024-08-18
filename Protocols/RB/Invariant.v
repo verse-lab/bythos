@@ -739,16 +739,16 @@ Proof with saturate_assumptions.
 Qed.
 
 Definition first_vote_due_to_echo w : Prop :=
-  forall q r, 
+  forall q r v, 
     (* examining all nodes ... luckily Address is set to be finite *)
-    let: l := List.filter (fun n => (negb (isByz n)) && (isSome ((w @ n).(voted) (q, r)))) valid_nodes in
+    let: l := List.filter (fun n => (negb (isByz n)) && 
+      (match ((w @ n).(voted) (q, r)) with
+       | Some v' => is_left (Value_eqdec v v')
+       | _ => false
+      end)) valid_nodes in
     match l with
     | nil => True
-    | _ => exists n', In n' l /\ 
-      (match (w @ n').(voted) (q, r) with 
-      | Some v => th_echo4vote <= length ((w @ n').(msgcnt) (EchoMsg q r v))
-      | None => False (* dead branch *)
-      end)
+    | _ => exists n', In n' l /\ th_echo4vote <= length ((w @ n').(msgcnt) (EchoMsg q r v))
     end.
 
 (* TODO the proof is not very nice ... *)
@@ -759,14 +759,14 @@ Lemma first_vote_due_to_echo_is_invariant :
     lift_pkt_inv node_psent_h2l_invariants_sent w /\
     lift_pkt_inv node_psent_h2l_invariants_recv w) first_vote_due_to_echo.
 Proof.
-  intros qq ?? (_ & Hst_back & _ & Hh2ls_back & _) (Hcoh & Hst & Hl2h & _ & Hh2lr) H Hstep q r. 
-  hnf in H. specialize (H q r).
+  intros qq ?? (_ & Hst_back & _ & Hh2ls_back & _) (Hcoh & Hst & Hl2h & _ & Hh2lr) H Hstep q r v. 
+  hnf in H. specialize (H q r v).
   match goal with |- context[List.filter ?a ?b] => destruct (List.filter a b) as [ | n' l' ] eqn:E'; try exact I end.
   match type of H with context[List.filter ?a ?b] => destruct (List.filter a b) as [ | n l ] eqn:E in H end.
-  - destruct l' as [ | m' l' ].
-    + exists n'. apply and_wlog_r; [ simpl; tauto | rewrite <- E'; intros (_ & Hcheck%andb_true_iff)%filter_In ].
+  - { exists n'. apply and_wlog_r; [ simpl; tauto | rewrite <- E'; intros (_ & Hcheck%andb_true_iff)%filter_In ].
       rewrite negb_true_iff in Hcheck. destruct Hcheck as (Hnonbyz_n' & Hv_).
       clear E'. destruct (voted (w' @ n') (q, r)) as [ v' | ] eqn:E'; [ | discriminate ].
+      autorewrite with booldec in Hv_. subst v'.
       pick voted_some as_ Hv' by_ (pose proof (Hst n') as []). apply Hv' in E'.
       destruct E' as [ E' | E' ]; auto.
       (* HMM again, exploiting the network model ... but still cumbersome *)
@@ -783,23 +783,12 @@ Proof.
       destruct Hr3 as (? & Hr3). 
       pick votemsg_sent_h2l as_ Hr4 by_ (pose proof (Hh2ls_back _ Hr3) as []). saturate_assumptions. 
       pose proof (in_nil (a:=n)) as Htmp1. pose proof (Address_is_finite n) as Htmp2.
-      rewrite <- E, -> ! filter_In, -> ! andb_true_iff, -> Hr4, -> Hnonbyz_n in Htmp1. eqsolve. 
-    + (* l' must be nil, since there will not be two nodes changing in one transition *)
-      pose proof (or_introl eq_refl : In n' (n' :: m' :: l')) as Htmp. 
-      pose proof (or_intror (or_introl eq_refl) : In m' (n' :: m' :: l')) as Htmp0.
-      rewrite <- E', -> ! filter_In, -> ! andb_true_iff in Htmp, Htmp0.
-      destruct_and? Htmp. destruct_and? Htmp0.
-      pose proof (in_nil (a:=n')) as Htmp1. pose proof (in_nil (a:=m')) as Htmp2.
-      rewrite <- E, -> ! filter_In, -> ! andb_true_iff in Htmp1, Htmp2.
-      pose proof (localState_change_atomic Hstep) as [ Ew | (nn & st & Ew) ]; try rewrite Ew in *.
-      1: eqsolve.
-      pose proof valid_nodes_NoDup as HH. eapply NoDup_filter in HH. rewrite E', ! NoDup_cons_iff in HH. simpl in HH.
-      unfold upd in *. destruct_eqdec! as_ ?; simplify_eq; try eqsolve.
+      rewrite <- E, -> ! filter_In, -> ! andb_true_iff, -> Hr4, -> Hnonbyz_n in Htmp1. autorewrite with booldec in Htmp1. eqsolve. }
   - rewrite <- E in H. clear E n l. rewrite <- E'. clear E' n' l'.
     destruct H as (n & (Hin & Hcheck%andb_true_iff)%filter_In & He). 
-    destruct (voted (w @ n) (q, r)) as [ v | ] eqn:E; [ | eqsolve ].
+    destruct (voted (w @ n) (q, r)) as [ v' | ] eqn:E; [ | eqsolve ]. autorewrite with booldec in Hcheck. destruct Hcheck as (Hnonbyz & <-).
     pick voted_persistent as_ Hv by_ (pose proof (persistent_invariants Hstep n) as []). apply Hv in E.
-    exists n. rewrite filter_In, E, andb_true_iff. split; auto.
+    exists n. autorewrite with booldec. rewrite E. autorewrite with booldec. split_and?; auto.
     etransitivity; [ apply He | ]. apply NoDup_incl_length.
     + pick msgcnt_nodup as_ Htmp by_ (pose proof (Hst_back n) as []). apply (Htmp (EchoMsg _ _ _)).
     + pick msgcnt_persistent as_ Htmp by_ (pose proof (persistent_invariants Hstep n) as []). hnf. apply (Htmp (EchoMsg _ _ _)).
@@ -821,72 +810,35 @@ Lemma vote_uniqueness_is_invariant :
     lift_pkt_inv node_psent_h2l_invariants_recv w) /\
     first_vote_due_to_echo w) vote_uniqueness.
 Proof.
-  (* H would only be useful in the previous SystemState, so we can only use Hfve in the previous SystemState *)
-  intros qq ?? ((_ & Hst_back & _ & Hh2ls_back & _) & Hfve) ((Hcoh & Hst & Hl2h & Hh2ls & Hh2lr) & _) H Hstep src r. specialize (H src r).
-  enough (forall dst1 dst2 v1 v2, dst1 <> dst2 -> isByz dst1 = false -> isByz dst2 = false ->
-    (w @ dst1).(voted) (src, r) = None -> (w @ dst2).(voted) (src, r) = Some v2 ->
-    (w' @ dst1).(voted) (src, r) = Some v1 -> (w' @ dst2).(voted) (src, r) = Some v2 ->
-    v1 = v2) as Hsymgoal.
-  1:{ (* de-symmetrize; have some high-level discussion first, to know that at most one node will change *)
-    pose proof (localState_change_atomic Hstep) as [ Ew | (nn & st & Ew) ]; hnf in H |- *; rewrite Ew in *; try hypothesis.
-    intros dst1 dst2.
-    pick voted_persistent as_ Hv1 by_ (pose proof (persistent_invariants Hstep dst1) as []).
-    pick voted_persistent as_ Hv2 by_ (pose proof (persistent_invariants Hstep dst2) as []). (* prepare *)
-    unfold upd. destruct_eqdec! as_ ?; simplify_eq; try hypothesis; try congruence.
-    2: destruct (voted (w @ dst2) (src, r)) as [ vv | ] eqn:E; [ pose proof E as E'%Hv2 | specialize (Hsymgoal dst2 dst1) ].
-    1: destruct (voted (w @ dst1) (src, r)) as [ vv | ] eqn:E; [ pose proof E as E'%Hv1 | specialize (Hsymgoal dst1 dst2) ].
-    all: try (rewrite Ew, upd_refl in E'; rewrite E'; clear E').
-    all: intros; simplify_eq; 
-      try solve [ now apply (H dst1 dst2 v1 v2) | symmetry; now apply (H dst2 dst1 v2 v1) ].
-    all: unfold upd in Hsymgoal; destruct_eqdec! as_ ?; simplify_eq. (* ... *)
-    now apply Hsymgoal. symmetry. now apply Hsymgoal. } 
-  intros dst1 dst2 v1 v2 Hneq Hnonbyz_dst1 Hnonbyz_dst2 Hv1 Hv2 Hv1' Hv2'.
-  pick voted_some as_ Hle by_ (pose proof (Hst dst1) as []). specialize (Hle _ _ _ Hv1').
-  destruct Hle as [ Hle | Hle ].
-  - (* use first_vote_due_to_echo_is_invariant, and then use quorum intersection *)
-    hnf in Hfve. specialize (Hfve src r).
-    match type of Hfve with context[List.filter ?a ?b] => remember (List.filter a b) as l eqn:El end.
-    (* l <> nil *)
-    assert (In dst2 l) as Hlnotnil.
-    1:{ subst l. apply filter_In. rewrite -> ! andb_true_iff, -> Hv2, -> Hnonbyz_dst2. auto using Address_is_finite. }
-    destruct l as [ | aa ll ] eqn:Etmp; [ simpl in Hlnotnil; contradiction | rewrite <- Etmp in *; clear Etmp aa ll Hlnotnil; subst l ].
-    (* TODO a repeating step *)
-    destruct Hfve as (n' & (Hin & Hcheck%andb_true_iff)%filter_In & He).
-    destruct (voted (w @ n') (src, r)) as [ v' | ] eqn:E; [ destruct Hcheck as (Hnonbyz_n'%negb_true_iff & _) | eqsolve ].
-    (* FIXME: extract the following to be another separate proof *)
-    unfold th_echo4vote in He, Hle.
-    pick msgcnt_nodup as_ Hnodup1 by_ (pose proof (Hst dst1) as []). specialize (Hnodup1 (EchoMsg src r v1)). 
-    pick msgcnt_nodup as_ Hnodup2 by_ (pose proof (Hst n') as []). specialize (Hnodup2 (EchoMsg src r v')).
-    simpl in Hnodup1, Hnodup2.
-    (* this is awkward. *)
-    (* FIXME: add length as persistent *)
-    apply Nat.le_trans with (p:=length (msgcnt (w' @ n') (EchoMsg src r v'))) in He.
-    2:{ apply NoDup_incl_length.
-      - pick msgcnt_nodup as_ Hnodup_ by_ (pose proof (Hst_back n') as []). apply (Hnodup_ (EchoMsg _ _ _)).
-      - pick msgcnt_persistent as_ Htmp by_ (pose proof (persistent_invariants Hstep n') as []). hnf. apply (Htmp (EchoMsg _ _ _)). }
-    (* the basic idea is to find a non-faulty node in the quorum intersection that equivocate, and then prove False *)
-    pose proof (quorum_intersection Hnodup1 Hnodup2 Hle He) as Hq. pose proof f_lt_N_minus_2f as Hf.
-    match type of Hq with _ <= ?ll => assert (f < ll) as (n & Hnonbyz_n & (Hin2' & Hin1'%sumbool_is_left)%filter_In)%at_least_one_nonfaulty by lia end.
-    2: now apply List.NoDup_filter.
-    (* TODO the following step has some overlap with a previous proof *)
-    pick msgcnt_recv_l2h as_ Hsent1 by_ (pose proof (Hl2h _ Hnonbyz_dst1) as []). specialize (Hsent1 _ _ Hin1'). 
-    pick msgcnt_recv_l2h as_ Hsent2 by_ (pose proof (Hl2h _ Hnonbyz_n') as []). specialize (Hsent2 _ _ Hin2').
-    rewrite Hcoh in Hsent1, Hsent2.
-    pick echomsg_sent_h2l as_ Hvv1 by_ (pose proof (Hh2ls _ Hsent1) as []).
-    pick echomsg_sent_h2l as_ Hvv2 by_ (pose proof (Hh2ls _ Hsent2) as []).
-    saturate_assumptions. rewrite Hvv1 in Hvv2. simplify_eq. eapply (H n' dst2); eauto.
-  - (* inductive case *)
-    (* HMM again, exploiting the network model ... but still cumbersome *)
-    (* TODO the following steps are still repeating ... *)
-    unfold th_vote4vote in Hle. pose proof f_lt_N_minus_2f as Hf.
-    pick msgcnt_nodup as_ Hnodup by_ (pose proof (Hst dst1) as []). 
-    match type of Hle with _ <= ?ll => assert (f < ll) as (n & Hnonbyz_n & Hin')%at_least_one_nonfaulty by lia end.
-    2: eapply (Hnodup (VoteMsg _ _ _)).
-    pick msgcnt_recv_l2h as_ Hr3 by_ (pose proof (Hl2h _ Hnonbyz_dst1) as []). specialize (Hr3 _ _ Hin'). rewrite Hcoh in Hr3.
-    eapply system_step_received_inversion_full in Hr3; try eassumption; auto using procMsg_fresh, procInt_fresh.
-    destruct Hr3 as (? & Hr3). 
-    pick votemsg_sent_h2l as_ Hr4 by_ (pose proof (Hh2ls_back _ Hr3) as []). saturate_assumptions. 
-    eapply (H n dst2); eauto.
+  intros qq ?? ((_ & Hst_back & _ & Hh2ls_back & _) & _) ((Hcoh & Hst & Hl2h & Hh2ls & Hh2lr) & Hfve) H Hstep src r.
+  intros dst1 dst2 v1 v2 Hnonbyz_dst1 Hnonbyz_dst2 Hv1 Hv2.
+  (* use this, and then quorum intersection *)
+  assert (forall v, v = v1 \/ v = v2 -> exists n', isByz n' = false /\ th_echo4vote <= length ((w' @ n').(msgcnt) (EchoMsg src r v))) as He.
+  { intros v Hv. specialize (Hfve src r v).
+    destruct (List.filter _ valid_nodes) eqn:E in Hfve.
+    - (* contradiction *)
+      pose proof (in_nil (a:=dst1)) as Htmp1. pose proof (in_nil (a:=dst2)) as Htmp2.
+      pose proof (Address_is_finite dst1). pose proof (Address_is_finite dst2). 
+      rewrite <- E in Htmp1, Htmp2. autorewrite with booldec in Htmp1, Htmp2.
+      rewrite Hv1 in Htmp1. rewrite Hv2 in Htmp2. autorewrite with booldec in Htmp1, Htmp2.
+      intuition.
+    - rewrite <- E in Hfve. destruct Hfve as (n' & Hfve).
+      exists n'. autorewrite with booldec in Hfve. intuition. }
+  pose proof (He _ (or_introl eq_refl)) as (n1' & Hnonbyz_n1' & Hsize1).
+  pose proof (He _ (or_intror eq_refl)) as (n2' & Hnonbyz_n2' & Hsize2).
+  pick msgcnt_nodup as_ Hnodup1 by_ (pose proof (Hst n1') as []). specialize (Hnodup1 (EchoMsg src r v1)). 
+  pick msgcnt_nodup as_ Hnodup2 by_ (pose proof (Hst n2') as []). specialize (Hnodup2 (EchoMsg src r v2)).
+  simpl in Hnodup1, Hnodup2.
+  pose proof (quorum_intersection Hnodup1 Hnodup2 Hsize1 Hsize2) as Hq. pose proof f_lt_N_minus_2f as Hf.
+  match type of Hq with _ <= ?ll => assert (f < ll) as (n & Hnonbyz_n & (Hin2' & Hin1'%sumbool_is_left)%filter_In)%at_least_one_nonfaulty by lia end.
+  2: now apply List.NoDup_filter.
+  (* TODO the following step has some overlap with a previous proof *)
+  pick msgcnt_recv_l2h as_ Hsent1 by_ (pose proof (Hl2h _ Hnonbyz_n1') as []). specialize (Hsent1 _ _ Hin1').
+  pick msgcnt_recv_l2h as_ Hsent2 by_ (pose proof (Hl2h _ Hnonbyz_n2') as []). specialize (Hsent2 _ _ Hin2').
+  rewrite Hcoh in Hsent1, Hsent2.
+  pick echomsg_sent_h2l as_ Hvv1 by_ (pose proof (Hh2ls _ Hsent1) as []).
+  pick echomsg_sent_h2l as_ Hvv2 by_ (pose proof (Hh2ls _ Hsent2) as []).
+  saturate_assumptions. congruence.
 Qed.
 
 End RBInvariant.
